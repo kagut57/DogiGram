@@ -172,8 +172,8 @@ public class FeedController {
 
     public boolean isBookmarked(String uid) { return bookmarkedIds.contains(uid); }
 
-    public void trackClick() {}
-    public void trackCommentClick() {}
+    public void trackClick(FeedItem item) {}
+    public void trackCommentClick(FeedItem item) {}
 
     public boolean hasCachedFeed() { return feedLoaded && !cachedFeed.isEmpty(); }
     public List<FeedItem> getCachedFeed() { return cachedFeed; }

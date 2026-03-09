@@ -50,6 +50,13 @@ public class FeedPostCell extends LinearLayout {
     private final TextView timeView;
     private final View unreadDot;
 
+    private final LinearLayout replyContainer;
+    private final TextView replyNameView;
+    private final TextView replyTextView;
+
+    private final LinearLayout forwardContainer;
+    private final TextView forwardNameView;
+
     private final AnimatedEmojiSpan.TextViewEmojis messageTextView;
     private final TextView readMoreView;
 
@@ -77,6 +84,9 @@ public class FeedPostCell extends LinearLayout {
     private final Theme.ResourcesProvider resourceProvider;
     private final AvatarDrawable avatarDrawable;
 
+    private long fwdChannelId = 0;
+    private int fwdMessageId = 0;
+
     public boolean isNeedsReadMore() {
         return needsReadMore;
     }
@@ -91,11 +101,13 @@ public class FeedPostCell extends LinearLayout {
         void onMenuClick(View anchor, FeedController.FeedItem item);
         void onCommentsClick(FeedController.FeedItem item);
         void onShareClick(FeedController.FeedItem item);
+        void onForwardClick(long channelId, int messageId);
     }
 
     private Callback callback;
     public void setCallback(Callback callback) { this.callback = callback; }
 
+    @SuppressLint("SetTextI18n")
     public FeedPostCell(Context context, int account, Theme.ResourcesProvider resourceProvider) {
         super(context);
         this.currentAccount = account;
@@ -107,6 +119,8 @@ public class FeedPostCell extends LinearLayout {
         setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite, resourceProvider));
 
         int grayColor = Theme.getColor(Theme.key_windowBackgroundWhiteGrayText3, resourceProvider);
+        int accentColor = Theme.getColor(Theme.key_windowBackgroundWhiteBlueText2, resourceProvider);
+        int greenColor = Theme.getColor(Theme.key_avatar_nameInMessageGreen, resourceProvider);
         PorterDuffColorFilter grayFilter = new PorterDuffColorFilter(grayColor, PorterDuff.Mode.SRC_IN);
 
         LinearLayout headerRow = new LinearLayout(context);
@@ -169,6 +183,74 @@ public class FeedPostCell extends LinearLayout {
 
         addView(headerRow, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
+        replyContainer = new LinearLayout(context);
+        replyContainer.setOrientation(HORIZONTAL);
+        replyContainer.setVisibility(GONE);
+        replyContainer.setPadding(0, dp(8), 0, 0);
+        replyContainer.setBackground(Theme.createSelectorDrawable(Theme.getColor(Theme.key_listSelector, resourceProvider), 2));
+
+        View replyBorder = new View(context);
+        replyBorder.setBackgroundColor(accentColor);
+        replyContainer.addView(replyBorder, LayoutHelper.createLinear(3, LayoutHelper.MATCH_PARENT, 0, 0, 0, 0));
+
+        LinearLayout replyContent = new LinearLayout(context);
+        replyContent.setOrientation(VERTICAL);
+        replyContent.setPadding(dp(8), dp(2), dp(4), dp(2));
+
+        replyNameView = new TextView(context);
+        replyNameView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
+        replyNameView.setTypeface(AndroidUtilities.bold());
+        replyNameView.setTextColor(accentColor);
+        replyNameView.setMaxLines(1);
+        replyNameView.setEllipsize(TextUtils.TruncateAt.END);
+        replyContent.addView(replyNameView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+
+        replyTextView = new TextView(context);
+        replyTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
+        replyTextView.setTextColor(grayColor);
+        replyTextView.setMaxLines(2);
+        replyTextView.setEllipsize(TextUtils.TruncateAt.END);
+        replyContent.addView(replyTextView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+
+        replyContainer.addView(replyContent, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f));
+        addView(replyContainer, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+
+        forwardContainer = new LinearLayout(context);
+        forwardContainer.setOrientation(HORIZONTAL);
+        forwardContainer.setVisibility(GONE);
+        forwardContainer.setPadding(0, dp(8), 0, 0);
+        forwardContainer.setBackground(Theme.createSelectorDrawable(Theme.getColor(Theme.key_listSelector, resourceProvider), 2));
+        forwardContainer.setOnClickListener(v -> {
+            if (callback != null && fwdChannelId != 0) {
+                callback.onForwardClick(fwdChannelId, fwdMessageId);
+            }
+        });
+
+        View forwardBorder = new View(context);
+        forwardBorder.setBackgroundColor(greenColor);
+        forwardContainer.addView(forwardBorder, LayoutHelper.createLinear(3, LayoutHelper.MATCH_PARENT, 0, 0, 0, 0));
+
+        LinearLayout forwardContent = new LinearLayout(context);
+        forwardContent.setOrientation(VERTICAL);
+        forwardContent.setPadding(dp(8), dp(2), dp(4), dp(2));
+
+        TextView forwardLabel = new TextView(context);
+        forwardLabel.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
+        forwardLabel.setTextColor(greenColor);
+        forwardLabel.setText("Forwarded from");
+        forwardContent.addView(forwardLabel, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT));
+
+        forwardNameView = new TextView(context);
+        forwardNameView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
+        forwardNameView.setTypeface(AndroidUtilities.bold());
+        forwardNameView.setTextColor(greenColor);
+        forwardNameView.setMaxLines(1);
+        forwardNameView.setEllipsize(TextUtils.TruncateAt.END);
+        forwardContent.addView(forwardNameView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+
+        forwardContainer.addView(forwardContent, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f));
+        addView(forwardContainer, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+
         messageTextView = new AnimatedEmojiSpan.TextViewEmojis(context);
         messageTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
         messageTextView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourceProvider));
@@ -181,7 +263,7 @@ public class FeedPostCell extends LinearLayout {
         readMoreView = new TextView(context);
         readMoreView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
         readMoreView.setTypeface(AndroidUtilities.bold());
-        readMoreView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlueText2, resourceProvider));
+        readMoreView.setTextColor(accentColor);
         readMoreView.setVisibility(GONE);
         readMoreView.setPadding(0, dp(4), 0, dp(2));
         readMoreView.setOnClickListener(v -> toggleExpanded());
@@ -296,15 +378,20 @@ public class FeedPostCell extends LinearLayout {
         needsReadMore = false;
         fullText = null;
         collapsedEndOffset = -1;
+        fwdChannelId = 0;
+        fwdMessageId = 0;
         pollTextView.setVisibility(GONE);
         readMoreView.setVisibility(GONE);
+        replyContainer.setVisibility(GONE);
+        forwardContainer.setVisibility(GONE);
 
         if (item == null) return;
 
         MessageObject primary = item.getPrimaryMessage();
         TLRPC.Message raw = primary.messageOwner;
+        MessagesController controller = MessagesController.getInstance(currentAccount);
 
-        TLRPC.Chat chat = MessagesController.getInstance(currentAccount).getChat(-item.channelId);
+        TLRPC.Chat chat = controller.getChat(-item.channelId);
         if (chat != null) {
             channelNameView.setText(chat.title);
             avatarDrawable.setInfo(chat);
@@ -313,8 +400,16 @@ public class FeedPostCell extends LinearLayout {
             else avatarView.setImageDrawable(avatarDrawable);
         }
 
-        timeView.setText(LocaleController.formatDateAudio(raw.date, true));
+        String timeStr = LocaleController.formatDateAudio(raw.date, true);
+        if (isReallyEdited(raw)) {
+            timeStr += " · edited";
+        }
+        timeView.setText(timeStr);
         unreadDot.setVisibility(item.isRead ? GONE : VISIBLE);
+
+        setupReply(raw, controller);
+
+        setupForward(raw, controller);
 
         if (raw.media instanceof TLRPC.TL_messageMediaPoll) {
             TLRPC.TL_messageMediaPoll pollMedia = (TLRPC.TL_messageMediaPoll) raw.media;
@@ -371,6 +466,122 @@ public class FeedPostCell extends LinearLayout {
             sharesCountView.setVisibility(GONE);
         }
         shareBtn.setVisibility(VISIBLE);
+    }
+
+    @SuppressLint("SetTextI18n")
+    private void setupReply(TLRPC.Message raw, MessagesController controller) {
+        if (raw.reply_to == null || raw.reply_to.reply_to_msg_id == 0) {
+            replyContainer.setVisibility(GONE);
+            return;
+        }
+
+        String replyName = null;
+
+        if (raw.reply_to.reply_to_peer_id != null) {
+            replyName = getPeerName(raw.reply_to.reply_to_peer_id, controller);
+        }
+
+        if (replyName == null) {
+            try {
+                TLRPC.MessageFwdHeader replyFrom = raw.reply_to.reply_from;
+                if (replyFrom != null) {
+                    if (replyFrom.from_id != null) {
+                        replyName = getPeerName(replyFrom.from_id, controller);
+                    }
+                    if (replyName == null && replyFrom.from_name != null) {
+                        replyName = replyFrom.from_name;
+                    }
+                }
+            } catch (Exception e) { /* field might not exist in some versions */ }
+        }
+
+        if (replyName == null) {
+            long chatId = -raw.peer_id.channel_id;
+            TLRPC.Chat chat = controller.getChat(-chatId);
+            if (chat != null) replyName = chat.title;
+            else replyName = "Message";
+        }
+
+        replyNameView.setText(replyName);
+
+        String quoteText = null;
+        try {
+            quoteText = raw.reply_to.quote_text;
+        } catch (Exception e) { /* field might not exist */ }
+
+        if (quoteText != null && !quoteText.isEmpty()) {
+            replyTextView.setText("💬 " + quoteText);
+        } else {
+            replyTextView.setText("↩ Reply to message");
+        }
+
+        replyContainer.setVisibility(VISIBLE);
+    }
+
+    private void setupForward(TLRPC.Message raw, MessagesController controller) {
+        if (raw.fwd_from == null) {
+            forwardContainer.setVisibility(GONE);
+            return;
+        }
+
+        TLRPC.MessageFwdHeader fwd = raw.fwd_from;
+        String fwdName = null;
+        fwdChannelId = 0;
+        fwdMessageId = 0;
+
+        if (fwd.from_id != null) {
+            if (fwd.from_id.channel_id != 0) {
+                fwdChannelId = fwd.from_id.channel_id;
+                TLRPC.Chat fwdChat = controller.getChat(fwdChannelId);
+                if (fwdChat != null) fwdName = fwdChat.title;
+            } else if (fwd.from_id.user_id != 0) {
+                TLRPC.User user = controller.getUser(fwd.from_id.user_id);
+                if (user != null) {
+                    fwdName = user.first_name;
+                    if (user.last_name != null && !user.last_name.isEmpty()) {
+                        fwdName += " " + user.last_name;
+                    }
+                }
+            } else if (fwd.from_id.chat_id != 0) {
+                TLRPC.Chat fwdChat = controller.getChat(fwd.from_id.chat_id);
+                if (fwdChat != null) fwdName = fwdChat.title;
+            }
+        }
+
+        if (fwdName == null && fwd.from_name != null && !fwd.from_name.isEmpty()) {
+            fwdName = fwd.from_name;
+        }
+
+        if (fwd.channel_post != 0) {
+            fwdMessageId = fwd.channel_post;
+        }
+
+        if (fwdName != null) {
+            forwardNameView.setText(fwdName);
+            forwardContainer.setVisibility(VISIBLE);
+        } else {
+            forwardContainer.setVisibility(GONE);
+        }
+    }
+
+    private String getPeerName(TLRPC.Peer peer, MessagesController controller) {
+        if (peer == null) return null;
+        if (peer.channel_id != 0) {
+            TLRPC.Chat chat = controller.getChat(peer.channel_id);
+            return chat != null ? chat.title : null;
+        } else if (peer.chat_id != 0) {
+            TLRPC.Chat chat = controller.getChat(peer.chat_id);
+            return chat != null ? chat.title : null;
+        } else if (peer.user_id != 0) {
+            TLRPC.User user = controller.getUser(peer.user_id);
+            if (user == null) return null;
+            String name = user.first_name;
+            if (user.last_name != null && !user.last_name.isEmpty()) {
+                name += " " + user.last_name;
+            }
+            return name;
+        }
+        return null;
     }
 
     private void measureAndTruncate() {
@@ -501,6 +712,17 @@ public class FeedPostCell extends LinearLayout {
         return false;
     }
 
+    private boolean isReallyEdited(TLRPC.Message msg) {
+        if (msg.edit_date == 0) return false;
+        if (msg.edit_hide) return false;
+
+        if (msg.fwd_from != null) return false;
+
+        if (msg.media instanceof TLRPC.TL_messageMediaGeoLive) return false;
+
+        return !(msg.media instanceof TLRPC.TL_messageMediaPoll);
+    }
+
     @SuppressLint("SetTextI18n")
     private void setupMedia(FeedController.FeedItem item) {
         List<MessageObject> mediaMessages = new ArrayList<>();
@@ -610,7 +832,7 @@ public class FeedPostCell extends LinearLayout {
             if (doc.thumbs != null && !doc.thumbs.isEmpty()) {
                 TLRPC.PhotoSize thumb = bestSize(doc.thumbs);
                 if (thumb != null)
-                    iv.setImage(ImageLocation.getForDocument(thumb, doc), height + "_" + height, (ImageLocation) null, null, 0, doc);
+                    iv.setImage(ImageLocation.getForDocument(thumb, doc), height + "_" + height, null, null, 0, doc);
             }
             if (isGif) {
                 overlay.setText("GIF");
@@ -637,7 +859,7 @@ public class FeedPostCell extends LinearLayout {
             if (doc.thumbs != null && !doc.thumbs.isEmpty()) {
                 TLRPC.PhotoSize thumb = bestSize(doc.thumbs);
                 if (thumb != null)
-                    v.setImage(ImageLocation.getForDocument(thumb, doc), "80_80", (ImageLocation) null, null, 0, doc);
+                    v.setImage(ImageLocation.getForDocument(thumb, doc), "80_80", null, null, 0, doc);
             }
         }
     }
