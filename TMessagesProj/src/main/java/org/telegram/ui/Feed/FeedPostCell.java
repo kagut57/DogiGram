@@ -62,7 +62,7 @@ public class FeedPostCell extends LinearLayout {
     private final AnimatedEmojiSpan.TextViewEmojis messageTextView;
     private final TextView readMoreView;
 
-    private final TextView pollTextView;
+    private final FeedPollView pollView;
 
     private final LinearLayout documentContainer;
     private final TextView documentNameView;
@@ -280,12 +280,9 @@ public class FeedPostCell extends LinearLayout {
         readMoreView.setOnClickListener(v -> toggleExpanded());
         addView(readMoreView, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT));
 
-        pollTextView = new TextView(context);
-        pollTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
-        pollTextView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourceProvider));
-        pollTextView.setVisibility(GONE);
-        pollTextView.setPadding(0, dp(8), 0, 0);
-        addView(pollTextView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+        pollView = new FeedPollView(context, currentAccount, resourceProvider);
+        pollView.setVisibility(GONE);
+        addView(pollView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
         documentContainer = new LinearLayout(context);
         documentContainer.setOrientation(HORIZONTAL);
@@ -423,7 +420,7 @@ public class FeedPostCell extends LinearLayout {
         fwdMessageId = 0;
         replyChannelId = 0;
         replyMessageId = 0;
-        pollTextView.setVisibility(GONE);
+        pollView.setVisibility(GONE);
         readMoreView.setVisibility(GONE);
         replyContainer.setVisibility(GONE);
         forwardContainer.setVisibility(GONE);
@@ -457,20 +454,14 @@ public class FeedPostCell extends LinearLayout {
 
         if (raw.media instanceof TLRPC.TL_messageMediaPoll) {
             TLRPC.TL_messageMediaPoll pollMedia = (TLRPC.TL_messageMediaPoll) raw.media;
-            StringBuilder sb = new StringBuilder();
-            sb.append(pollMedia.poll.quiz ? "📊 Quiz" : "📊 Poll");
-            sb.append(": ").append(pollMedia.poll.question.text);
-            for (TLRPC.PollAnswer answer : pollMedia.poll.answers) {
-                sb.append("\n• ").append(answer.text.text);
-            }
-            pollTextView.setText(sb.toString());
-            pollTextView.setVisibility(VISIBLE);
+            pollView.setPoll(pollMedia, raw);
+            pollView.setVisibility(VISIBLE);
             mediaContainer.setVisibility(GONE);
             mediaRow.setVisibility(GONE);
             albumLabel.setVisibility(GONE);
             mediaOverlayLabel.setVisibility(GONE);
         } else {
-            pollTextView.setVisibility(GONE);
+            pollView.setVisibility(GONE);
             setupMedia(item);
         }
 
@@ -608,7 +599,7 @@ public class FeedPostCell extends LinearLayout {
                 if (thumb != null) {
                     replyImageView.setImage(
                             ImageLocation.getForDocument(thumb, doc),
-                            "36_36", (ImageLocation) null, null, 0, doc);
+                            "36_36", null, null, 0, doc);
                     replyImageView.setVisibility(VISIBLE);
                 }
             }
@@ -1045,7 +1036,7 @@ public class FeedPostCell extends LinearLayout {
             if (doc.thumbs != null && !doc.thumbs.isEmpty()) {
                 TLRPC.PhotoSize thumb = bestSize(doc.thumbs);
                 if (thumb != null)
-                    iv.setImage(ImageLocation.getForDocument(thumb, doc), height + "_" + height, (ImageLocation) null, null, 0, doc);
+                    iv.setImage(ImageLocation.getForDocument(thumb, doc), height + "_" + height, null, null, 0, doc);
             }
             if (isGif) {
                 overlay.setText("GIF");
