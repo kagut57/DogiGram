@@ -424,31 +424,29 @@ public class FeedPostCell extends LinearLayout {
 
         if (item.isAlbum()) {
             for (MessageObject msg : item.messages) {
-                CharSequence mt = msg.messageText;
-                if (mt != null && mt.length() > 0 && !isPlaceholderText(mt.toString().trim())) {
-                    text = mt;
+                if (msg.caption != null && msg.caption.length() > 0) {
+                    text = msg.caption;
                     break;
                 }
             }
             if (text == null || text.length() == 0) {
                 for (MessageObject msg : item.messages) {
-                    if (msg.caption != null && msg.caption.length() > 0) {
-                        text = msg.caption;
+                    CharSequence mt = msg.messageText;
+                    if (mt != null && mt.length() > 0 && !isPlaceholderText(mt.toString().trim())) {
+                        text = mt;
                         break;
                     }
                 }
             }
-        }
-
-        if (text == null || text.length() == 0) {
-            CharSequence mt = primary.messageText;
-            if (mt != null && mt.length() > 0 && !isPlaceholderText(mt.toString().trim())) {
-                text = mt;
+        } else {
+            if (primary.caption != null && primary.caption.length() > 0) {
+                text = primary.caption;
+            } else {
+                CharSequence mt = primary.messageText;
+                if (mt != null && mt.length() > 0 && !isPlaceholderText(mt.toString().trim())) {
+                    text = mt;
+                }
             }
-        }
-
-        if (text == null || text.length() == 0) {
-            text = primary.caption;
         }
 
         if (text == null || text.length() == 0) return null;
