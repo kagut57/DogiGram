@@ -1022,10 +1022,13 @@ public class FeedPostCell extends LinearLayout {
             TLRPC.Document doc = raw.media.document;
             boolean isGif = false, isVideo = false;
             double duration = 0;
+            int videoW = 0, videoH = 0;
             for (TLRPC.DocumentAttribute attr : doc.attributes) {
                 if (attr instanceof TLRPC.TL_documentAttributeVideo) {
                     isVideo = true;
                     duration = ((TLRPC.TL_documentAttributeVideo) attr).duration;
+                    videoW = attr.w;
+                    videoH = attr.h;
                     if (attr.w > 0 && attr.h > 0) {
                         int w = AndroidUtilities.displaySize.x - dp(32);
                         height = Math.max(dp(150), Math.min(dp(400), (int) (w * ((float) attr.h / attr.w))));
@@ -1033,20 +1036,49 @@ public class FeedPostCell extends LinearLayout {
                 }
                 if (attr instanceof TLRPC.TL_documentAttributeAnimated) isGif = true;
             }
-            if (doc.thumbs != null && !doc.thumbs.isEmpty()) {
-                TLRPC.PhotoSize thumb = bestSize(doc.thumbs);
-                if (thumb != null)
-                    iv.setImage(ImageLocation.getForDocument(thumb, doc), height + "_" + height, null, null, 0, doc);
-            }
+
             if (isGif) {
+                if (videoW > 0 && videoH > 0) {
+                    int w = AndroidUtilities.displaySize.x - dp(32);
+                    height = Math.max(dp(150), Math.min(dp(400), (int) (w * ((float) videoH / videoW))));
+                }
+
+                String thumbFilter = height + "_" + height;
+                ImageLocation thumbLocation = null;
+                if (doc.thumbs != null && !doc.thumbs.isEmpty()) {
+                    TLRPC.PhotoSize thumb = bestSize(doc.thumbs);
+                    if (thumb != null) {
+                        thumbLocation = ImageLocation.getForDocument(thumb, doc);
+                    }
+                }
+
+                iv.setImage(
+                        ImageLocation.getForDocument(doc),
+                        height + "_" + height,
+                        thumbLocation,
+                        thumbFilter,
+                        (int) doc.size,
+                        doc
+                );
+
+                iv.getImageReceiver().setAutoRepeat(1);
+                iv.getImageReceiver().setAllowStartAnimation(true);
+
                 overlay.setText("GIF");
                 overlay.setVisibility(VISIBLE);
-            } else if (isVideo) {
-                int d = (int) duration;
-                overlay.setText(String.format(Locale.US, "▶ %d:%02d", d / 60, d % 60));
-                overlay.setVisibility(VISIBLE);
             } else {
-                overlay.setVisibility(GONE);
+                if (doc.thumbs != null && !doc.thumbs.isEmpty()) {
+                    TLRPC.PhotoSize thumb = bestSize(doc.thumbs);
+                    if (thumb != null)
+                        iv.setImage(ImageLocation.getForDocument(thumb, doc), height + "_" + height, null, null, 0, doc);
+                }
+                if (isVideo) {
+                    int d = (int) duration;
+                    overlay.setText(String.format(Locale.US, "▶ %d:%02d", d / 60, d % 60));
+                    overlay.setVisibility(VISIBLE);
+                } else {
+                    overlay.setVisibility(GONE);
+                }
             }
         }
         return height;
@@ -1060,10 +1092,39 @@ public class FeedPostCell extends LinearLayout {
                 v.setImage(ImageLocation.getForPhoto(best, raw.media.photo), "80_80", (ImageLocation) null, null, 0, raw.media.photo);
         } else if (raw.media instanceof TLRPC.TL_messageMediaDocument && raw.media.document != null) {
             TLRPC.Document doc = raw.media.document;
-            if (doc.thumbs != null && !doc.thumbs.isEmpty()) {
-                TLRPC.PhotoSize thumb = bestSize(doc.thumbs);
-                if (thumb != null)
-                    v.setImage(ImageLocation.getForDocument(thumb, doc), "80_80", null, null, 0, doc);
+
+            boolean isGif = false;
+            for (TLRPC.DocumentAttribute attr : doc.attributes) {
+                if (attr instanceof TLRPC.TL_documentAttributeAnimated) {
+                    isGif = true;
+                    break;
+                }
+            }
+
+            if (isGif) {
+                ImageLocation thumbLocation = null;
+                if (doc.thumbs != null && !doc.thumbs.isEmpty()) {
+                    TLRPC.PhotoSize thumb = bestSize(doc.thumbs);
+                    if (thumb != null) {
+                        thumbLocation = ImageLocation.getForDocument(thumb, doc);
+                    }
+                }
+                v.setImage(
+                        ImageLocation.getForDocument(doc),
+                        "80_80",
+                        thumbLocation,
+                        "80_80",
+                        (int) doc.size,
+                        doc
+                );
+                v.getImageReceiver().setAutoRepeat(1);
+                v.getImageReceiver().setAllowStartAnimation(true);
+            } else {
+                if (doc.thumbs != null && !doc.thumbs.isEmpty()) {
+                    TLRPC.PhotoSize thumb = bestSize(doc.thumbs);
+                    if (thumb != null)
+                        v.setImage(ImageLocation.getForDocument(thumb, doc), "80_80", null, null, 0, doc);
+                }
             }
         }
     }

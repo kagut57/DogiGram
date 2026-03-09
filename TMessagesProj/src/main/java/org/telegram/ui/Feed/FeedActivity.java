@@ -92,14 +92,7 @@ public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFr
             }
             @Override public void onCommentsClick(FeedController.FeedItem item) {
                 saveScroll();
-                MessageObject msg = item.getPrimaryMessage();
-                TLRPC.MessageReplies replies = msg.messageOwner.replies;
-                if (replies != null && replies.channel_id != 0) {
-                    Bundle args = new Bundle();
-                    args.putLong("chat_id", replies.channel_id);
-                    if (replies.max_id != 0) args.putInt("message_id", replies.max_id);
-                    presentFragment(new ChatActivity(args));
-                } else openChannel(item);
+                openComments(item);
             }
             @Override public void onShareClick(FeedController.FeedItem item) {
                 sharePost(item);
@@ -181,6 +174,79 @@ public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFr
         });
 
         options.show();
+    }
+
+    private void openComments(FeedController.FeedItem item) {
+        MessageObject msg = item.getPrimaryMessage();
+        TLRPC.MessageReplies replies = msg.messageOwner.replies;
+
+        if (replies == null || replies.channel_id == 0) {
+            openChannel(item);
+            return;
+        }
+
+        swipeRefreshLayout.setRefreshing(true);
+
+        TLRPC.TL_messages_getDiscussionMessage req = new TLRPC.TL_messages_getDiscussionMessage();
+        req.peer = MessagesController.getInstance(currentAccount).getInputPeer(item.channelId);
+        req.msg_id = msg.getId();
+
+        ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> {
+            AndroidUtilities.runOnUIThread(() -> {
+                swipeRefreshLayout.setRefreshing(false);
+
+                if (response instanceof TLRPC.TL_messages_discussionMessage) {
+                    TLRPC.TL_messages_discussionMessage res = (TLRPC.TL_messages_discussionMessage) response;
+
+                    MessagesController controller = MessagesController.getInstance(currentAccount);
+                    controller.putUsers(res.users, false);
+                    controller.putChats(res.chats, false);
+
+                    if (!res.messages.isEmpty()) {
+                        TLRPC.Message discussionMsg = res.messages.get(0);
+
+                        long chatId = 0;
+                        if (discussionMsg.peer_id != null) {
+                            if (discussionMsg.peer_id.channel_id != 0) {
+                                chatId = discussionMsg.peer_id.channel_id;
+                            } else if (discussionMsg.peer_id.chat_id != 0) {
+                                chatId = discussionMsg.peer_id.chat_id;
+                            }
+                        }
+
+                        if (chatId != 0) {
+                            ArrayList<MessageObject> threadMessages = new ArrayList<>();
+                            for (TLRPC.Message m : res.messages) {
+                                threadMessages.add(new MessageObject(currentAccount, m, true, true));
+                            }
+
+                            TLRPC.Chat discussionChat = controller.getChat(chatId);
+
+                            Bundle args = new Bundle();
+                            args.putLong("chat_id", chatId);
+                            args.putInt("message_id", discussionMsg.id);
+                            args.putInt("topic_id", discussionMsg.id);
+
+                            ChatActivity chatActivity = new ChatActivity(args);
+
+                            chatActivity.setThreadMessages(
+                                    threadMessages,
+                                    discussionChat,
+                                    discussionMsg.id,
+                                    res.read_inbox_max_id,
+                                    res.read_outbox_max_id,
+                                    null
+                            );
+
+                            presentFragment(chatActivity);
+                            return;
+                        }
+                    }
+                }
+
+                openChannel(item);
+            });
+        });
     }
 
     private void sharePost(FeedController.FeedItem item) {
