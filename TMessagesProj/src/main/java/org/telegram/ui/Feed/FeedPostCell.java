@@ -16,6 +16,7 @@ import android.text.method.LinkMovementMethod;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
+import android.view.ViewTreeObserver;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -93,6 +94,8 @@ public class FeedPostCell extends LinearLayout {
     private int fwdMessageId = 0;
     private long replyChannelId = 0;
     private int replyMessageId = 0;
+
+    private ViewTreeObserver.OnPreDrawListener pendingTruncateListener;
 
     public interface Callback {
         void onHeaderClick(FeedController.FeedItem item);
@@ -412,6 +415,7 @@ public class FeedPostCell extends LinearLayout {
     }
 
     public void setPost(FeedController.FeedItem item) {
+        cancelPendingTruncate();
         currentItem = item;
         textExpanded = false;
         fullText = null;
@@ -473,7 +477,7 @@ public class FeedPostCell extends LinearLayout {
             messageTextView.setMaxLines(Integer.MAX_VALUE);
             messageTextView.setText(fullText);
             messageTextView.setVisibility(VISIBLE);
-            messageTextView.post(this::measureAndTruncate);
+            scheduleMeasureAndTruncate();
         } else {
             fullText = null;
             messageTextView.setVisibility(GONE);
@@ -811,12 +815,32 @@ public class FeedPostCell extends LinearLayout {
         return !(msg.media instanceof TLRPC.TL_messageMediaPoll);
     }
 
-    private void measureAndTruncate() {
-        Layout layout = messageTextView.getLayout();
-        if (layout == null) {
-            messageTextView.post(this::measureAndTruncate);
-            return;
+    private void scheduleMeasureAndTruncate() {
+        cancelPendingTruncate();
+
+        pendingTruncateListener = () -> {
+            if (messageTextView.getWidth() <= 0) {
+                return true;
+            }
+            cancelPendingTruncate();
+            performMeasureAndTruncate();
+            return true;
+        };
+        messageTextView.getViewTreeObserver().addOnPreDrawListener(pendingTruncateListener);
+    }
+
+    private void cancelPendingTruncate() {
+        if (pendingTruncateListener != null) {
+            try {
+                messageTextView.getViewTreeObserver().removeOnPreDrawListener(pendingTruncateListener);
+            } catch (Exception ignored) {}
+            pendingTruncateListener = null;
         }
+    }
+
+    private void performMeasureAndTruncate() {
+        Layout layout = messageTextView.getLayout();
+        if (layout == null) return;
 
         if (layout.getLineCount() > MAX_LINES_COLLAPSED) {
             collapsedEndOffset = layout.getLineEnd(MAX_LINES_COLLAPSED - 1);
