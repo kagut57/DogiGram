@@ -1563,7 +1563,7 @@ public class FileLoader extends BaseController {
         return fileName;
     }
 
-    public static String getDocumentFileName(TLRPC.Document document) {
+    public static String getDocumentFileName(TLObject document) {
         if (document == null) {
             return null;
         }

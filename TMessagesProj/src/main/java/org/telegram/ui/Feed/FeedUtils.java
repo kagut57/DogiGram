@@ -8,6 +8,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
+import android.app.Activity;
+import android.content.Context;
+import android.content.ContextWrapper;
+
 public class FeedUtils {
 
     public static String formatFileSize(long size) {
@@ -102,5 +106,35 @@ public class FeedUtils {
             }
         }
         return 0;
+    }
+
+    public static Activity getActivity(Context context) {
+        while (context instanceof ContextWrapper) {
+            if (context instanceof Activity) return (Activity) context;
+            context = ((ContextWrapper) context).getBaseContext();
+        }
+        return null;
+    }
+
+    public static void openFileFallback(Context context, java.io.File file, String mimeType) {
+        try {
+            android.content.Intent intent = new android.content.Intent(
+                    android.content.Intent.ACTION_VIEW);
+            android.net.Uri uri;
+            if (android.os.Build.VERSION.SDK_INT >= 24) {
+                uri = androidx.core.content.FileProvider.getUriForFile(
+                        context,
+                        org.telegram.messenger.ApplicationLoader.getApplicationId() + ".provider",
+                        file);
+            } else {
+                uri = android.net.Uri.fromFile(file);
+            }
+            intent.setDataAndType(uri, mimeType);
+            intent.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            context.startActivity(android.content.Intent.createChooser(intent, ""));
+        } catch (Exception e) {
+            android.widget.Toast.makeText(context,
+                    "No app to open this file", android.widget.Toast.LENGTH_SHORT).show();
+        }
     }
 }
