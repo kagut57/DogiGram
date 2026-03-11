@@ -9,7 +9,6 @@ import android.graphics.Paint;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
 import android.text.Layout;
-import android.text.Spannable;
 import android.text.SpannableStringBuilder;
 import android.text.TextUtils;
 import android.text.method.LinkMovementMethod;
@@ -20,6 +19,12 @@ import android.view.ViewTreeObserver;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.graphics.RectF;
+import android.text.Spanned;
+import android.text.style.LeadingMarginSpan;
+import android.text.style.LineBackgroundSpan;
+import android.text.TextPaint;
+import android.text.style.ClickableSpan;
 
 import androidx.annotation.NonNull;
 
@@ -40,6 +45,7 @@ import org.telegram.ui.Components.LayoutHelper;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Collections;
 import java.util.Locale;
 
 @SuppressLint("ViewConstructor")
@@ -96,6 +102,8 @@ public class FeedPostCell extends LinearLayout {
     private int replyMessageId = 0;
 
     private ViewTreeObserver.OnPreDrawListener pendingTruncateListener;
+
+    private final java.util.HashSet<Integer> expandedQuoteOffsets = new java.util.HashSet<>();
 
     public interface Callback {
         void onHeaderClick(FeedController.FeedItem item);
@@ -265,12 +273,154 @@ public class FeedPostCell extends LinearLayout {
         forwardContainer.addView(forwardContent, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f));
         addView(forwardContainer, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
-        messageTextView = new AnimatedEmojiSpan.TextViewEmojis(context);
+        messageTextView = new AnimatedEmojiSpan.TextViewEmojis(context) {
+
+            private final Paint extBgPaint   = new Paint(Paint.ANTI_ALIAS_FLAG);
+            private final Paint extIconPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+            private final Paint extArrowBg   = new Paint(Paint.ANTI_ALIAS_FLAG);
+            private final Paint extArrowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+            private final RectF extRect      = new RectF();
+            private final android.graphics.Path extPath = new android.graphics.Path();
+
+            {
+                extArrowPaint.setStyle(Paint.Style.STROKE);
+                extArrowPaint.setStrokeWidth(dp(1.6f));
+                extArrowPaint.setStrokeCap(Paint.Cap.ROUND);
+                extArrowPaint.setStrokeJoin(Paint.Join.ROUND);
+                extIconPaint.setStyle(Paint.Style.FILL);
+            }
+
+            @Override
+            protected void onDraw(@NonNull Canvas canvas) {
+                super.onDraw(canvas);
+                drawQuoteDecorations(canvas);
+            }
+
+            private void drawQuoteDecorations(Canvas canvas) {
+                Layout layout = getLayout();
+                if (layout == null) return;
+                CharSequence text = getText();
+                if (!(text instanceof Spanned)) return;
+
+                int pr = getPaddingRight();
+                Spanned sp = (Spanned) text;
+                QuoteBlockSpan[] quotes = sp.getSpans(0, text.length(), QuoteBlockSpan.class);
+                if (quotes == null || quotes.length == 0) return;
+
+                int layoutW = layout.getWidth();
+                int viewW   = getWidth();
+                int pl = getCompoundPaddingLeft();
+                int pt = getExtendedPaddingTop();
+
+                for (QuoteBlockSpan q : quotes) {
+                    int start = sp.getSpanStart(q);
+                    int end   = sp.getSpanEnd(q);
+                    if (start < 0 || end <= start) continue;
+
+                    int firstLine = layout.getLineForOffset(start);
+                    int lastLine  = layout.getLineForOffset(Math.max(start, end - 1));
+
+                    float bgTop    = pt + layout.getLineTop(firstLine) + q.topPad;
+                    float bgBottom = pt + layout.getLineBottom(lastLine) - q.bottomPad;
+                    int cr = q.cornerRadius;
+
+                    float bgRight;
+                    if (q.boxWidth > 0 && q.boxWidth <= layoutW) {
+                        bgRight = pl + q.boxWidth;
+                    } else {
+                        bgRight = Math.min(pl + (q.boxWidth > 0 ? q.boxWidth : layoutW), viewW);
+                    }
+
+                    if (pr > 0 && q.boxWidth > layoutW) {
+                        float extLeft  = pl + layoutW;
+                        float extRight = bgRight;
+
+                        extBgPaint.setColor(q.bgPaint.getColor());
+
+                        extPath.reset();
+                        extRect.set(extLeft, bgTop, extRight, bgBottom);
+                        float tr = cr;
+                        float br = cr;
+                        extPath.addRoundRect(extRect, new float[]{
+                                0, 0, tr, tr, br, br, 0, 0
+                        }, android.graphics.Path.Direction.CW);
+                        canvas.drawPath(extPath, extBgPaint);
+                    }
+
+                    int iconColor = q.stripePaint.getColor();
+                    extIconPaint.setColor(iconColor);
+                    extIconPaint.setAlpha(140);
+
+                    float iconX = bgRight - dp(10);
+                    float iconY = bgTop + dp(6);
+
+                    float qw = dp(3.5f), qh = dp(5.5f), gap = dp(2), r = dp(1);
+                    for (int i = 0; i < 2; i++) {
+                        float cx = iconX - i * (qw + gap);
+                        extRect.set(cx - qw, iconY, cx, iconY + qh);
+                        canvas.drawRoundRect(extRect, r, r, extIconPaint);
+                    }
+
+                    if (q.collapsible) {
+                        float lastTop    = pt + layout.getLineTop(lastLine);
+                        float lastBottom = pt + layout.getLineBottom(lastLine) - q.bottomPad;
+
+                        float btnRadius = dp(9);
+                        float btnCX = bgRight - dp(6) - btnRadius;
+                        float btnCY = (lastTop + lastBottom) / 2f;
+
+                        extArrowBg.setColor(iconColor);
+                        extArrowBg.setAlpha(38);
+                        canvas.drawCircle(btnCX, btnCY, btnRadius, extArrowBg);
+
+                        extArrowPaint.setColor(iconColor);
+                        float chevW = dp(3.5f), chevH = dp(2f);
+                        extPath.reset();
+                        if (!q.expanded) {
+                            extPath.moveTo(btnCX - chevW, btnCY - chevH);
+                            extPath.lineTo(btnCX, btnCY + chevH);
+                            extPath.lineTo(btnCX + chevW, btnCY - chevH);
+                        } else {
+                            extPath.moveTo(btnCX - chevW, btnCY + chevH);
+                            extPath.lineTo(btnCX, btnCY - chevH);
+                            extPath.lineTo(btnCX + chevW, btnCY + chevH);
+                        }
+                        canvas.drawPath(extPath, extArrowPaint);
+                    }
+                }
+            }
+        };
         messageTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
         messageTextView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourceProvider));
         messageTextView.setLinkTextColor(accentColor);
         messageTextView.setLineSpacing(dp(2), 1f);
-        messageTextView.setMovementMethod(LinkMovementMethod.getInstance());
+        messageTextView.setMovementMethod(new LinkMovementMethod() {
+            @Override
+            public boolean onTouchEvent(TextView widget, android.text.Spannable buffer,
+                                        android.view.MotionEvent event) {
+                if (event.getAction() == android.view.MotionEvent.ACTION_UP) {
+                    int x = (int) event.getX() - widget.getTotalPaddingLeft() + widget.getScrollX();
+                    int y = (int) event.getY() - widget.getTotalPaddingTop() + widget.getScrollY();
+                    Layout l = widget.getLayout();
+                    if (l != null) {
+                        int line = l.getLineForVertical(y);
+                        int off  = l.getOffsetForHorizontal(line, x);
+                        ClickableSpan[] spans = buffer.getSpans(off, off, ClickableSpan.class);
+                        if (spans.length > 0) {
+                            for (ClickableSpan span : spans) {
+                                if (!(span instanceof QuoteClickableSpan)) {
+                                    span.onClick(widget);
+                                    return true;
+                                }
+                            }
+                            spans[0].onClick(widget);
+                            return true;
+                        }
+                    }
+                }
+                return super.onTouchEvent(widget, buffer, event);
+            }
+        });
         messageTextView.setVisibility(GONE);
         addView(messageTextView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 8, 0, 0));
 
@@ -420,6 +570,7 @@ public class FeedPostCell extends LinearLayout {
         textExpanded = false;
         fullText = null;
         collapsedEndOffset = -1;
+        expandedQuoteOffsets.clear();
         fwdChannelId = 0;
         fwdMessageId = 0;
         replyChannelId = 0;
@@ -474,12 +625,21 @@ public class FeedPostCell extends LinearLayout {
         CharSequence text = getFormattedText(item);
         if (text != null && text.length() > 0) {
             fullText = text;
+
+            boolean hasQuotes = false;
+            if (text instanceof Spanned) {
+                QuoteBlockSpan[] qs = ((Spanned) text).getSpans(0, text.length(), QuoteBlockSpan.class);
+                hasQuotes = qs != null && qs.length > 0;
+            }
+            messageTextView.setPadding(0, 0, hasQuotes ? QuoteBlockSpan.ICON_ZONE : 0, 0);
+
             messageTextView.setMaxLines(Integer.MAX_VALUE);
             messageTextView.setText(fullText);
             messageTextView.setVisibility(VISIBLE);
             scheduleMeasureAndTruncate();
         } else {
             fullText = null;
+            messageTextView.setPadding(0, 0, 0, 0);
             messageTextView.setVisibility(GONE);
             readMoreView.setVisibility(GONE);
         }
@@ -842,9 +1002,14 @@ public class FeedPostCell extends LinearLayout {
         Layout layout = messageTextView.getLayout();
         if (layout == null) return;
 
+        updateQuoteWidths();
+
         if (layout.getLineCount() > MAX_LINES_COLLAPSED) {
             collapsedEndOffset = layout.getLineEnd(MAX_LINES_COLLAPSED - 1);
-            if (!textExpanded) setCollapsedText();
+            if (!textExpanded) {
+                setCollapsedText();
+                scheduleQuoteWidthUpdate();
+            }
             readMoreView.setVisibility(VISIBLE);
             readMoreView.setText(LocaleController.getString("FeedReadMore", R.string.FeedReadMore));
         } else {
@@ -872,25 +1037,30 @@ public class FeedPostCell extends LinearLayout {
             setCollapsedText();
             readMoreView.setText(LocaleController.getString("FeedReadMore", R.string.FeedReadMore));
         }
+        scheduleQuoteWidthUpdate();
         requestLayout();
     }
 
     private CharSequence getFormattedText(FeedController.FeedItem item) {
         MessageObject primary = item.getPrimaryMessage();
         CharSequence text = null;
+        MessageObject sourceMsg = null;                       // ← отслеживаем источник
 
         if (item.isAlbum()) {
             for (MessageObject msg : item.messages) {
                 if (msg.caption != null && msg.caption.length() > 0) {
                     text = msg.caption;
+                    sourceMsg = msg;
                     break;
                 }
             }
             if (text == null || text.length() == 0) {
                 for (MessageObject msg : item.messages) {
                     CharSequence mt = msg.messageText;
-                    if (mt != null && mt.length() > 0 && !isPlaceholderText(mt.toString().trim())) {
+                    if (mt != null && mt.length() > 0
+                            && !isPlaceholderText(mt.toString().trim())) {
                         text = mt;
+                        sourceMsg = msg;
                         break;
                     }
                 }
@@ -898,10 +1068,13 @@ public class FeedPostCell extends LinearLayout {
         } else {
             if (primary.caption != null && primary.caption.length() > 0) {
                 text = primary.caption;
+                sourceMsg = primary;
             } else {
                 CharSequence mt = primary.messageText;
-                if (mt != null && mt.length() > 0 && !isPlaceholderText(mt.toString().trim())) {
+                if (mt != null && mt.length() > 0
+                        && !isPlaceholderText(mt.toString().trim())) {
                     text = mt;
+                    sourceMsg = primary;
                 }
             }
         }
@@ -909,8 +1082,11 @@ public class FeedPostCell extends LinearLayout {
         if (text == null || text.length() == 0) return null;
         if (isPlaceholderText(text.toString().trim())) return null;
 
-        if (!(text instanceof Spannable)) text = new SpannableStringBuilder(text);
-        text = Emoji.replaceEmoji(text, messageTextView.getPaint().getFontMetricsInt(), false);
+        SpannableStringBuilder ssb = new SpannableStringBuilder(text);
+
+        applyQuoteSpans(ssb, sourceMsg);
+
+        text = Emoji.replaceEmoji(ssb, messageTextView.getPaint().getFontMetricsInt(), false);
         return text;
     }
 
@@ -1167,5 +1343,335 @@ public class FeedPostCell extends LinearLayout {
 
     public FeedController.FeedItem getCurrentItem() {
         return currentItem;
+    }
+
+    private static abstract class QuoteClickableSpan extends ClickableSpan {
+        @Override
+        public void updateDrawState(@NonNull TextPaint ds) {
+            ds.setUnderlineText(false);
+        }
+    }
+
+    private static class QuoteLineHeightSpan implements android.text.style.LineHeightSpan {
+        final int topPad;
+        final int bottomPad;
+
+        QuoteLineHeightSpan(int topPad, int bottomPad) {
+            this.topPad = topPad;
+            this.bottomPad = bottomPad;
+        }
+
+        @Override
+        public void chooseHeight(CharSequence text, int start, int end,
+                                 int spanstartv, int lineHeight,
+                                 Paint.FontMetricsInt fm) {
+            Spanned sp = (Spanned) text;
+            int spanStart = sp.getSpanStart(this);
+            int spanEnd = sp.getSpanEnd(this);
+
+            if (start <= spanStart) {
+                fm.ascent -= topPad;
+                fm.top    -= topPad;
+            }
+            if (end >= spanEnd) {
+                fm.descent += bottomPad;
+                fm.bottom  += bottomPad;
+            }
+            if (!((end >= spanEnd))) {
+                fm.descent -= dp(1);
+                fm.bottom  -= dp(1);
+            }
+        }
+    }
+
+    private void updateQuoteWidths() {
+        Layout layout = messageTextView.getLayout();
+        if (layout == null) return;
+
+        CharSequence text = messageTextView.getText();
+        if (!(text instanceof Spanned)) return;
+
+        Spanned spanned = (Spanned) text;
+        QuoteBlockSpan[] quotes = spanned.getSpans(0, text.length(), QuoteBlockSpan.class);
+        if (quotes == null || quotes.length == 0) return;
+
+        boolean changed = false;
+        for (QuoteBlockSpan q : quotes) {
+            int start = spanned.getSpanStart(q);
+            int end   = spanned.getSpanEnd(q);
+            if (start < 0 || end <= start) continue;
+
+            int startLine = layout.getLineForOffset(start);
+            int endLine   = layout.getLineForOffset(Math.max(start, end - 1));
+
+            float maxLineWidth = 0;
+            for (int line = startLine; line <= endLine; line++) {
+                maxLineWidth = Math.max(maxLineWidth, layout.getLineWidth(line));
+            }
+
+            float boxW = maxLineWidth + QuoteBlockSpan.ICON_ZONE;
+            boxW = Math.max(boxW, dp(60));
+
+            if (q.boxWidth != boxW) {
+                q.boxWidth = boxW;
+                changed = true;
+            }
+        }
+
+        if (changed) {
+            messageTextView.invalidate();
+        }
+    }
+
+    private void scheduleQuoteWidthUpdate() {
+        messageTextView.getViewTreeObserver().addOnPreDrawListener(
+                new ViewTreeObserver.OnPreDrawListener() {
+                    @Override
+                    public boolean onPreDraw() {
+                        messageTextView.getViewTreeObserver().removeOnPreDrawListener(this);
+                        updateQuoteWidths();
+                        return true;
+                    }
+                });
+    }
+
+    private static class QuoteBlockSpan implements LineBackgroundSpan, LeadingMarginSpan {
+
+        final Paint bgPaint      = new Paint(Paint.ANTI_ALIAS_FLAG);
+        final Paint stripePaint  = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final RectF tmpRect = new RectF();
+        private final android.graphics.Path tmpPath = new android.graphics.Path();
+
+        private final int stripeWidth = dp(3);
+        private final int gapWidth    = dp(7);
+        final int cornerRadius        = dp(6);
+
+        static final int ICON_ZONE = dp(24);
+
+        boolean collapsible = false;
+        boolean expanded    = false;
+        float boxWidth      = -1;
+
+        int topPad    = 0;
+        int bottomPad = 0;
+
+        QuoteBlockSpan(int stripeColor, int bgColor) {
+            stripePaint.setColor(stripeColor);
+            bgPaint.setColor(bgColor);
+        }
+
+        void setCollapsible(boolean collapsible, boolean expanded) {
+            this.collapsible = collapsible;
+            this.expanded = expanded;
+        }
+
+        void setPadding(int top, int bottom) {
+            this.topPad = top;
+            this.bottomPad = bottom;
+        }
+
+        @Override
+        public int getLeadingMargin(boolean first) {
+            return stripeWidth + gapWidth;
+        }
+
+        @Override
+        public void drawLeadingMargin(Canvas c, Paint p, int x, int dir,
+                                      int top, int baseline, int bottom,
+                                      CharSequence text, int start, int end,
+                                      boolean first, Layout layout) { }
+
+        @Override
+        public void drawBackground(@NonNull Canvas canvas, @NonNull Paint paint,
+                                   int left, int right,
+                                   int top, int baseline, int bottom,
+                                   @NonNull CharSequence text,
+                                   int start, int end, int lineNumber) {
+
+            Spanned sp    = (Spanned) text;
+            int spanStart = sp.getSpanStart(this);
+            int spanEnd   = sp.getSpanEnd(this);
+
+            boolean isFirst = (start <= spanStart);
+            boolean isLast  = (end >= spanEnd);
+
+            float t = isFirst ? top + topPad : top;
+            float b = isLast  ? bottom - bottomPad : bottom;
+
+            float effectiveRight;
+            boolean roundRight;
+
+            if (boxWidth > 0 && left + boxWidth <= right) {
+                effectiveRight = left + boxWidth;
+                roundRight = true;
+            } else {
+                effectiveRight = right;
+                roundRight = (boxWidth <= 0); // до первого измерения — скругляем
+            }
+
+            drawBlock(canvas, left, effectiveRight, t, b,
+                    isFirst, isLast, roundRight, bgPaint, cornerRadius);
+
+            drawBlock(canvas, left, left + stripeWidth, t, b,
+                    isFirst, isLast, false, stripePaint, stripeWidth / 2f);
+        }
+
+        private void drawBlock(Canvas canvas,
+                               float left, float right, float top, float bottom,
+                               boolean roundTop, boolean roundBottom, boolean roundRight,
+                               Paint paint, float radius) {
+
+            tmpRect.set(left, top, right, bottom);
+
+            boolean anyRound = roundTop || roundBottom;
+            if (!anyRound) {
+                canvas.drawRect(tmpRect, paint);
+                return;
+            }
+
+            float tl = roundTop    ? radius : 0;
+            float tr = (roundTop && roundRight)    ? radius : 0;
+            float br = (roundBottom && roundRight)  ? radius : 0;
+            float bl = roundBottom ? radius : 0;
+
+            tmpPath.reset();
+            tmpPath.addRoundRect(tmpRect, new float[]{
+                    tl, tl, tr, tr, br, br, bl, bl
+            }, android.graphics.Path.Direction.CW);
+            canvas.drawPath(tmpPath, paint);
+        }
+    }
+
+    private void applyQuoteSpans(SpannableStringBuilder ssb, MessageObject sourceMsg) {
+        if (sourceMsg == null || sourceMsg.messageOwner == null
+                || sourceMsg.messageOwner.entities == null) return;
+
+        int accentColor = Theme.getColor(Theme.key_windowBackgroundWhiteBlueText2, resourceProvider);
+        int bgColor = (accentColor & 0x00FFFFFF) | 0x1A000000;
+        int quotePadTop    = dp(6);
+        int quotePadBottom = dp(6);
+
+        List<TLRPC.MessageEntity> quoteEntities = new ArrayList<>();
+        for (TLRPC.MessageEntity entity : sourceMsg.messageOwner.entities) {
+            if (entity instanceof TLRPC.TL_messageEntityBlockquote) {
+                quoteEntities.add(entity);
+            }
+        }
+        if (quoteEntities.isEmpty()) return;
+
+        Collections.sort(quoteEntities, (a, b) -> b.offset - a.offset);
+
+        for (TLRPC.MessageEntity entity : quoteEntities) {
+            int start = entity.offset;
+            int end = Math.min(entity.offset + entity.length, ssb.length());
+            if (start < 0 || start >= end) continue;
+
+            boolean isCollapsible = false;
+            try {
+                isCollapsible = ((TLRPC.TL_messageEntityBlockquote) entity).collapsed;
+            } catch (Throwable ignored) {}
+
+            boolean isExpanded = expandedQuoteOffsets.contains(entity.offset);
+            final int key = entity.offset;
+
+            if (isCollapsible) {
+                if (!isExpanded) {
+                    CharSequence quoteContent = ssb.subSequence(start, end);
+                    int cutoff = findQuoteCutoff(quoteContent, 3, 150);
+                    if (cutoff < quoteContent.length()) {
+                        while (cutoff > 0 && Character.isWhitespace(ssb.charAt(start + cutoff - 1))) {
+                            cutoff--;
+                        }
+                        ssb.delete(start + cutoff, end);
+                        ssb.insert(start + cutoff, "…");
+                        end = start + cutoff + 1;
+                    }
+                    ssb.setSpan(new QuoteClickableSpan() {
+                        @Override public void onClick(@NonNull View w) {
+                            expandedQuoteOffsets.add(key);
+                            rebuildMessageText();
+                        }
+                    }, start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                } else {
+                    ssb.setSpan(new QuoteClickableSpan() {
+                        @Override public void onClick(@NonNull View w) {
+                            expandedQuoteOffsets.remove(key);
+                            rebuildMessageText();
+                        }
+                    }, start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                }
+            }
+
+            if (end < ssb.length() && ssb.charAt(end) != '\n') {
+                ssb.insert(end, "\n");
+            }
+            if (start > 0 && ssb.charAt(start - 1) != '\n') {
+                ssb.insert(start, "\n");
+                start++;
+                end++;
+            }
+
+            LeadingMarginSpan[] existing = ssb.getSpans(start, end, LeadingMarginSpan.class);
+            for (LeadingMarginSpan span : existing) {
+                int ss = ssb.getSpanStart(span);
+                int se = ssb.getSpanEnd(span);
+                if (ss >= start && se <= end) ssb.removeSpan(span);
+            }
+
+            QuoteBlockSpan blockSpan = new QuoteBlockSpan(accentColor, bgColor);
+            if (isCollapsible) blockSpan.setCollapsible(true, isExpanded);
+            blockSpan.setPadding(quotePadTop, quotePadBottom);
+            ssb.setSpan(blockSpan, start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+
+            ssb.setSpan(new QuoteLineHeightSpan(quotePadTop, quotePadBottom),
+                    start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        }
+    }
+
+    private int findQuoteCutoff(CharSequence text, int maxLines, int maxChars) {
+        int lines = 0;
+        for (int i = 0; i < text.length(); i++) {
+            if (text.charAt(i) == '\n') {
+                lines++;
+                if (lines >= maxLines) {
+                    return i;
+                }
+            }
+        }
+        if (text.length() > maxChars) {
+            for (int i = Math.min(maxChars, text.length() - 1);
+                 i >= Math.max(0, maxChars - 50); i--) {
+                if (text.charAt(i) == ' ' || text.charAt(i) == '\n') {
+                    return i;
+                }
+            }
+            return Math.min(maxChars, text.length());
+        }
+        return text.length();
+    }
+
+    private void rebuildMessageText() {
+        if (currentItem == null) return;
+
+        CharSequence text = getFormattedText(currentItem);
+        if (text == null || text.length() == 0) return;
+
+        fullText = text;
+
+        boolean hasQuotes = false;
+        if (text instanceof Spanned) {
+            QuoteBlockSpan[] qs = ((Spanned) text).getSpans(0, text.length(), QuoteBlockSpan.class);
+            hasQuotes = qs != null && qs.length > 0;
+        }
+        messageTextView.setPadding(0, 0, hasQuotes ? QuoteBlockSpan.ICON_ZONE : 0, 0);
+
+        messageTextView.setMaxLines(Integer.MAX_VALUE);
+        messageTextView.setText(fullText);
+        messageTextView.setVisibility(VISIBLE);
+
+        collapsedEndOffset = -1;
+        readMoreView.setVisibility(GONE);
+        scheduleMeasureAndTruncate();
+        requestLayout();
     }
 }
