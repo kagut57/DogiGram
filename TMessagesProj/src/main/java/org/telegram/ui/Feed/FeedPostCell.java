@@ -23,7 +23,6 @@ import android.widget.TextView;
 import android.graphics.RectF;
 import android.text.Spanned;
 import android.text.style.ClickableSpan;
-import android.view.MotionEvent;
 
 import androidx.annotation.NonNull;
 
@@ -47,7 +46,6 @@ import org.telegram.messenger.NotificationCenter;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 
 @SuppressLint("ViewConstructor")
 public class FeedPostCell extends LinearLayout implements NotificationCenter.NotificationCenterDelegate {
@@ -118,17 +116,15 @@ public class FeedPostCell extends LinearLayout implements NotificationCenter.Not
     private final AvatarDrawable forwardAvatarDrawable;
 
     private final LinearLayout voiceContainer;
-    private final PlayPauseButton voicePlayButton;
-    private final VoiceWaveformView voiceWaveformView;
+    private final FeedPlayPauseButton voicePlayButton;
+    private final FeedWaveformView voiceWaveformView;
     private final TextView voiceLabelView;
     private final TextView voiceDurationView;
     private MessageObject currentVoiceMessage;
 
-    private int currentVoiceTotalDuration = 0;
-
     private void updateVoiceDuration(float progress) {
         if (currentVoiceMessage == null) return;
-        int total = getVoiceDuration(currentVoiceMessage);
+        int total = FeedUtils.getVoiceDuration(currentVoiceMessage);
         updateVoiceDuration(progress, total);
     }
 
@@ -137,20 +133,7 @@ public class FeedPostCell extends LinearLayout implements NotificationCenter.Not
         currentVoiceTotalDuration = totalDuration;
         if (totalDuration <= 0) return;
         int current = (int) (progress * totalDuration);
-        voiceDurationView.setText(formatVoiceDuration(current) + " / " + formatVoiceDuration(totalDuration));
-    }
-
-    private int getVoiceDuration(MessageObject msg) {
-        if (msg == null || msg.messageOwner == null || msg.messageOwner.media == null) return 0;
-        if (!(msg.messageOwner.media instanceof TLRPC.TL_messageMediaDocument)) return 0;
-        TLRPC.Document doc = msg.messageOwner.media.document;
-        if (doc == null) return 0;
-        for (TLRPC.DocumentAttribute attr : doc.attributes) {
-            if (attr instanceof TLRPC.TL_documentAttributeAudio) {
-                return (int) ((TLRPC.TL_documentAttributeAudio) attr).duration;
-            }
-        }
-        return 0;
+        voiceDurationView.setText(FeedUtils.formatVoiceDuration(current) + " / " + FeedUtils.formatVoiceDuration(totalDuration));
     }
 
     @Override
@@ -663,7 +646,7 @@ public class FeedPostCell extends LinearLayout implements NotificationCenter.Not
         voiceContainer.setVisibility(GONE);
         voiceContainer.setPadding(0, dp(8), 0, dp(4));
 
-        voicePlayButton = new PlayPauseButton(context, accentColor);
+        voicePlayButton = new FeedPlayPauseButton(context, accentColor);
         voicePlayButton.setOnClickListener(v -> toggleVoicePlayback());
         voiceContainer.addView(voicePlayButton, LayoutHelper.createLinear(36, 36, Gravity.CENTER_VERTICAL));
 
@@ -679,7 +662,7 @@ public class FeedPostCell extends LinearLayout implements NotificationCenter.Not
         voiceLabelView.setEllipsize(TextUtils.TruncateAt.END);
         voiceMiddle.addView(voiceLabelView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
-        voiceWaveformView = new VoiceWaveformView(context, accentColor);
+        voiceWaveformView = new FeedWaveformView(context, accentColor);
         voiceMiddle.addView(voiceWaveformView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 24, 0, 2, 0, 0));
 
         voiceContainer.addView(voiceMiddle, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f));
@@ -833,7 +816,7 @@ public class FeedPostCell extends LinearLayout implements NotificationCenter.Not
         }
 
         String timeStr = LocaleController.formatDateAudio(raw.date, true);
-        if (isReallyEdited(raw)) {
+        if (FeedUtils.isReallyEdited(raw)) {
             timeStr += " · edited";
         }
         timeView.setText(timeStr);
@@ -939,13 +922,13 @@ public class FeedPostCell extends LinearLayout implements NotificationCenter.Not
         String replyName = null;
 
         if (raw.reply_to.reply_to_peer_id != null) {
-            replyName = getPeerName(raw.reply_to.reply_to_peer_id, controller);
+            replyName = FeedUtils.getPeerName(raw.reply_to.reply_to_peer_id, controller);
         }
         try {
             TLRPC.MessageFwdHeader replyFrom = raw.reply_to.reply_from;
             if (replyFrom != null) {
                 if (replyName == null && replyFrom.from_id != null)
-                    replyName = getPeerName(replyFrom.from_id, controller);
+                    replyName = FeedUtils.getPeerName(replyFrom.from_id, controller);
                 if (replyName == null && replyFrom.from_name != null)
                     replyName = replyFrom.from_name;
             }
@@ -973,7 +956,7 @@ public class FeedPostCell extends LinearLayout implements NotificationCenter.Not
                     setupReplyImage(replyMsg);
 
                     if (replyText == null || replyText.isEmpty()) {
-                        replyText = getMediaTypeLabel(replyMsg.media);
+                        replyText = FeedUtils.getMediaTypeLabel(replyMsg.media);
                     }
                 }
             }
@@ -1050,9 +1033,9 @@ public class FeedPostCell extends LinearLayout implements NotificationCenter.Not
             voiceWaveformView.setVisibility(VISIBLE);
         }
 
-        voiceDurationView.setText(formatVoiceDuration(duration));
+        voiceDurationView.setText(FeedUtils.formatVoiceDuration(duration));
 
-        voiceWaveformView.setSeekListener(new VoiceWaveformView.SeekListener() {
+        voiceWaveformView.setSeekListener(new FeedWaveformView.SeekListener() {
             @Override
             public void onSeekStart() {
             }
@@ -1070,9 +1053,7 @@ public class FeedPostCell extends LinearLayout implements NotificationCenter.Not
                     mc.seekToProgress(currentVoiceMessage, progress);
                 } else {
                     mc.playMessage(currentVoiceMessage);
-                    AndroidUtilities.runOnUIThread(() -> {
-                        mc.seekToProgress(currentVoiceMessage, progress);
-                    }, 300);
+                    AndroidUtilities.runOnUIThread(() -> mc.seekToProgress(currentVoiceMessage, progress), 300);
                 }
                 updateVoicePlayButton();
             }
@@ -1089,13 +1070,6 @@ public class FeedPostCell extends LinearLayout implements NotificationCenter.Not
 
         updateVoicePlayButton();
         voiceContainer.setVisibility(VISIBLE);
-    }
-
-    private String formatVoiceDuration(int seconds) {
-        if (seconds < 3600) {
-            return String.format(Locale.US, "%d:%02d", seconds / 60, seconds % 60);
-        }
-        return String.format(Locale.US, "%d:%02d:%02d", seconds / 3600, (seconds % 3600) / 60, seconds % 60);
     }
 
     private void toggleVoicePlayback() {
@@ -1162,7 +1136,7 @@ public class FeedPostCell extends LinearLayout implements NotificationCenter.Not
                         String text = replyMsg.message;
                         if (text == null || text.isEmpty()) {
                             if (replyMsg.media != null) {
-                                text = getMediaTypeLabel(replyMsg.media);
+                                text = FeedUtils.getMediaTypeLabel(replyMsg.media);
                             }
                         }
                         if (text != null && !text.isEmpty()) {
@@ -1175,27 +1149,6 @@ public class FeedPostCell extends LinearLayout implements NotificationCenter.Not
                 }
             }
         });
-    }
-
-    private String getMediaTypeLabel(TLRPC.MessageMedia media) {
-        if (media instanceof TLRPC.TL_messageMediaPhoto) return "📷 Photo";
-        if (media instanceof TLRPC.TL_messageMediaDocument && media.document != null) {
-            for (TLRPC.DocumentAttribute attr : media.document.attributes) {
-                if (attr instanceof TLRPC.TL_documentAttributeVideo) return "📹 Video";
-                if (attr instanceof TLRPC.TL_documentAttributeAnimated) return "GIF";
-                if (attr instanceof TLRPC.TL_documentAttributeAudio) {
-                    if (attr.voice) return "🎤 Voice message";
-                    return "🎵 Audio";
-                }
-                if (attr instanceof TLRPC.TL_documentAttributeSticker) return "Sticker";
-            }
-            return "📎 Document";
-        }
-        if (media instanceof TLRPC.TL_messageMediaPoll) return "📊 Poll";
-        if (media instanceof TLRPC.TL_messageMediaGeo) return "📍 Location";
-        if (media instanceof TLRPC.TL_messageMediaGeoLive) return "📍 Live location";
-        if (media instanceof TLRPC.TL_messageMediaContact) return "👤 Contact";
-        return "Attachment";
     }
 
     private void setupForward(TLRPC.Message raw, MessagesController controller) {
@@ -1283,7 +1236,7 @@ public class FeedPostCell extends LinearLayout implements NotificationCenter.Not
 
     @SuppressLint("SetTextI18n")
     private void setupDocuments(FeedController.FeedItem item) {
-        List<TLRPC.Document> docs = getDocuments(item);
+        List<TLRPC.Document> docs = FeedUtils.getDocuments(item);
 
         if (docs.isEmpty()) {
             documentContainer.setVisibility(GONE);
@@ -1303,10 +1256,10 @@ public class FeedPostCell extends LinearLayout implements NotificationCenter.Not
         }
 
         documentNameView.setText(fileName);
-        documentSizeView.setText(formatFileSize(doc.size));
+        documentSizeView.setText(FeedUtils.formatFileSize(doc.size));
 
         if (docs.size() > 1) {
-            documentSizeView.setText(formatFileSize(doc.size) + " · +" + (docs.size() - 1) + " more");
+            documentSizeView.setText(FeedUtils.formatFileSize(doc.size) + " · +" + (docs.size() - 1) + " more");
         }
 
         documentContainer.setVisibility(VISIBLE);
@@ -1422,62 +1375,6 @@ public class FeedPostCell extends LinearLayout implements NotificationCenter.Not
         if (callback != null && currentItem != null) {
             callback.onInlineButtonClick(currentItem, button);
         }
-    }
-
-    @NonNull
-    private static List<TLRPC.Document> getDocuments(FeedController.FeedItem item) {
-        List<TLRPC.Document> docs = new ArrayList<>();
-        for (MessageObject msg : item.messages) {
-            TLRPC.MessageMedia media = msg.messageOwner.media;
-            if (media instanceof TLRPC.TL_messageMediaDocument && media.document != null) {
-                TLRPC.Document doc = media.document;
-                boolean skip = false;
-                for (TLRPC.DocumentAttribute attr : doc.attributes) {
-                    if (attr instanceof TLRPC.TL_documentAttributeVideo) skip = true;
-                    if (attr instanceof TLRPC.TL_documentAttributeAnimated) skip = true;
-                    if (attr instanceof TLRPC.TL_documentAttributeSticker) skip = true;
-                    if (attr instanceof TLRPC.TL_documentAttributeAudio) skip = true;  // ← ADD
-                }
-                if (!skip) {
-                    docs.add(doc);
-                }
-            }
-        }
-        return docs;
-    }
-
-    private String formatFileSize(long size) {
-        if (size < 1024) return size + " B";
-        if (size < 1024 * 1024) return String.format(Locale.US, "%.1f KB", size / 1024f);
-        if (size < 1024L * 1024 * 1024) return String.format(Locale.US, "%.1f MB", size / (1024f * 1024f));
-        return String.format(Locale.US, "%.1f GB", size / (1024f * 1024f * 1024f));
-    }
-
-    private String getPeerName(TLRPC.Peer peer, MessagesController controller) {
-        if (peer == null) return null;
-        if (peer.channel_id != 0) {
-            TLRPC.Chat chat = controller.getChat(peer.channel_id);
-            return chat != null ? chat.title : null;
-        } else if (peer.chat_id != 0) {
-            TLRPC.Chat chat = controller.getChat(peer.chat_id);
-            return chat != null ? chat.title : null;
-        } else if (peer.user_id != 0) {
-            TLRPC.User user = controller.getUser(peer.user_id);
-            if (user == null) return null;
-            String name = user.first_name;
-            if (user.last_name != null && !user.last_name.isEmpty())
-                name += " " + user.last_name;
-            return name;
-        }
-        return null;
-    }
-
-    private boolean isReallyEdited(TLRPC.Message msg) {
-        if (msg.edit_date == 0) return false;
-        if (msg.edit_hide) return false;
-        if (msg.fwd_from != null) return false;
-        if (msg.media instanceof TLRPC.TL_messageMediaGeoLive) return false;
-        return !(msg.media instanceof TLRPC.TL_messageMediaPoll);
     }
 
     private void scheduleMeasureAndTruncate() {
@@ -1631,212 +1528,5 @@ public class FeedPostCell extends LinearLayout implements NotificationCenter.Not
         readMoreView.setVisibility(GONE);
         scheduleMeasureAndTruncate();
         requestLayout();
-    }
-
-    private static class PlayPauseButton extends View {
-        private boolean playing;
-        private float animProgress = 0f;
-        private final Paint bgPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint iconPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final android.graphics.Path iconPath = new android.graphics.Path();
-        private android.animation.ValueAnimator animator;
-
-        PlayPauseButton(Context context, int bgColor) {
-            super(context);
-            bgPaint.setColor(bgColor);
-            iconPaint.setColor(0xFFFFFFFF);
-            iconPaint.setStyle(Paint.Style.FILL);
-        }
-
-        void setPlaying(boolean p) {
-            if (playing == p) return;
-            playing = p;
-            if (animator != null) animator.cancel();
-            animator = android.animation.ValueAnimator.ofFloat(animProgress, playing ? 1f : 0f);
-            animator.setDuration(200);
-            animator.addUpdateListener(a -> {
-                animProgress = (float) a.getAnimatedValue();
-                invalidate();
-            });
-            animator.start();
-        }
-
-        @Override
-        protected void onDraw(@NonNull Canvas canvas) {
-            float cx = getWidth() / 2f;
-            float cy = getHeight() / 2f;
-            float r = Math.min(cx, cy);
-            canvas.drawCircle(cx, cy, r, bgPaint);
-
-            float t = animProgress;
-
-            float px1 = cx - dp(3), py1 = cy - dp(6);
-            float px2 = cx + dp(7), py2 = cy;
-            float px3 = cx - dp(3), py3 = cy + dp(6);
-
-            float bw = dp(2.5f);
-            float bh = dp(10);
-            float gap = dp(1.5f);
-
-            float l1x1 = lerp(px1, cx - gap - bw, t);
-            float l1y1 = lerp(py1, cy - bh / 2, t);
-            float l1x2 = lerp(px2, cx - gap, t);
-            float l1y2 = lerp(py2, cy + bh / 2, t);
-
-            float r1x1 = lerp(px1, cx + gap, t);
-            float r1y1 = lerp(py3, cy - bh / 2, t);
-            float r1x2 = lerp(px2, cx + gap + bw, t);
-            float r1y2 = lerp(py2, cy + bh / 2, t);
-
-            if (t < 0.5f) {
-                iconPath.reset();
-                iconPath.moveTo(l1x1, l1y1);
-                iconPath.lineTo(l1x2, (l1y2 + l1y1) / 2f);
-                iconPath.lineTo(r1x1, r1y1);
-                iconPath.close();
-                canvas.drawPath(iconPath, iconPaint);
-            } else {
-                canvas.drawRoundRect(l1x1, l1y1, lerp(px1 + dp(4), cx - gap, t),
-                        l1y2, dp(1), dp(1), iconPaint);
-                canvas.drawRoundRect(lerp(px1 + dp(4), cx + gap, t), r1y1,
-                        r1x2, r1y2, dp(1), dp(1), iconPaint);
-            }
-        }
-
-        private float lerp(float a, float b, float t) {
-            return a + (b - a) * t;
-        }
-    }
-
-    private static class VoiceWaveformView extends View {
-        private float[] bars;
-        private float progress = 0f;
-        private boolean seeking = false;
-        private final Paint barPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint barPlayedPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final RectF barRect = new RectF();
-
-        interface SeekListener {
-            void onSeek(float progress);
-            void onSeekStart();
-            void onSeekEnd(float progress);
-        }
-
-        private SeekListener seekListener;
-
-        VoiceWaveformView(Context context, int accentColor) {
-            super(context);
-            barPaint.setColor((accentColor & 0x00FFFFFF) | 0x44000000);
-            barPlayedPaint.setColor(accentColor);
-        }
-
-        void setSeekListener(SeekListener l) {
-            seekListener = l;
-        }
-
-        void setProgress(float p) {
-            if (!seeking) {
-                progress = Math.max(0, Math.min(1, p));
-                invalidate();
-            }
-        }
-
-        void setWaveform(byte[] waveform) {
-            progress = 0;
-            if (waveform == null || waveform.length == 0) {
-                bars = null;
-            } else {
-                int count = waveform.length * 8 / 5;
-                bars = new float[count];
-                for (int i = 0; i < count; i++) {
-                    int byteIndex = i * 5 / 8;
-                    int bitShift = i * 5 % 8;
-                    int val = (waveform[byteIndex] & 0xFF) >> bitShift;
-                    if (bitShift > 3 && byteIndex + 1 < waveform.length) {
-                        val |= (waveform[byteIndex + 1] & 0xFF) << (8 - bitShift);
-                    }
-                    bars[i] = (val & 0x1F) / 31f;
-                }
-            }
-            invalidate();
-        }
-
-        @Override
-        @SuppressLint("ClickableViewAccessibility")
-        public boolean onTouchEvent(MotionEvent event) {
-            if (bars == null || bars.length == 0) return false;
-            float w = getWidth();
-            if (w <= 0) return false;
-
-            switch (event.getAction()) {
-                case MotionEvent.ACTION_DOWN:
-                    seeking = true;
-                    getParent().requestDisallowInterceptTouchEvent(true);
-                    progress = Math.max(0, Math.min(1, event.getX() / w));
-                    invalidate();
-                    if (seekListener != null) seekListener.onSeekStart();
-                    return true;
-
-                case MotionEvent.ACTION_MOVE:
-                    if (seeking) {
-                        progress = Math.max(0, Math.min(1, event.getX() / w));
-                        invalidate();
-                        if (seekListener != null) seekListener.onSeek(progress);
-                    }
-                    return true;
-
-                case MotionEvent.ACTION_UP:
-                case MotionEvent.ACTION_CANCEL:
-                    if (seeking) {
-                        seeking = false;
-                        getParent().requestDisallowInterceptTouchEvent(false);
-                        progress = Math.max(0, Math.min(1, event.getX() / w));
-                        invalidate();
-                        if (seekListener != null) seekListener.onSeekEnd(progress);
-                    }
-                    return true;
-            }
-            return false;
-        }
-
-        @Override
-        protected void onDraw(@NonNull Canvas canvas) {
-            float w = getWidth();
-            float h = getHeight();
-
-            if (bars == null || bars.length == 0 || w <= 0) {
-                float cy = h / 2f;
-                float playedW = w * progress;
-                if (playedW > 0) {
-                    canvas.drawRect(0, cy - dp(1), playedW, cy + dp(1), barPlayedPaint);
-                }
-                if (playedW < w) {
-                    canvas.drawRect(playedW, cy - dp(1), w, cy + dp(1), barPaint);
-                }
-                return;
-            }
-
-            float barW = dp(2);
-            float gap = dp(1.5f);
-            float step = barW + gap;
-            int visibleBars = Math.max(1, (int) (w / step));
-            float minH = dp(2);
-            float maxH = h - dp(4);
-            float progressX = w * progress;
-
-            for (int i = 0; i < visibleBars; i++) {
-                int di = i * bars.length / visibleBars;
-                if (di >= bars.length) di = bars.length - 1;
-
-                float barH = Math.max(minH, bars[di] * maxH);
-                float x = i * step;
-                float top = (h - barH) / 2f;
-
-                barRect.set(x, top, x + barW, top + barH);
-                float barCenter = x + barW / 2f;
-                canvas.drawRoundRect(barRect, barW / 2f, barW / 2f,
-                        barCenter <= progressX ? barPlayedPaint : barPaint);
-            }
-        }
     }
 }
