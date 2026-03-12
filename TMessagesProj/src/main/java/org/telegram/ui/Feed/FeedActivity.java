@@ -42,6 +42,7 @@ import org.telegram.ui.Components.ShareAlert;
 import org.telegram.ui.DialogsActivity;
 import org.telegram.ui.MainTabsActivity;
 import org.telegram.ui.PhotoViewer;
+import org.telegram.ui.Components.BulletinFactory;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -180,21 +181,36 @@ public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFr
     private void showMenu(View anchor, FeedController.FeedItem item) {
         ItemOptions options = ItemOptions.makeOptions(this, anchor);
 
-        options.add(R.drawable.msg_saved, LocaleController.getString("FeedSavedToBookmarks", R.string.FeedSavedToBookmarks), () -> {
+        options.add(R.drawable.msg_saved, "Save to bookmarks", () -> {
             forwardToSaved(item);
             BulletinFactory.of(FeedActivity.this)
-                    .createSimpleBulletin(R.drawable.msg_saved, LocaleController.getString("FeedSavedToBookmarks", R.string.FeedSavedToBookmarks))
+                    .createSimpleBulletin(R.drawable.msg_saved,
+                            LocaleController.getString("FeedSavedToBookmarks", R.string.FeedSavedToBookmarks))
                     .show();
         });
 
         options.add(R.drawable.msg_channel, "Open channel", () -> {
-            saveScroll(); openChannel(item);
+            saveScroll();
+            openChannel(item);
         });
 
         options.add(R.drawable.msg_markread, "Mark as read", () -> {
             feedController.markAsRead(item);
             int pos = adapter.findItemPosition(item);
             if (pos >= 0) adapter.updateItem(pos);
+        });
+
+        TLRPC.Chat chat = MessagesController.getInstance(currentAccount).getChat(-item.channelId);
+        String channelName = chat != null ? chat.title : "this channel";
+        options.add(R.drawable.msg_block2, "Hide from feed", true, () -> {
+            long chatId = -item.channelId;
+            feedController.hideChannel(chatId);
+            adapter.setItems(feedController.getCachedFeed());
+            updateEmpty();
+            BulletinFactory.of(FeedActivity.this)
+                    .createSimpleBulletin(R.drawable.msg_block2,
+                            channelName + " hidden from feed")
+                    .show();
         });
 
         options.show();

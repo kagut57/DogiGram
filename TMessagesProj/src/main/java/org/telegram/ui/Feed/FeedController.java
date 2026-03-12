@@ -49,6 +49,7 @@ public class FeedController {
     private final int currentAccount;
     private final Set<String> localReadIds = new HashSet<>();
     private final Set<String> bookmarkedIds = new HashSet<>();
+    private final Set<Long> hiddenChannelIds = new HashSet<>();
     private final List<FeedItem> cachedFeed = new ArrayList<>();
     private boolean isLoading = false;
     private boolean feedLoaded = false;
@@ -82,6 +83,13 @@ public class FeedController {
         SharedPreferences p = getPrefs();
         localReadIds.addAll(p.getStringSet("read", new HashSet<>()));
         bookmarkedIds.addAll(p.getStringSet("bookmarks", new HashSet<>()));
+
+        Set<String> hiddenSet = p.getStringSet("hidden_channels", new HashSet<>());
+        for (String s : hiddenSet) {
+            try {
+                hiddenChannelIds.add(Long.parseLong(s));
+            } catch (NumberFormatException ignored) {}
+        }
     }
 
     private void saveNow() {
@@ -107,9 +115,16 @@ public class FeedController {
             List<String> l = new ArrayList<>(r);
             r = new HashSet<>(l.subList(l.size() - 50000, l.size()));
         }
+
+        Set<String> hiddenStrs = new HashSet<>();
+        for (Long id : hiddenChannelIds) {
+            hiddenStrs.add(String.valueOf(id));
+        }
+
         getPrefs().edit()
                 .putStringSet("read", r)
                 .putStringSet("bookmarks", new HashSet<>(bookmarkedIds))
+                .putStringSet("hidden_channels", hiddenStrs)
                 .apply();
     }
 
@@ -202,6 +217,7 @@ public class FeedController {
             if (dialog.unread_count <= 0) continue;
 
             if (dialog.read_inbox_max_id <= 0) continue;
+            if (isChannelHidden(-dialog.id)) continue;
 
             if (CustomSettings.hideProxySponsor() && controller.isPromoDialog(dialog.id, false)) continue;
 
@@ -301,5 +317,24 @@ public class FeedController {
             items.add(item);
         }
         return items;
+    }
+
+    public void hideChannel(long channelId) {
+        hiddenChannelIds.add(channelId);
+        cachedFeed.removeIf(item -> item.channelId == -channelId || item.channelId == channelId);
+        saveNow();
+    }
+
+    public void unhideChannel(long channelId) {
+        hiddenChannelIds.remove(channelId);
+        saveNow();
+    }
+
+    public boolean isChannelHidden(long channelId) {
+        return hiddenChannelIds.contains(channelId);
+    }
+
+    public Set<Long> getHiddenChannelIds() {
+        return new HashSet<>(hiddenChannelIds);
     }
 }

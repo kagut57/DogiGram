@@ -133,7 +133,7 @@ import org.telegram.ui.bots.BotDownloads;
 import org.telegram.ui.bots.BotLocation;
 import org.telegram.ui.bots.BotWebViewSheet;
 import org.telegram.ui.bots.SetupEmojiStatusSheet;
-import org.telegram.ui.Feed.FeedSettingsActivity;
+import org.telegram.ui.Feed.CustomSettingsActivity;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -822,7 +822,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                 presentFragment(new LanguageSelectActivity());
                 break;
             case 100:
-                presentFragment(new FeedSettingsActivity());
+                presentFragment(new CustomSettingsActivity());
                 break;
 
             case 11:
