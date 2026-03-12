@@ -1567,24 +1567,26 @@ public class FileLoader extends BaseController {
         if (document == null) {
             return null;
         }
-        if (document.file_name_fixed != null) {
-            return document.file_name_fixed;
-        }
-        String fileName = null;
-        if (document != null) {
-            if (document.file_name != null) {
-                fileName = document.file_name;
+        if (document instanceof TLRPC.Document) {
+            TLRPC.Document doc = (TLRPC.Document) document;
+            if (doc.file_name_fixed != null) {
+                return doc.file_name_fixed;
+            }
+            String fileName = null;
+            if (doc.file_name != null) {
+                fileName = doc.file_name;
             } else {
-                for (int a = 0; a < document.attributes.size(); a++) {
-                    TLRPC.DocumentAttribute documentAttribute = document.attributes.get(a);
+                for (int a = 0; a < doc.attributes.size(); a++) {
+                    TLRPC.DocumentAttribute documentAttribute = doc.attributes.get(a);
                     if (documentAttribute instanceof TLRPC.TL_documentAttributeFilename) {
                         fileName = documentAttribute.file_name;
                     }
                 }
             }
+            fileName = fixFileName(fileName);
+            return fileName != null ? fileName : "";
         }
-        fileName = fixFileName(fileName);
-        return fileName != null ? fileName : "";
+        return "";
     }
 
     public static String getMimeTypePart(String mime) {

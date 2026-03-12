@@ -39,7 +39,8 @@ public class FeedMediaHelper {
             LinearLayout mediaRow,
             TextView albumLabel,
             MediaClickListener listener,
-            Theme.ResourcesProvider rp) {
+            Theme.ResourcesProvider rp,
+            FeedRoundVideoView roundVideoView) {
 
         List<MessageObject> mediaMessages = new ArrayList<>();
         for (MessageObject msg : item.messages) {
@@ -61,11 +62,31 @@ public class FeedMediaHelper {
             }
         }
 
+        if (roundVideoView != null) {
+            roundVideoView.release();
+            roundVideoView.setVisibility(View.GONE);
+        }
+
         if (mediaMessages.isEmpty()) {
             mediaContainer.setVisibility(View.GONE);
             mediaOverlay.setVisibility(View.GONE);
             mediaRow.setVisibility(View.GONE);
             albumLabel.setVisibility(View.GONE);
+            return;
+        }
+
+        resetMediaContainer(mediaContainer, mainImage);
+
+        MessageObject firstMsg = mediaMessages.get(0);
+        if (mediaMessages.size() == 1 && firstMsg.isRoundVideo()) {
+            mediaContainer.setVisibility(View.GONE);
+            mediaOverlay.setVisibility(View.GONE);
+            mediaRow.setVisibility(View.GONE);
+            albumLabel.setVisibility(View.GONE);
+
+            if (roundVideoView != null) {
+                roundVideoView.setMessage(firstMsg);
+            }
             return;
         }
 
@@ -113,6 +134,14 @@ public class FeedMediaHelper {
             mediaRow.setVisibility(View.GONE);
             albumLabel.setVisibility(View.GONE);
         }
+    }
+
+    private static void resetMediaContainer(FrameLayout mediaContainer, BackupImageView mainImage) {
+        LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) mediaContainer.getLayoutParams();
+        lp.width = LinearLayout.LayoutParams.MATCH_PARENT;
+        lp.gravity = Gravity.NO_GRAVITY;
+        mediaContainer.setLayoutParams(lp);
+        mainImage.setRoundRadius(dp(12));
     }
 
     public static TLRPC.PhotoSize bestSize(List<TLRPC.PhotoSize> sizes) {

@@ -4,7 +4,6 @@ import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.MessagesController;
 import org.telegram.tgnet.TLRPC;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
@@ -77,35 +76,20 @@ public class FeedUtils {
     }
 
     public static List<TLRPC.Document> getDocuments(FeedController.FeedItem item) {
-        List<TLRPC.Document> docs = new ArrayList<>();
+        List<TLRPC.Document> result = new java.util.ArrayList<>();
+        if (item == null) return result;
+
         for (MessageObject msg : item.messages) {
             TLRPC.MessageMedia media = msg.messageOwner.media;
-            if (media instanceof TLRPC.TL_messageMediaDocument && media.document != null) {
-                TLRPC.Document doc = media.document;
-                boolean skip = false;
-                for (TLRPC.DocumentAttribute attr : doc.attributes) {
-                    if (attr instanceof TLRPC.TL_documentAttributeVideo) skip = true;
-                    if (attr instanceof TLRPC.TL_documentAttributeAnimated) skip = true;
-                    if (attr instanceof TLRPC.TL_documentAttributeSticker) skip = true;
-                    if (attr instanceof TLRPC.TL_documentAttributeAudio) skip = true;
-                }
-                if (!skip) docs.add(doc);
-            }
-        }
-        return docs;
-    }
+            if (!(media instanceof TLRPC.TL_messageMediaDocument)) continue;
+            TLRPC.Document doc = media.document;
+            if (doc == null) continue;
 
-    public static int getVoiceDuration(MessageObject msg) {
-        if (msg == null || msg.messageOwner == null || msg.messageOwner.media == null) return 0;
-        if (!(msg.messageOwner.media instanceof TLRPC.TL_messageMediaDocument)) return 0;
-        TLRPC.Document doc = msg.messageOwner.media.document;
-        if (doc == null) return 0;
-        for (TLRPC.DocumentAttribute attr : doc.attributes) {
-            if (attr instanceof TLRPC.TL_documentAttributeAudio) {
-                return (int) ((TLRPC.TL_documentAttributeAudio) attr).duration;
-            }
+            if (!isGenericDocument(doc)) continue;
+
+            result.add(doc);
         }
-        return 0;
+        return result;
     }
 
     public static Activity getActivity(Context context) {
@@ -136,5 +120,63 @@ public class FeedUtils {
             android.widget.Toast.makeText(context,
                     "No app to open this file", android.widget.Toast.LENGTH_SHORT).show();
         }
+    }
+
+    public static boolean isRoundVideo(TLRPC.Document doc) {
+        if (doc == null) return false;
+        for (TLRPC.DocumentAttribute attr : doc.attributes) {
+            if (attr instanceof TLRPC.TL_documentAttributeVideo) {
+                return ((TLRPC.TL_documentAttributeVideo) attr).round_message;
+            }
+        }
+        return false;
+    }
+
+    public static boolean isVideo(TLRPC.Document doc) {
+        if (doc == null) return false;
+        for (TLRPC.DocumentAttribute attr : doc.attributes) {
+            if (attr instanceof TLRPC.TL_documentAttributeVideo) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static boolean isVoiceOrAudio(TLRPC.Document doc) {
+        if (doc == null) return false;
+        for (TLRPC.DocumentAttribute attr : doc.attributes) {
+            if (attr instanceof TLRPC.TL_documentAttributeAudio) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static boolean isSticker(TLRPC.Document doc) {
+        if (doc == null) return false;
+        for (TLRPC.DocumentAttribute attr : doc.attributes) {
+            if (attr instanceof TLRPC.TL_documentAttributeSticker) return true;
+            if (attr instanceof TLRPC.TL_documentAttributeCustomEmoji) return true;
+        }
+        return false;
+    }
+
+    public static boolean isGif(TLRPC.Document doc) {
+        if (doc == null) return false;
+        for (TLRPC.DocumentAttribute attr : doc.attributes) {
+            if (attr instanceof TLRPC.TL_documentAttributeAnimated) return true;
+        }
+        return false;
+    }
+
+    public static boolean isGenericDocument(TLRPC.Document doc) {
+        if (doc == null) return false;
+        if (isRoundVideo(doc)) return false;
+        if (isVideo(doc)) return false;
+        if (isVoiceOrAudio(doc)) return false;
+        if (isSticker(doc)) return false;
+        if (isGif(doc)) return false;
+
+        return true;
     }
 }

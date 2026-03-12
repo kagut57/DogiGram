@@ -116,6 +116,10 @@ public class FeedVoiceView extends LinearLayout implements NotificationCenter.No
             TLRPC.MessageMedia media = msg.messageOwner.media;
             if (!(media instanceof TLRPC.TL_messageMediaDocument) || media.document == null)
                 continue;
+
+            if (FeedUtils.isRoundVideo(media.document)) continue;
+            if (FeedUtils.isVideo(media.document) && !FeedUtils.isVoiceOrAudio(media.document)) continue;
+
             for (TLRPC.DocumentAttribute attr : media.document.attributes) {
                 if (attr instanceof TLRPC.TL_documentAttributeAudio) {
                     TLRPC.TL_documentAttributeAudio audio =

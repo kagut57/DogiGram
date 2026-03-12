@@ -604,6 +604,7 @@ public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFr
             if (m == null || m instanceof TLRPC.TL_messageMediaEmpty || m instanceof TLRPC.TL_messageMediaWebPage) continue;
             if (m instanceof TLRPC.TL_messageMediaPhoto) media.add(msg);
             else if (m instanceof TLRPC.TL_messageMediaDocument && m.document != null) {
+                if (MessageObject.isRoundVideoDocument(m.document)) continue;
                 for (TLRPC.DocumentAttribute attr : m.document.attributes) {
                     if (attr instanceof TLRPC.TL_documentAttributeVideo || attr instanceof TLRPC.TL_documentAttributeAnimated) {
                         media.add(msg); break;

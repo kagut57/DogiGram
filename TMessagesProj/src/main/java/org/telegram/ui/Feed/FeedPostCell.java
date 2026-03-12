@@ -44,14 +44,12 @@ public class FeedPostCell extends LinearLayout {
 
     private static final int MAX_LINES_COLLAPSED = 8;
 
-    /* ── Header ── */
     private final BackupImageView avatarView;
     private final TextView channelNameView;
     private final TextView timeView;
     private final View unreadDot;
     private final AvatarDrawable avatarDrawable;
 
-    /* ── Extracted components ── */
     private final FeedReplyView replyView;
     private final FeedForwardView forwardView;
     private final FeedPollView pollView;
@@ -59,21 +57,19 @@ public class FeedPostCell extends LinearLayout {
     private final FeedVoiceView voiceView;
     private final FeedInlineButtonsView buttonsView;
 
-    /* ── Message text ── */
     private boolean messageHasSpoilers = false;
     private Runnable spoilerRevealer = null;
     private final AnimatedEmojiSpan.TextViewEmojis messageTextView;
     private final TextView readMoreView;
     private final android.graphics.Path spoilerClipPath = new android.graphics.Path();
 
-    /* ── Media ── */
     private final android.widget.FrameLayout mediaContainer;
+    private final FeedRoundVideoView roundVideoView;
     private final BackupImageView mediaImageView1;
     private final LinearLayout mediaRow;
     private final TextView mediaOverlayLabel;
     private final TextView albumLabel;
 
-    /* ── Engagement ── */
     private final ImageView viewsIcon;
     private final TextView viewsCountView;
     private final LinearLayout commentsBtn;
@@ -81,7 +77,6 @@ public class FeedPostCell extends LinearLayout {
     private final LinearLayout shareBtn;
     private final TextView sharesCountView;
 
-    /* ── State ── */
     private FeedController.FeedItem currentItem;
     private boolean textExpanded = false;
     private CharSequence fullText = null;
@@ -91,8 +86,6 @@ public class FeedPostCell extends LinearLayout {
     private ViewTreeObserver.OnPreDrawListener pendingTruncateListener;
     private final java.util.HashSet<Integer> expandedQuoteOffsets = new java.util.HashSet<>();
     private final FeedTextFormatter textFormatter;
-
-    /* ── Callback ── */
 
     public interface Callback {
         void onHeaderClick(FeedController.FeedItem item);
@@ -501,6 +494,21 @@ public class FeedPostCell extends LinearLayout {
         addView(mediaContainer,
                 LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 200, 0, 8, 0, 0));
 
+        roundVideoView = new FeedRoundVideoView(context, currentAccount);
+        roundVideoView.setVisibility(GONE);
+        addView(roundVideoView,
+                LayoutHelper.createLinear(240, 240, Gravity.CENTER_HORIZONTAL, 0, 8, 0, 0));
+
+        roundVideoView.setSizeChangeListener(newSizePx -> {
+            android.widget.LinearLayout.LayoutParams rvLp =
+                    (android.widget.LinearLayout.LayoutParams) roundVideoView.getLayoutParams();
+            if (rvLp != null) {
+                rvLp.width  = newSizePx;
+                rvLp.height = newSizePx;
+                roundVideoView.setLayoutParams(rvLp);
+            }
+        });
+
         mediaRow = new LinearLayout(context);
         mediaRow.setOrientation(HORIZONTAL);
         mediaRow.setVisibility(GONE);
@@ -641,7 +649,9 @@ public class FeedPostCell extends LinearLayout {
                     (feedItem, index) -> {
                         if (callback != null) callback.onMediaClick(feedItem, index);
                     },
-                    resourceProvider);
+                    resourceProvider,
+                    roundVideoView
+            );
         }
 
         documentView.setData(item);
@@ -887,6 +897,7 @@ public class FeedPostCell extends LinearLayout {
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
         cancelPendingTruncate();
+        roundVideoView.release();
     }
 
     private TextView smallText(Context ctx, int color) {
