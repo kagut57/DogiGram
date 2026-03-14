@@ -6,8 +6,10 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.MessagesController;
+import org.telegram.messenger.MessagesStorage;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.UserConfig;
+import org.telegram.messenger.support.LongSparseIntArray;
 import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.Custom.CustomSettings;
@@ -37,7 +39,7 @@ public class FeedController implements NotificationCenter.NotificationCenterDele
             TLRPC.Chat chat = controller.getChat(-dialogId);
             if (chat == null || !chat.broadcast || chat.megagroup) return;
             if (isChannelHidden(-dialogId)) return;
-            if (controller.isPromoDialog(dialogId, false)) return;
+            if (CustomSettings.hideProxySponsor() && controller.isPromoDialog(dialogId, false)) return;
 
             ArrayList<MessageObject> messages = (ArrayList<MessageObject>) args[1];
             if (messages == null || messages.isEmpty()) return;
@@ -274,6 +276,12 @@ public class FeedController implements NotificationCenter.NotificationCenterDele
                     dialog.unread_count = Math.max(0, dialog.unread_count - actuallyRead);
                 }
 
+                LongSparseIntArray inbox = new LongSparseIntArray();
+                inbox.put(dialogId, finalMaxId);
+                MessagesStorage.getInstance(currentAccount).updateDialogsWithReadMessages(
+                        inbox, null, null, null, true
+                );
+
                 NotificationCenter.getInstance(currentAccount).postNotificationName(
                         NotificationCenter.updateInterfaces,
                         MessagesController.UPDATE_MASK_READ_DIALOG_MESSAGE);
@@ -462,7 +470,7 @@ public class FeedController implements NotificationCenter.NotificationCenterDele
             TLRPC.Chat chat = controller.getChat(-dialog.id);
             if (chat == null || !chat.broadcast || chat.megagroup) continue;
             if (isChannelHidden(-dialog.id)) continue;
-            if (controller.isPromoDialog(dialog.id, false)) continue;
+            if (CustomSettings.hideProxySponsor() && controller.isPromoDialog(dialog.id, false)) continue;
             channels.add(dialog);
         }
 

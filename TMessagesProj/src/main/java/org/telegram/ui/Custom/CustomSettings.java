@@ -22,7 +22,7 @@ public class CustomSettings {
     }
 
     public static boolean hideProxySponsor() {
-        return getPrefs().getBoolean("hide_proxy_sponsor", false);
+        return getPrefs().getBoolean("hide_proxy_sponsor", true);
     }
 
     public static void setHideProxySponsor(boolean value) {
