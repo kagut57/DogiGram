@@ -49,7 +49,6 @@ import org.telegram.ui.Stars.StarsReactionsSheet;
 
 import java.io.File;
 import java.util.ArrayList;
-import java.util.List;
 
 public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFragmentDelegate {
 
@@ -82,15 +81,7 @@ public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFr
 
     private void onNewPostsReceived() {
         if (adapter == null || !feedController.hasCachedFeed()) return;
-
-        List<FeedController.FeedItem> items = feedController.getCachedFeed();
-        int oldCount = adapter.getItemCount();
-        int newCount = items.size();
-
-        if (newCount <= oldCount) return;
-
-        adapter.setItemsSilent(items);
-        adapter.notifyItemRangeInserted(oldCount, newCount - oldCount);
+        adapter.setItems(feedController.getCachedFeed());
         updateEmpty();
     }
 
@@ -140,8 +131,8 @@ public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFr
 
         int topPad = ActionBar.getCurrentActionBarHeight() + AndroidUtilities.statusBarHeight;
         int bottomPad = hasMainTabs
-                ? dp(DialogsActivity.MAIN_TABS_HEIGHT + DialogsActivity.MAIN_TABS_MARGIN + 128)
-                : dp(128);
+                ? dp(DialogsActivity.MAIN_TABS_HEIGHT + DialogsActivity.MAIN_TABS_MARGIN + 96)
+                : dp(96);
 
         adapter = new FeedAdapter(context, currentAccount, resourceProvider);
         adapter.setCellCallback(new FeedPostCell.Callback() {
@@ -197,6 +188,10 @@ public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFr
             @Override
             public void onDoubleTap(FeedController.FeedItem item) {
                 handleDoubleTap(item);
+            }
+            @Override
+            public void onBookmarkClick(FeedController.FeedItem item) {
+                toggleBookmark(item);
             }
         });
 
@@ -279,6 +274,107 @@ public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFr
 
         fragmentView = rootView;
         return fragmentView;
+    }
+
+    private void toggleBookmark(FeedController.FeedItem item) {
+        if (item.isBookmarked) {
+            item.isBookmarked = false;
+            updateBookmarkIcon(item);
+
+            long selfId = UserConfig.getInstance(currentAccount).getClientUserId();
+            Bulletin b = BulletinFactory.of(FeedActivity.this)
+                    .createSimpleBulletin(R.drawable.msg_saved,
+                            "Removed from bookmarks", "Open Saved", () -> {
+                                Bundle args = new Bundle();
+                                args.putLong("user_id", selfId);
+                                presentFragment(new ChatActivity(args));
+                            });
+            b.setDuration(3000);
+            b.show(true);
+            b.getLayout().post(() -> {
+                View pv = (View) b.getLayout().getParent();
+                if (pv != null && pv.getLayoutParams() instanceof FrameLayout.LayoutParams) {
+                    FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) pv.getLayoutParams();
+                    lp.topMargin = ActionBar.getCurrentActionBarHeight()
+                            + AndroidUtilities.statusBarHeight + dp(8);
+                    pv.setLayoutParams(lp);
+                }
+            });
+            return;
+        }
+
+        long selfId = UserConfig.getInstance(currentAccount).getClientUserId();
+        MessagesController controller = MessagesController.getInstance(currentAccount);
+        TLRPC.Chat chat = controller.getChat(-item.channelId);
+
+        TLRPC.TL_messages_forwardMessages req = new TLRPC.TL_messages_forwardMessages();
+        req.to_peer = controller.getInputPeer(selfId);
+        req.from_peer = controller.getInputPeer(item.channelId);
+        req.random_id = new ArrayList<>();
+        req.id = new ArrayList<>();
+        req.silent = true;
+        if (chat != null && chat.noforwards) {
+            req.drop_author = true;
+        }
+        for (MessageObject m : item.messages) {
+            req.id.add(m.getId());
+            req.random_id.add(Utilities.random.nextLong());
+        }
+
+        item.isBookmarked = true;
+        updateBookmarkIcon(item);
+
+        Bulletin b = BulletinFactory.of(FeedActivity.this)
+                .createSimpleBulletin(R.drawable.msg_saved, "Saved to bookmarks", "View", () -> {
+                    Bundle args = new Bundle();
+                    args.putLong("user_id", selfId);
+                    presentFragment(new ChatActivity(args));
+                });
+        b.setDuration(3000);
+        b.show(true);
+        b.getLayout().post(() -> {
+            View pv = (View) b.getLayout().getParent();
+            if (pv != null && pv.getLayoutParams() instanceof FrameLayout.LayoutParams) {
+                FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) pv.getLayoutParams();
+                lp.topMargin = ActionBar.getCurrentActionBarHeight()
+                        + AndroidUtilities.statusBarHeight + dp(8);
+                pv.setLayoutParams(lp);
+            }
+        });
+
+        ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> {
+            AndroidUtilities.runOnUIThread(() -> {
+                if (error != null) {
+                    item.isBookmarked = false;
+                    updateBookmarkIcon(item);
+                    showTopBulletin(R.drawable.msg_saved);
+                }
+            });
+        });
+    }
+
+    private void updateBookmarkIcon(FeedController.FeedItem item) {
+        int pos = adapter.findItemPosition(item);
+        if (pos < 0) return;
+        RecyclerView.ViewHolder vh = listView.findViewHolderForAdapterPosition(pos);
+        if (vh != null && vh.itemView instanceof FeedPostCell) {
+            ((FeedPostCell) vh.itemView).updateBookmarkState(item.isBookmarked);
+        }
+    }
+
+    private void showTopBulletin(int icon) {
+        Bulletin b = BulletinFactory.of(FeedActivity.this)
+                .createSimpleBulletin(icon, "Failed to save");
+        b.show(true);
+        b.getLayout().post(() -> {
+            View pv = (View) b.getLayout().getParent();
+            if (pv != null && pv.getLayoutParams() instanceof FrameLayout.LayoutParams) {
+                FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) pv.getLayoutParams();
+                lp.topMargin = ActionBar.getCurrentActionBarHeight()
+                        + AndroidUtilities.statusBarHeight + dp(8);
+                pv.setLayoutParams(lp);
+            }
+        });
     }
 
     private void handleDoubleTap(FeedController.FeedItem item) {
@@ -1135,7 +1231,15 @@ public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFr
             if (loadingFooter != null) {
                 loadingFooter.setVisibility(View.GONE);
             }
-            adapter.setItems(items);
+
+            int oldCount = adapter.getItemCount();
+            int newCount = items.size();
+
+            if (newCount > oldCount) {
+                adapter.setItemsSilent(items);
+                adapter.notifyItemRangeInserted(oldCount, newCount - oldCount);
+            }
+
             updateEmpty();
         });
     }

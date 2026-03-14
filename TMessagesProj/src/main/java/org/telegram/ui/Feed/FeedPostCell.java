@@ -80,6 +80,10 @@ public class FeedPostCell extends LinearLayout {
     private final TextView commentsCountView;
     private final LinearLayout shareBtn;
     private final TextView sharesCountView;
+    private final ImageView bookmarkIcon;
+
+    private final PorterDuffColorFilter grayFilter;
+
 
     private FeedController.FeedItem currentItem;
     private boolean textExpanded = false;
@@ -106,6 +110,7 @@ public class FeedPostCell extends LinearLayout {
         void onPaidReactionTap(FeedController.FeedItem item);
         void onPaidReactionLongPress(FeedController.FeedItem item);
         void onDoubleTap(FeedController.FeedItem item);
+        void onBookmarkClick(FeedController.FeedItem item);
     }
 
     private Callback callback;
@@ -141,7 +146,7 @@ public class FeedPostCell extends LinearLayout {
 
         int grayColor = Theme.getColor(Theme.key_windowBackgroundWhiteGrayText3, resourceProvider);
         int accentColor = Theme.getColor(Theme.key_windowBackgroundWhiteBlueText2, resourceProvider);
-        PorterDuffColorFilter grayFilter = new PorterDuffColorFilter(grayColor, PorterDuff.Mode.SRC_IN);
+        grayFilter = new PorterDuffColorFilter(grayColor, PorterDuff.Mode.SRC_IN);
 
         LinearLayout headerRow = new LinearLayout(context);
         headerRow.setOrientation(HORIZONTAL);
@@ -581,7 +586,7 @@ public class FeedPostCell extends LinearLayout {
         cIcon.setImageResource(R.drawable.msg_discussion);
         cIcon.setColorFilter(grayFilter);
         commentsBtn.addView(cIcon,
-                LayoutHelper.createLinear(16, 16, Gravity.CENTER_VERTICAL));
+                LayoutHelper.createLinear(28, 28, Gravity.CENTER_VERTICAL));
 
         commentsCountView = smallText(context, grayColor);
         commentsBtn.addView(commentsCountView, LayoutHelper.createLinear(
@@ -604,7 +609,7 @@ public class FeedPostCell extends LinearLayout {
         sharesIcon.setImageResource(R.drawable.msg_share);
         sharesIcon.setColorFilter(grayFilter);
         shareBtn.addView(sharesIcon,
-                LayoutHelper.createLinear(16, 16, Gravity.CENTER_VERTICAL));
+                LayoutHelper.createLinear(28, 28, Gravity.CENTER_VERTICAL));
 
         sharesCountView = smallText(context, grayColor);
         sharesCountView.setVisibility(GONE);
@@ -613,7 +618,26 @@ public class FeedPostCell extends LinearLayout {
                 Gravity.CENTER_VERTICAL, 4, 0, 0, 0));
         engRow.addView(shareBtn, LayoutHelper.createLinear(
                 LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT,
-                Gravity.CENTER_VERTICAL, 0, 0, 0, 0));
+                Gravity.CENTER_VERTICAL, 0, 0, 16, 0));
+
+        LinearLayout bookmarkBtn = new LinearLayout(context);
+        bookmarkBtn.setOrientation(HORIZONTAL);
+        bookmarkBtn.setGravity(Gravity.CENTER_VERTICAL);
+        bookmarkBtn.setBackground(Theme.createSelectorDrawable(
+                Theme.getColor(Theme.key_listSelector, resourceProvider), 2));
+        bookmarkBtn.setOnClickListener(v -> {
+            if (callback != null && currentItem != null) callback.onBookmarkClick(currentItem);
+        });
+
+        bookmarkIcon = new ImageView(context);
+        bookmarkIcon.setImageResource(R.drawable.msg_saved);
+        bookmarkIcon.setColorFilter(grayFilter);
+        bookmarkBtn.addView(bookmarkIcon,
+                LayoutHelper.createLinear(28, 28, Gravity.CENTER_VERTICAL));
+
+        engRow.addView(bookmarkBtn, LayoutHelper.createLinear(
+                LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT,
+                Gravity.CENTER_VERTICAL, 0, 0, 20, 0));
 
         View spacer = new View(context);
         engRow.addView(spacer, new LinearLayout.LayoutParams(
@@ -711,7 +735,7 @@ public class FeedPostCell extends LinearLayout {
 
         bindMessageText(item);
 
-        bindEngagement(raw);
+        bindEngagement(raw, item);
     }
 
     public FeedController.FeedItem getCurrentItem() {
@@ -921,7 +945,7 @@ public class FeedPostCell extends LinearLayout {
                 });
     }
 
-    private void bindEngagement(TLRPC.Message raw) {
+    private void bindEngagement(TLRPC.Message raw, FeedController.FeedItem item) {
         if (raw.views > 0) {
             viewsCountView.setText(LocaleController.formatShortNumber(raw.views, null));
             viewsIcon.setVisibility(VISIBLE);
@@ -931,9 +955,15 @@ public class FeedPostCell extends LinearLayout {
             viewsCountView.setVisibility(GONE);
         }
 
-        if (raw.replies != null && raw.replies.replies > 0) {
-            commentsCountView.setText(
-                    LocaleController.formatShortNumber(raw.replies.replies, null));
+        if (raw.replies != null) {
+            if (raw.replies.replies > 0) {
+                commentsCountView.setText(
+                        LocaleController.formatShortNumber(raw.replies.replies, null));
+                commentsCountView.setVisibility(VISIBLE);
+            } else {
+                commentsCountView.setText("");
+                commentsCountView.setVisibility(GONE);
+            }
             commentsBtn.setVisibility(VISIBLE);
         } else {
             commentsBtn.setVisibility(GONE);
@@ -946,6 +976,15 @@ public class FeedPostCell extends LinearLayout {
             sharesCountView.setVisibility(GONE);
         }
         shareBtn.setVisibility(VISIBLE);
+        if (item != null && item.isBookmarked) {
+            bookmarkIcon.setImageResource(R.drawable.msg_saved);
+            bookmarkIcon.setColorFilter(new PorterDuffColorFilter(
+                    Theme.getColor(Theme.key_featuredStickers_addButton, resourceProvider),
+                    PorterDuff.Mode.SRC_IN));
+        } else {
+            bookmarkIcon.setImageResource(R.drawable.msg_saved);
+            bookmarkIcon.setColorFilter(grayFilter);
+        }
     }
 
     @Override
@@ -966,5 +1005,17 @@ public class FeedPostCell extends LinearLayout {
     public boolean dispatchTouchEvent(MotionEvent ev) {
         doubleTapDetector.onTouchEvent(ev);
         return super.dispatchTouchEvent(ev);
+    }
+
+    public void updateBookmarkState(boolean bookmarked) {
+        if (bookmarked) {
+            bookmarkIcon.setImageResource(R.drawable.msg_saved);
+            bookmarkIcon.setColorFilter(new PorterDuffColorFilter(
+                    Theme.getColor(Theme.key_featuredStickers_addButton, resourceProvider),
+                    PorterDuff.Mode.SRC_IN));
+        } else {
+            bookmarkIcon.setImageResource(R.drawable.msg_saved);
+            bookmarkIcon.setColorFilter(grayFilter);
+        }
     }
 }
