@@ -7,6 +7,7 @@ import android.content.Context;
 import android.os.Bundle;
 import android.os.Parcelable;
 import android.text.TextUtils;
+import android.text.style.ClickableSpan;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
@@ -19,6 +20,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
 import org.telegram.messenger.UserObject;
+import org.telegram.messenger.browser.Browser;
 import org.telegram.tgnet.TLObject;
 import org.telegram.messenger.FileLoader;
 import org.telegram.messenger.MessagesStorage;
@@ -36,11 +38,13 @@ import org.telegram.ui.ActionBar.ActionBarMenu;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.ChatActivity;
+import org.telegram.ui.Components.AlertsCreator;
 import org.telegram.ui.Components.Bulletin;
 import org.telegram.ui.Components.BulletinFactory;
 import org.telegram.ui.Components.ItemOptions;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.RecyclerListView;
+import org.telegram.ui.Components.ScrimOptions;
 import org.telegram.ui.Components.ShareAlert;
 import org.telegram.ui.DialogsActivity;
 import org.telegram.ui.MainTabsActivity;
@@ -193,6 +197,21 @@ public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFr
             public void onBookmarkClick(FeedController.FeedItem item) {
                 toggleBookmark(item);
             }
+            @Override
+            public void onLinkClick(String url) {
+                if (url == null) return;
+                AlertsCreator.showOpenUrlAlert(FeedActivity.this, url, true, true, resourceProvider);
+            }
+
+            @Override
+            public void onLinkLongPress(String url, View cell, ClickableSpan span) {
+                if (url == null || getParentActivity() == null) return;
+                showLinkOptions(url, cell, span);
+            }
+            @Override
+            public void onPostLongPress(View cell) {
+                showPostScrim(cell);
+            }
         });
 
         layoutManager = new LinearLayoutManager(context);
@@ -274,6 +293,80 @@ public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFr
 
         fragmentView = rootView;
         return fragmentView;
+    }
+
+    private void showLinkOptions(String url, View cell, ClickableSpan span) {
+        if (getParentActivity() == null || url == null || cell == null) return;
+
+        String cleanUrl = url;
+        try {
+            android.net.Uri uri = android.net.Uri.parse(url);
+            if (uri.getScheme() != null) {
+                cleanUrl = url.replaceFirst(uri.getScheme() + "://", "");
+                if (cleanUrl.endsWith("/")) {
+                    cleanUrl = cleanUrl.substring(0, cleanUrl.length() - 1);
+                }
+            }
+        } catch (Exception ignored) {}
+
+        final String urlFinal = url;
+        final String cleanUrlFinal = cleanUrl;
+
+        boolean isInternal = Browser.isInternalUrl(url, null);
+        boolean customTabs = org.telegram.messenger.SharedConfig.inappBrowser
+                && !isInternal
+                && !url.startsWith("#")
+                && !url.startsWith("$");
+        boolean isMail = url.startsWith("mailto:");
+        boolean isHashtag = url.startsWith("#") || url.startsWith("$");
+
+        final ScrimOptions scrimDialog = new ScrimOptions(getParentActivity(), resourceProvider);
+
+        final ItemOptions options = ItemOptions.makeOptions(
+                scrimDialog.getContainerView(), resourceProvider, scrimDialog.getContainerView());
+
+        if (!isMail) {
+            options.add(R.drawable.msg_openin,
+                    LocaleController.getString(customTabs && !isHashtag
+                            ? R.string.OpenInTelegramBrowser
+                            : R.string.Open),
+                    () -> Browser.openUrl(getParentActivity(), urlFinal, true));
+        }
+
+        if (customTabs && !isHashtag || isMail) {
+            options.add(R.drawable.msg_language,
+                    LocaleController.getString(R.string.OpenInSystemBrowser),
+                    () -> Browser.openUrl(getParentActivity(), urlFinal, false));
+        }
+
+        options.add(R.drawable.msg_copy,
+                LocaleController.getString(isHashtag ? R.string.CopyHashtag
+                        : isMail ? R.string.CopyMail
+                        : R.string.CopyLink),
+                () -> {
+                    AndroidUtilities.addToClipboard(
+                            isMail ? urlFinal.substring("mailto:".length()) : urlFinal);
+                    BulletinFactory.of(FeedActivity.this).createCopyLinkBulletin().show();
+                });
+
+        if (!isHashtag && !isMail) {
+            options.add(R.drawable.msg_copy, "Copy without protocol", () -> {
+                AndroidUtilities.addToClipboard(cleanUrlFinal);
+                BulletinFactory.of(FeedActivity.this).createCopyLinkBulletin().show();
+            });
+        }
+
+        scrimDialog.setItemOptions(options);
+        scrimDialog.setOnDismissListener(d -> options.dismiss());
+        options.setOnDismiss(() -> scrimDialog.dismissFast());
+
+        /* Выделяем только текст ссылки */
+        if (cell instanceof FeedPostCell) {
+            TextView tv = ((FeedPostCell) cell).getMessageTextView();
+            scrimDialog.setScrimForTextView(tv, span);
+        }
+
+        scrimDialog.show();
     }
 
     private void toggleBookmark(FeedController.FeedItem item) {
@@ -1204,6 +1297,13 @@ public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFr
     public void onParentScrollToTop() {
         if (listView != null) listView.smoothScrollToPosition(0);
         loadFeed(true);
+    }
+
+    private void showPostScrim(View cell) {
+        if (cell == null) return;
+        ItemOptions options = ItemOptions.makeOptions(this, cell);
+        options.setBlur(true);
+        options.show();
     }
 
     private void checkLoadMore() {

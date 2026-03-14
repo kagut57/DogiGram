@@ -20,11 +20,13 @@ import android.view.GestureDetector;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewConfiguration;
 import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.text.style.URLSpan;
 
 import androidx.annotation.NonNull;
 
@@ -40,6 +42,8 @@ import org.telegram.ui.Components.AnimatedEmojiSpan;
 import org.telegram.ui.Components.AvatarDrawable;
 import org.telegram.ui.Components.BackupImageView;
 import org.telegram.ui.Components.LayoutHelper;
+import org.telegram.ui.Components.LinkPath;
+import org.telegram.ui.Components.LinkSpanDrawable;
 import org.telegram.ui.Components.spoilers.SpoilerEffect;
 
 @SuppressLint("ViewConstructor")
@@ -95,7 +99,19 @@ public class FeedPostCell extends LinearLayout {
     private final java.util.HashSet<Integer> expandedQuoteOffsets = new java.util.HashSet<>();
     private final FeedTextFormatter textFormatter;
 
+    private final LinkSpanDrawable.LinkCollector linkCollector;
+    private LinkSpanDrawable<ClickableSpan> pressedLink;
+    private final Paint dimPaint = new Paint();
+
     private final GestureDetector doubleTapDetector;
+
+    public LinkSpanDrawable<ClickableSpan> getPressedLink() {
+        return pressedLink;
+    }
+
+    public void setPressedLink(LinkSpanDrawable<ClickableSpan> pressedLink) {
+        this.pressedLink = pressedLink;
+    }
 
     public interface Callback {
         void onHeaderClick(FeedController.FeedItem item);
@@ -111,6 +127,9 @@ public class FeedPostCell extends LinearLayout {
         void onPaidReactionLongPress(FeedController.FeedItem item);
         void onDoubleTap(FeedController.FeedItem item);
         void onBookmarkClick(FeedController.FeedItem item);
+        void onLinkClick(String url);
+        void onLinkLongPress(String url, View cell, ClickableSpan span);
+        void onPostLongPress(View cell);
     }
 
     private Callback callback;
@@ -432,33 +451,122 @@ public class FeedPostCell extends LinearLayout {
             }
         };
 
+        linkCollector = new LinkSpanDrawable.LinkCollector(messageTextView);
+        dimPaint.setColor(0x44000000);
+
         messageTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
         messageTextView.setTextColor(
                 Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourceProvider));
         messageTextView.setLinkTextColor(accentColor);
         messageTextView.setLineSpacing(dp(2), 1f);
         messageTextView.setMovementMethod(new LinkMovementMethod() {
+            private ClickableSpan pressedSpan;
+            private Runnable longPressRunnable;
+            private boolean longPressed;
+            private float downX, downY;
+
             @Override
             public boolean onTouchEvent(TextView widget, android.text.Spannable buffer,
                                         android.view.MotionEvent event) {
-                if (event.getAction() == android.view.MotionEvent.ACTION_UP) {
-                    int x = (int) event.getX() - widget.getTotalPaddingLeft() + widget.getScrollX();
-                    int y = (int) event.getY() - widget.getTotalPaddingTop() + widget.getScrollY();
-                    Layout l = widget.getLayout();
-                    if (l != null) {
-                        int line = l.getLineForVertical(y);
-                        int off = l.getOffsetForHorizontal(line, x);
+                int action = event.getAction();
+                int x = (int) event.getX() - widget.getTotalPaddingLeft() + widget.getScrollX();
+                int y = (int) event.getY() - widget.getTotalPaddingTop() + widget.getScrollY();
+                Layout l = widget.getLayout();
+
+                if (action == MotionEvent.ACTION_DOWN && l != null) {
+                    longPressed = false;
+                    downX = event.getX();
+                    downY = event.getY();
+
+                    int line = l.getLineForVertical(y);
+                    int off = l.getOffsetForHorizontal(line, x);
+                    float lineLeft = l.getLineLeft(line);
+                    float lineWidth = l.getLineWidth(line);
+
+                    if (x >= lineLeft && x <= lineLeft + lineWidth) {
                         ClickableSpan[] spans = buffer.getSpans(off, off, ClickableSpan.class);
                         if (spans.length > 0) {
-                            for (ClickableSpan span : spans) {
-                                if (!(span instanceof FeedQuoteSpan.Clickable)) {
-                                    span.onClick(widget);
-                                    return true;
-                                }
+                            pressedSpan = spans[0];
+
+                            LinkSpanDrawable<ClickableSpan> link = new LinkSpanDrawable<>(
+                                    pressedSpan, resourceProvider, event.getX(), event.getY());
+                            pressedLink = link;
+                            linkCollector.addLink(link);
+
+                            int start = buffer.getSpanStart(pressedSpan);
+                            int end = buffer.getSpanEnd(pressedSpan);
+                            LinkPath path = link.obtainNewPath();
+                            path.setCurrentLayout(l, start, widget.getPaddingTop());
+                            l.getSelectionPath(start, end, path);
+
+                            setDimmed(true);
+
+                            if (longPressRunnable != null) {
+                                AndroidUtilities.cancelRunOnUIThread(longPressRunnable);
                             }
-                            spans[0].onClick(widget);
+                            longPressRunnable = () -> {
+                                longPressed = true;
+                                linkCollector.clear();
+                                pressedLink = null;
+
+                                if (pressedSpan instanceof URLSpan) {
+                                    String url = ((URLSpan) pressedSpan).getURL();
+                                    if (callback != null) callback.onLinkLongPress(url, FeedPostCell.this, pressedSpan);
+                                }
+                                pressedSpan = null;
+                            };
+                            AndroidUtilities.runOnUIThread(longPressRunnable,
+                                    ViewConfiguration.getLongPressTimeout());
                             return true;
                         }
+                    }
+                } else if (action == MotionEvent.ACTION_MOVE) {
+                    if (Math.abs(event.getX() - downX) > dp(8) ||
+                            Math.abs(event.getY() - downY) > dp(8)) {
+                        cancelLinkPress();
+                    }
+                    return pressedSpan != null;
+                } else if (action == MotionEvent.ACTION_UP) {
+                    if (longPressRunnable != null) {
+                        AndroidUtilities.cancelRunOnUIThread(longPressRunnable);
+                        longPressRunnable = null;
+                    }
+                    setDimmed(false);
+                    linkCollector.clear();
+                    pressedLink = null;
+
+                    if (longPressed) {
+                        longPressed = false;
+                        return true;
+                    }
+
+                    if (pressedSpan != null) {
+                        if (messageHasSpoilers && spoilerRevealer != null) {
+                            spoilerRevealer.run();
+                            messageHasSpoilers = false;
+                            pressedSpan = null;
+                            return true;
+                        }
+
+                        if (pressedSpan instanceof FeedQuoteSpan.Clickable) {
+                            pressedSpan.onClick(widget);
+                            pressedSpan = null;
+                            return true;
+                        }
+
+                        if (pressedSpan instanceof URLSpan) {
+                            String url = ((URLSpan) pressedSpan).getURL();
+                            pressedSpan = null;
+                            if (callback != null) {
+                                callback.onLinkClick(url);
+                                return true;
+                            }
+                        }
+
+                        assert pressedSpan != null;
+                        pressedSpan.onClick(widget);
+                        pressedSpan = null;
+                        return true;
                     }
 
                     if (messageHasSpoilers && spoilerRevealer != null) {
@@ -466,8 +574,24 @@ public class FeedPostCell extends LinearLayout {
                         messageHasSpoilers = false;
                         return true;
                     }
+
+                    return false;
+                } else if (action == MotionEvent.ACTION_CANCEL) {
+                    cancelLinkPress();
                 }
-                return super.onTouchEvent(widget, buffer, event);
+                return pressedSpan != null;
+            }
+
+            private void cancelLinkPress() {
+                if (longPressRunnable != null) {
+                    AndroidUtilities.cancelRunOnUIThread(longPressRunnable);
+                    longPressRunnable = null;
+                }
+                setDimmed(false);
+                linkCollector.clear();
+                pressedLink = null;
+                pressedSpan = null;
+                longPressed = false;
             }
         });
         messageTextView.setVisibility(GONE);
@@ -677,7 +801,15 @@ public class FeedPostCell extends LinearLayout {
             public boolean onSingleTapConfirmed(MotionEvent e) {
                 return false;
             }
+
+            @Override
+            public void onLongPress(MotionEvent e) {
+                if (callback != null && currentItem != null) {
+                    callback.onPostLongPress(FeedPostCell.this);
+                }
+            }
         });
+        doubleTapDetector.setIsLongpressEnabled(true);
     }
 
     public void setPost(FeedController.FeedItem item) {
@@ -1017,5 +1149,25 @@ public class FeedPostCell extends LinearLayout {
             bookmarkIcon.setImageResource(R.drawable.msg_saved);
             bookmarkIcon.setColorFilter(grayFilter);
         }
+    }
+
+    private boolean isDimmed = false;
+
+    private void setDimmed(boolean dimmed) {
+        if (isDimmed == dimmed) return;
+        isDimmed = dimmed;
+        invalidate();
+    }
+
+    @Override
+    protected void dispatchDraw(@NonNull Canvas canvas) {
+        if (isDimmed) {
+            canvas.drawRect(0, 0, getWidth(), getHeight(), dimPaint);
+        }
+        super.dispatchDraw(canvas);
+    }
+
+    public TextView getMessageTextView() {
+        return messageTextView;
     }
 }
