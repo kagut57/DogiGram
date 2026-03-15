@@ -507,6 +507,153 @@ public class FeedPostCell extends LinearLayout {
                     }
                 }
             }
+            private ClickableSpan touchedSpan;
+            private Runnable spanLongPressRunnable;
+            private boolean spanLongPressed;
+            private float spanDownX, spanDownY;
+
+            @SuppressLint("ClickableViewAccessibility")
+            @Override
+            public boolean onTouchEvent(MotionEvent event) {
+                int action = event.getAction();
+                Layout layout = getLayout();
+
+                if (layout != null && getText() instanceof Spanned) {
+                    Spanned spanned = (Spanned) getText();
+                    int x = (int) event.getX() - getTotalPaddingLeft() + getScrollX();
+                    int y = (int) event.getY() - getTotalPaddingTop() + getScrollY();
+                    int line = layout.getLineForVertical(y);
+                    int off = layout.getOffsetForHorizontal(line, x);
+                    float lineLeft = layout.getLineLeft(line);
+                    float lineWidth = layout.getLineWidth(line);
+                    boolean inText = x >= lineLeft && x <= lineLeft + lineWidth;
+
+                    if (action == MotionEvent.ACTION_DOWN) {
+                        spanLongPressed = false;
+                        spanDownX = event.getX();
+                        spanDownY = event.getY();
+
+                        if (messageHasSpoilers && spoilerRevealer != null) {
+                            touchedSpan = null;
+                            return true;
+                        }
+
+                        if (inText) {
+                            ClickableSpan[] spans = spanned.getSpans(off, off, ClickableSpan.class);
+                            if (spans.length > 0) {
+                                touchedSpan = spans[0];
+
+                                LinkSpanDrawable<ClickableSpan> link = new LinkSpanDrawable<>(
+                                        touchedSpan, resourceProvider, event.getX(), event.getY());
+                                pressedLink = link;
+                                linkCollector.addLink(link);
+
+                                int start = spanned.getSpanStart(touchedSpan);
+                                int end = spanned.getSpanEnd(touchedSpan);
+                                LinkPath path = link.obtainNewPath();
+                                path.setCurrentLayout(layout, start, getPaddingTop());
+                                layout.getSelectionPath(start, end, path);
+
+                                setDimmed(true);
+
+                                if (spanLongPressRunnable != null) {
+                                    AndroidUtilities.cancelRunOnUIThread(spanLongPressRunnable);
+                                }
+                                spanLongPressRunnable = () -> {
+                                    spanLongPressed = true;
+                                    linkCollector.clear();
+                                    pressedLink = null;
+                                    setDimmed(false);
+                                    if (touchedSpan instanceof URLSpan) {
+                                        String url = ((URLSpan) touchedSpan).getURL();
+                                        if (callback != null)
+                                            callback.onLinkLongPress(url, FeedPostCell.this, touchedSpan);
+                                    }
+                                    touchedSpan = null;
+                                };
+                                AndroidUtilities.runOnUIThread(spanLongPressRunnable,
+                                        ViewConfiguration.getLongPressTimeout());
+
+                                return true;
+                            }
+                        }
+
+                        touchedSpan = null;
+                        return super.onTouchEvent(event);
+
+                    } else if (action == MotionEvent.ACTION_MOVE) {
+                        if (touchedSpan != null) {
+                            if (Math.abs(event.getX() - spanDownX) > dp(8) ||
+                                    Math.abs(event.getY() - spanDownY) > dp(8)) {
+                                cancelSpanTouch();
+                            }
+                            return true;
+                        }
+                        return super.onTouchEvent(event);
+
+                    } else if (action == MotionEvent.ACTION_UP) {
+                        if (spanLongPressRunnable != null) {
+                            AndroidUtilities.cancelRunOnUIThread(spanLongPressRunnable);
+                            spanLongPressRunnable = null;
+                        }
+                        setDimmed(false);
+                        linkCollector.clear();
+                        pressedLink = null;
+
+                        if (messageHasSpoilers && spoilerRevealer != null) {
+                            spoilerRevealer.run();
+                            messageHasSpoilers = false;
+                            touchedSpan = null;
+                            return true;
+                        }
+
+                        if (spanLongPressed) {
+                            spanLongPressed = false;
+                            touchedSpan = null;
+                            return true;
+                        }
+
+                        if (touchedSpan != null) {
+                            ClickableSpan span = touchedSpan;
+                            touchedSpan = null;
+
+                            if (span instanceof FeedQuoteSpan.Clickable) {
+                                span.onClick(this);
+                                return true;
+                            }
+                            if (span instanceof URLSpan) {
+                                String url = ((URLSpan) span).getURL();
+                                if (callback != null) {
+                                    callback.onLinkClick(url);
+                                    return true;
+                                }
+                            }
+                            span.onClick(this);
+                            return true;
+                        }
+
+                        return super.onTouchEvent(event);
+
+                    } else if (action == MotionEvent.ACTION_CANCEL) {
+                        cancelSpanTouch();
+                        return super.onTouchEvent(event);
+                    }
+                }
+
+                return super.onTouchEvent(event);
+            }
+
+            private void cancelSpanTouch() {
+                if (spanLongPressRunnable != null) {
+                    AndroidUtilities.cancelRunOnUIThread(spanLongPressRunnable);
+                    spanLongPressRunnable = null;
+                }
+                setDimmed(false);
+                linkCollector.clear();
+                pressedLink = null;
+                touchedSpan = null;
+                spanLongPressed = false;
+            }
         };
 
         linkCollector = new LinkSpanDrawable.LinkCollector(messageTextView);
@@ -517,141 +664,8 @@ public class FeedPostCell extends LinearLayout {
                 Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourceProvider));
         messageTextView.setLinkTextColor(accentColor);
         messageTextView.setLineSpacing(dp(2), 1f);
-        messageTextView.setMovementMethod(new LinkMovementMethod() {
-            private ClickableSpan pressedSpan;
-            private Runnable longPressRunnable;
-            private boolean longPressed;
-            private float downX, downY;
-
-            @Override
-            public boolean onTouchEvent(TextView widget, android.text.Spannable buffer,
-                                        android.view.MotionEvent event) {
-                int action = event.getAction();
-                int x = (int) event.getX() - widget.getTotalPaddingLeft() + widget.getScrollX();
-                int y = (int) event.getY() - widget.getTotalPaddingTop() + widget.getScrollY();
-                Layout l = widget.getLayout();
-
-                if (action == MotionEvent.ACTION_DOWN && l != null) {
-                    longPressed = false;
-                    downX = event.getX();
-                    downY = event.getY();
-
-                    int line = l.getLineForVertical(y);
-                    int off = l.getOffsetForHorizontal(line, x);
-                    float lineLeft = l.getLineLeft(line);
-                    float lineWidth = l.getLineWidth(line);
-
-                    if (x >= lineLeft && x <= lineLeft + lineWidth) {
-                        ClickableSpan[] spans = buffer.getSpans(off, off, ClickableSpan.class);
-                        if (spans.length > 0) {
-                            pressedSpan = spans[0];
-
-                            LinkSpanDrawable<ClickableSpan> link = new LinkSpanDrawable<>(
-                                    pressedSpan, resourceProvider, event.getX(), event.getY());
-                            pressedLink = link;
-                            linkCollector.addLink(link);
-
-                            int start = buffer.getSpanStart(pressedSpan);
-                            int end = buffer.getSpanEnd(pressedSpan);
-                            LinkPath path = link.obtainNewPath();
-                            path.setCurrentLayout(l, start, widget.getPaddingTop());
-                            l.getSelectionPath(start, end, path);
-
-                            setDimmed(true);
-
-                            if (longPressRunnable != null) {
-                                AndroidUtilities.cancelRunOnUIThread(longPressRunnable);
-                            }
-                            longPressRunnable = () -> {
-                                longPressed = true;
-                                linkCollector.clear();
-                                pressedLink = null;
-
-                                if (pressedSpan instanceof URLSpan) {
-                                    String url = ((URLSpan) pressedSpan).getURL();
-                                    if (callback != null) callback.onLinkLongPress(url, FeedPostCell.this, pressedSpan);
-                                }
-                                pressedSpan = null;
-                            };
-                            AndroidUtilities.runOnUIThread(longPressRunnable,
-                                    ViewConfiguration.getLongPressTimeout());
-                            return true;
-                        }
-                    }
-                } else if (action == MotionEvent.ACTION_MOVE) {
-                    if (Math.abs(event.getX() - downX) > dp(8) ||
-                            Math.abs(event.getY() - downY) > dp(8)) {
-                        cancelLinkPress();
-                    }
-                    return pressedSpan != null;
-                } else if (action == MotionEvent.ACTION_UP) {
-                    if (longPressRunnable != null) {
-                        AndroidUtilities.cancelRunOnUIThread(longPressRunnable);
-                        longPressRunnable = null;
-                    }
-                    setDimmed(false);
-                    linkCollector.clear();
-                    pressedLink = null;
-
-                    if (longPressed) {
-                        longPressed = false;
-                        return true;
-                    }
-
-                    if (pressedSpan != null) {
-                        if (messageHasSpoilers && spoilerRevealer != null) {
-                            spoilerRevealer.run();
-                            messageHasSpoilers = false;
-                            pressedSpan = null;
-                            return true;
-                        }
-
-                        if (pressedSpan instanceof FeedQuoteSpan.Clickable) {
-                            pressedSpan.onClick(widget);
-                            pressedSpan = null;
-                            return true;
-                        }
-
-                        if (pressedSpan instanceof URLSpan) {
-                            String url = ((URLSpan) pressedSpan).getURL();
-                            pressedSpan = null;
-                            if (callback != null) {
-                                callback.onLinkClick(url);
-                                return true;
-                            }
-                        }
-
-                        assert pressedSpan != null;
-                        pressedSpan.onClick(widget);
-                        pressedSpan = null;
-                        return true;
-                    }
-
-                    if (messageHasSpoilers && spoilerRevealer != null) {
-                        spoilerRevealer.run();
-                        messageHasSpoilers = false;
-                        return true;
-                    }
-
-                    return false;
-                } else if (action == MotionEvent.ACTION_CANCEL) {
-                    cancelLinkPress();
-                }
-                return pressedSpan != null;
-            }
-
-            private void cancelLinkPress() {
-                if (longPressRunnable != null) {
-                    AndroidUtilities.cancelRunOnUIThread(longPressRunnable);
-                    longPressRunnable = null;
-                }
-                setDimmed(false);
-                linkCollector.clear();
-                pressedLink = null;
-                pressedSpan = null;
-                longPressed = false;
-            }
-        });
+        messageTextView.setTextIsSelectable(true);
+        messageTextView.setCursorVisible(false);
         messageTextView.setVisibility(GONE);
         addView(messageTextView,
                 LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 8, 0, 0));
@@ -902,6 +916,9 @@ public class FeedPostCell extends LinearLayout {
 
             @Override
             public void onLongPress(MotionEvent e) {
+                if (isTouchOnMessageText(e)) {
+                    return;
+                }
                 if (callback != null && currentItem != null) {
                     callback.onPostLongPress(FeedPostCell.this);
                 }
@@ -1257,6 +1274,12 @@ public class FeedPostCell extends LinearLayout {
 
     @Override
     public boolean dispatchTouchEvent(MotionEvent ev) {
+        if (ev.getAction() == MotionEvent.ACTION_DOWN) {
+            if (hasTextSelection() && !isTouchOnMessageText(ev)) {
+                clearTextSelection();
+                return true;
+            }
+        }
         doubleTapDetector.onTouchEvent(ev);
         return super.dispatchTouchEvent(ev);
     }
@@ -1726,5 +1749,23 @@ public class FeedPostCell extends LinearLayout {
         if (appLang != null) appLang = appLang.split("_")[0];
         String sysLang = java.util.Locale.getDefault().getLanguage();
         return TextUtils.equals(lang, appLang) || TextUtils.equals(lang, sysLang);
+    }
+
+    private boolean isTouchOnMessageText(MotionEvent ev) {
+        if (messageTextView == null || messageTextView.getVisibility() != VISIBLE) return false;
+        float x = ev.getX();
+        float y = ev.getY();
+        return x >= messageTextView.getLeft() && x <= messageTextView.getRight()
+                && y >= messageTextView.getTop() && y <= messageTextView.getBottom();
+    }
+
+    public boolean hasTextSelection() {
+        if (messageTextView == null || messageTextView.getVisibility() != VISIBLE) return false;
+        return messageTextView.hasSelection();
+    }
+
+    public void clearTextSelection() {
+        if (messageTextView == null) return;
+        messageTextView.clearFocus();
     }
 }

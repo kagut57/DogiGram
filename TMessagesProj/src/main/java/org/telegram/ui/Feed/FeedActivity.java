@@ -8,6 +8,7 @@ import android.os.Bundle;
 import android.os.Parcelable;
 import android.text.TextUtils;
 import android.text.style.ClickableSpan;
+import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
@@ -1355,9 +1356,50 @@ public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFr
     }
 
     private void showPostScrim(View cell) {
-        if (cell == null) return;
+        if (cell == null || !(cell instanceof FeedPostCell)) return;
+        FeedPostCell postCell = (FeedPostCell) cell;
+        FeedController.FeedItem item = postCell.getCurrentItem();
+        if (item == null) return;
+
         ItemOptions options = ItemOptions.makeOptions(this, cell);
         options.setBlur(true);
+
+        MessageObject primary = item.getPrimaryMessage();
+        String text = primary != null && primary.messageOwner != null
+                ? primary.messageOwner.message : null;
+        if (!TextUtils.isEmpty(text)) {
+            options.add(R.drawable.msg_copy, LocaleController.getString(R.string.Copy), () -> {
+                AndroidUtilities.addToClipboard(text);
+                BulletinFactory.of(FeedActivity.this)
+                        .createCopyBulletin(
+                                LocaleController.getString(R.string.TextCopied))
+                        .show();
+            });
+
+            options.add(R.drawable.msg_select, LocaleController.getString(R.string.Select), () -> {
+                showSelectableTextDialog(text);
+            });
+        }
+
+        options.add(R.drawable.msg_link2, LocaleController.getString(R.string.CopyLink), () -> {
+            String link = buildPostLink(item);
+            AndroidUtilities.addToClipboard(link);
+            BulletinFactory.of(FeedActivity.this)
+                    .createCopyLinkBulletin()
+                    .show();
+        });
+
+        options.addGap();
+
+        options.add(R.drawable.msg_forward, LocaleController.getString(R.string.Forward), () -> {
+            sharePost(item);
+        });
+
+        options.add(R.drawable.msg_channel, "Open channel", () -> {
+            saveScroll();
+            openChannel(item);
+        });
+
         options.show();
     }
 
@@ -1537,5 +1579,47 @@ public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFr
             default:
                 return "";
         }
+    }
+
+    private void showSelectableTextDialog(String text) {
+        if (getParentActivity() == null || TextUtils.isEmpty(text)) return;
+
+        FrameLayout container = new FrameLayout(getParentActivity());
+        container.setPadding(dp(24), dp(16), dp(24), dp(8));
+
+        TextView selectableTextView = new TextView(getParentActivity());
+        selectableTextView.setText(text);
+        selectableTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
+        selectableTextView.setTextColor(
+                Theme.getColor(Theme.key_dialogTextBlack, resourceProvider));
+        selectableTextView.setLineSpacing(dp(2), 1f);
+        selectableTextView.setTextIsSelectable(true);
+
+        try {
+            int handleColor = Theme.getColor(Theme.key_chat_TextSelectionCursor, resourceProvider);
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                android.graphics.drawable.Drawable left = selectableTextView.getTextSelectHandleLeft();
+                if (left != null) {
+                    left.setColorFilter(handleColor, android.graphics.PorterDuff.Mode.SRC_IN);
+                    selectableTextView.setTextSelectHandleLeft(left);
+                }
+                android.graphics.drawable.Drawable right = selectableTextView.getTextSelectHandleRight();
+                if (right != null) {
+                    right.setColorFilter(handleColor, android.graphics.PorterDuff.Mode.SRC_IN);
+                    selectableTextView.setTextSelectHandleRight(right);
+                }
+            }
+        } catch (Exception ignored) {}
+
+        selectableTextView.setHighlightColor(
+                Theme.getColor(Theme.key_chat_inTextSelectionHighlight, resourceProvider));
+
+        container.addView(selectableTextView,
+                LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+
+        org.telegram.ui.ActionBar.BottomSheet.Builder builder =
+                new org.telegram.ui.ActionBar.BottomSheet.Builder(getParentActivity(), false, resourceProvider);
+        builder.setCustomView(container);
+        showDialog(builder.create());
     }
 }
