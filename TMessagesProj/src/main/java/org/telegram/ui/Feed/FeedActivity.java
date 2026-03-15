@@ -322,6 +322,13 @@ public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFr
         emptyView.setPadding(dp(40), 0, dp(40), 0);
         rootView.addView(emptyView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
 
+        FeedPlayerBar playerBar = new FeedPlayerBar(context, this, listView, resourceProvider);
+        FrameLayout.LayoutParams playerLp = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, dp(38));
+        playerLp.topMargin = ActionBar.getCurrentActionBarHeight() + AndroidUtilities.statusBarHeight;
+        playerLp.gravity = Gravity.TOP;
+        rootView.addView(playerBar, playerLp);
+
         fragmentView = rootView;
         return fragmentView;
     }

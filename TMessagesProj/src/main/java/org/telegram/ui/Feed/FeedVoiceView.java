@@ -4,19 +4,24 @@ import static org.telegram.messenger.AndroidUtilities.dp;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
+import android.content.res.ColorStateList;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.RectF;
+import android.graphics.drawable.GradientDrawable;
 import android.os.SystemClock;
 import android.text.TextUtils;
 import android.util.TypedValue;
 import android.view.Gravity;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
+import android.widget.SeekBar;
 import android.widget.TextView;
 
 import androidx.core.graphics.ColorUtils;
 
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.ImageLocation;
 import org.telegram.messenger.MediaController;
 import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.MessagesController;
@@ -27,6 +32,7 @@ import org.telegram.messenger.Utilities;
 import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.Components.BackupImageView;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.TranscribeButton;
 
@@ -34,65 +40,79 @@ import org.telegram.ui.Components.TranscribeButton;
 public class FeedVoiceView extends LinearLayout implements NotificationCenter.NotificationCenterDelegate {
 
     private final int currentAccount;
-    private final FeedPlayPauseButton playButton;
-    private final FeedWaveformView waveformView;
-    private final TextView labelView;
-    private final TextView durationView;
+    private final int accentColor;
 
+    private final LinearLayout voiceLayout;
+    private final FeedPlayPauseButton voicePlayButton;
+    private final FeedWaveformView waveformView;
+    private final TextView voiceLabelView;
+    private final TextView voiceDurationView;
     private final TextView transcribeBtn;
     private final TextView transcriptionTextView;
+
+    private final LinearLayout musicLayout;
+    private final BackupImageView albumArtView;
+    private final TextView musicNotePlaceholder;
+    private final TextView musicTitleView;
+    private final TextView musicArtistView;
+    private final FeedPlayPauseButton musicPlayButton;
+    private final SeekBar musicSeekBar;
+    private final TextView musicTimeView;
 
     private MessageObject currentMessage;
     private int totalDuration;
     private boolean isVoiceMessage = false;
+    private boolean isSeeking = false;
     private boolean transcriptionLoading = false;
 
-    private final int accentColor;
-
+    @SuppressLint("SetTextI18n")
     public FeedVoiceView(Context context, int account, Theme.ResourcesProvider resourceProvider) {
         super(context);
         this.currentAccount = account;
+        setOrientation(VERTICAL);
+        setPadding(0, dp(8), 0, dp(4));
 
         accentColor = Theme.getColor(Theme.key_windowBackgroundWhiteBlueText2, resourceProvider);
         int textColor = Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourceProvider);
         int grayColor = Theme.getColor(Theme.key_windowBackgroundWhiteGrayText3, resourceProvider);
 
-        setOrientation(VERTICAL);
-        setPadding(0, dp(8), 0, dp(4));
+        voiceLayout = new LinearLayout(context);
+        voiceLayout.setOrientation(VERTICAL);
+        voiceLayout.setVisibility(GONE);
 
-        LinearLayout topRow = new LinearLayout(context);
-        topRow.setOrientation(HORIZONTAL);
-        topRow.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout voiceTopRow = new LinearLayout(context);
+        voiceTopRow.setOrientation(HORIZONTAL);
+        voiceTopRow.setGravity(Gravity.CENTER_VERTICAL);
 
-        playButton = new FeedPlayPauseButton(context, accentColor);
-        playButton.setOnClickListener(v -> togglePlayback());
-        topRow.addView(playButton, LayoutHelper.createLinear(36, 36, Gravity.CENTER_VERTICAL));
+        voicePlayButton = new FeedPlayPauseButton(context, accentColor);
+        voicePlayButton.setOnClickListener(v -> togglePlayback());
+        voiceTopRow.addView(voicePlayButton, LayoutHelper.createLinear(36, 36, Gravity.CENTER_VERTICAL));
 
-        LinearLayout middle = new LinearLayout(context);
-        middle.setOrientation(VERTICAL);
-        middle.setPadding(dp(10), 0, 0, 0);
+        LinearLayout voiceMiddle = new LinearLayout(context);
+        voiceMiddle.setOrientation(VERTICAL);
+        voiceMiddle.setPadding(dp(10), 0, 0, 0);
 
-        labelView = new TextView(context);
-        labelView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
-        labelView.setTextColor(textColor);
-        labelView.setTypeface(AndroidUtilities.bold());
-        labelView.setMaxLines(1);
-        labelView.setEllipsize(TextUtils.TruncateAt.END);
-        middle.addView(labelView,
+        voiceLabelView = new TextView(context);
+        voiceLabelView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
+        voiceLabelView.setTextColor(textColor);
+        voiceLabelView.setTypeface(AndroidUtilities.bold());
+        voiceLabelView.setMaxLines(1);
+        voiceLabelView.setEllipsize(TextUtils.TruncateAt.END);
+        voiceMiddle.addView(voiceLabelView,
                 LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
         waveformView = new FeedWaveformView(context, accentColor);
-        middle.addView(waveformView,
+        voiceMiddle.addView(waveformView,
                 LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 24, 0, 2, 0, 0));
 
-        topRow.addView(middle,
+        voiceTopRow.addView(voiceMiddle,
                 LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f));
 
-        durationView = new TextView(context);
-        durationView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
-        durationView.setTextColor(grayColor);
-        durationView.setPadding(dp(8), 0, 0, 0);
-        topRow.addView(durationView,
+        voiceDurationView = new TextView(context);
+        voiceDurationView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
+        voiceDurationView.setTextColor(grayColor);
+        voiceDurationView.setPadding(dp(8), 0, 0, 0);
+        voiceTopRow.addView(voiceDurationView,
                 LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT,
                         Gravity.CENTER_VERTICAL));
 
@@ -117,11 +137,11 @@ public class FeedVoiceView extends LinearLayout implements NotificationCenter.No
         transcribeBtn.setPadding(dp(8), dp(4), dp(8), dp(4));
         transcribeBtn.setOnClickListener(v -> onTranscribeClick());
         transcribeBtn.setVisibility(GONE);
-        topRow.addView(transcribeBtn,
+        voiceTopRow.addView(transcribeBtn,
                 LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, 28,
                         Gravity.CENTER_VERTICAL, 6, 0, 0, 0));
 
-        addView(topRow,
+        voiceLayout.addView(voiceTopRow,
                 LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
         transcriptionTextView = new TextView(context);
@@ -130,17 +150,15 @@ public class FeedVoiceView extends LinearLayout implements NotificationCenter.No
         transcriptionTextView.setLineSpacing(dp(2), 1f);
         transcriptionTextView.setPadding(dp(46), dp(4), 0, dp(4));
         transcriptionTextView.setVisibility(GONE);
-        addView(transcriptionTextView,
+        voiceLayout.addView(transcriptionTextView,
                 LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
         waveformView.setSeekListener(new FeedWaveformView.SeekListener() {
             @Override public void onSeekStart() {}
-
             @Override
             public void onSeek(float progress) {
                 updateDurationText(progress);
             }
-
             @Override
             public void onSeekEnd(float progress) {
                 if (currentMessage == null) return;
@@ -155,6 +173,135 @@ public class FeedVoiceView extends LinearLayout implements NotificationCenter.No
                 updatePlayButton();
             }
         });
+
+        addView(voiceLayout,
+                LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+
+        musicLayout = new LinearLayout(context);
+        musicLayout.setOrientation(VERTICAL);
+        musicLayout.setVisibility(GONE);
+        musicLayout.setClipChildren(false);
+        musicLayout.setClipToPadding(false);
+
+        LinearLayout musicTopRow = new LinearLayout(context);
+        musicTopRow.setOrientation(HORIZONTAL);
+        musicTopRow.setGravity(Gravity.CENTER_VERTICAL);
+
+        FrameLayout artContainer = new FrameLayout(context);
+        GradientDrawable artBg = new GradientDrawable();
+        artBg.setColor(ColorUtils.setAlphaComponent(accentColor, 0x18));
+        artBg.setCornerRadius(dp(10));
+        artContainer.setBackground(artBg);
+
+        musicNotePlaceholder = new TextView(context);
+        musicNotePlaceholder.setText("🎵");
+        musicNotePlaceholder.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 22);
+        musicNotePlaceholder.setGravity(Gravity.CENTER);
+        artContainer.addView(musicNotePlaceholder,
+                LayoutHelper.createFrame(56, 56, Gravity.CENTER));
+
+        albumArtView = new BackupImageView(context);
+        albumArtView.setRoundRadius(dp(10));
+        artContainer.addView(albumArtView,
+                LayoutHelper.createFrame(56, 56, Gravity.CENTER));
+
+        musicTopRow.addView(artContainer,
+                LayoutHelper.createLinear(56, 56, Gravity.CENTER_VERTICAL));
+
+        // Info column
+        LinearLayout infoCol = new LinearLayout(context);
+        infoCol.setOrientation(VERTICAL);
+        infoCol.setPadding(dp(12), 0, dp(8), 0);
+        infoCol.setGravity(Gravity.CENTER_VERTICAL);
+
+        musicTitleView = new TextView(context);
+        musicTitleView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
+        musicTitleView.setTextColor(textColor);
+        musicTitleView.setTypeface(AndroidUtilities.bold());
+        musicTitleView.setMaxLines(1);
+        musicTitleView.setEllipsize(TextUtils.TruncateAt.END);
+        infoCol.addView(musicTitleView,
+                LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+
+        musicArtistView = new TextView(context);
+        musicArtistView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
+        musicArtistView.setTextColor(grayColor);
+        musicArtistView.setMaxLines(1);
+        musicArtistView.setEllipsize(TextUtils.TruncateAt.END);
+        musicArtistView.setPadding(0, dp(2), 0, 0);
+        infoCol.addView(musicArtistView,
+                LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+
+        musicTopRow.addView(infoCol,
+                LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f,
+                        Gravity.CENTER_VERTICAL));
+
+        musicPlayButton = new FeedPlayPauseButton(context, accentColor);
+        musicPlayButton.setOnClickListener(v -> togglePlayback());
+        musicTopRow.addView(musicPlayButton,
+                LayoutHelper.createLinear(40, 40, Gravity.CENTER_VERTICAL));
+
+        musicLayout.addView(musicTopRow,
+                LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+
+// --- Seek row ---
+        LinearLayout seekRow = new LinearLayout(context);
+        seekRow.setOrientation(HORIZONTAL);
+        seekRow.setGravity(Gravity.CENTER_VERTICAL);
+        seekRow.setPadding(dp(2), dp(4), dp(2), 0);
+        seekRow.setClipChildren(false);
+        seekRow.setClipToPadding(false);
+
+        musicSeekBar = new SeekBar(context);
+        musicSeekBar.setMax(1000);
+        musicSeekBar.setPadding(dp(8), 0, dp(8), 0);
+        musicSeekBar.setProgressTintList(ColorStateList.valueOf(accentColor));
+        musicSeekBar.setThumbTintList(ColorStateList.valueOf(accentColor));
+        musicSeekBar.setProgressBackgroundTintList(
+                ColorStateList.valueOf(ColorUtils.setAlphaComponent(accentColor, 0x40)));
+        musicSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar sb, int progress, boolean fromUser) {
+                if (fromUser) {
+                    updateMusicTimeText((float) progress / 1000f);
+                }
+            }
+            @Override
+            public void onStartTrackingTouch(SeekBar sb) {
+                isSeeking = true;
+            }
+            @Override
+            public void onStopTrackingTouch(SeekBar sb) {
+                isSeeking = false;
+                float progress = (float) sb.getProgress() / 1000f;
+                if (currentMessage == null) return;
+                MediaController mc = MediaController.getInstance();
+                if (mc.isPlayingMessage(currentMessage)) {
+                    mc.seekToProgress(currentMessage, progress);
+                } else {
+                    mc.playMessage(currentMessage);
+                    AndroidUtilities.runOnUIThread(
+                            () -> mc.seekToProgress(currentMessage, progress), 300);
+                }
+                updatePlayButton();
+            }
+        });
+        seekRow.addView(musicSeekBar,
+                LayoutHelper.createLinear(0, 32, 1f, Gravity.CENTER_VERTICAL));
+
+        musicTimeView = new TextView(context);
+        musicTimeView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 12);
+        musicTimeView.setTextColor(grayColor);
+        musicTimeView.setPadding(dp(8), 0, 0, 0);
+        seekRow.addView(musicTimeView,
+                LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT,
+                        Gravity.CENTER_VERTICAL));
+
+        musicLayout.addView(seekRow,
+                LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+
+        addView(musicLayout,
+                LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
     }
 
     @SuppressLint("SetTextI18n")
@@ -162,6 +309,7 @@ public class FeedVoiceView extends LinearLayout implements NotificationCenter.No
         currentMessage = null;
         totalDuration = 0;
         isVoiceMessage = false;
+        isSeeking = false;
         transcriptionLoading = false;
 
         if (item == null) {
@@ -175,6 +323,7 @@ public class FeedVoiceView extends LinearLayout implements NotificationCenter.No
         String performer = null;
         int duration = 0;
         byte[] waveform = null;
+        TLRPC.Document audioDoc = null;
 
         for (MessageObject msg : item.messages) {
             TLRPC.MessageMedia media = msg.messageOwner.media;
@@ -194,6 +343,7 @@ public class FeedVoiceView extends LinearLayout implements NotificationCenter.No
                     title     = audio.title;
                     performer = audio.performer;
                     waveform  = audio.waveform;
+                    audioDoc  = media.document;
                     break;
                 }
             }
@@ -210,38 +360,95 @@ public class FeedVoiceView extends LinearLayout implements NotificationCenter.No
         isVoiceMessage  = isVoice;
 
         if (isVoice) {
-            labelView.setText("Voice message");
-            waveformView.setWaveform(waveform);
+            setupVoiceLayout(waveform, duration);
         } else {
-            String label = (title != null && !title.isEmpty()) ? title : "Audio";
-            if (performer != null && !performer.isEmpty()) label += " — " + performer;
-            labelView.setText("🎵 " + label);
-            waveformView.setWaveform(null);
+            setupMusicLayout(title, performer, duration, audioDoc);
         }
-        waveformView.setVisibility(VISIBLE);
-        durationView.setText(FeedUtils.formatVoiceDuration(duration));
 
         MediaController mc = MediaController.getInstance();
         if (mc.isPlayingMessage(currentMessage)) {
             MessageObject playing = mc.getPlayingMessageObject();
             if (playing != null) {
-                waveformView.setProgress(playing.audioProgress);
-                updateDurationText(playing.audioProgress);
+                float progress = playing.audioProgress;
+                if (isVoice) {
+                    waveformView.setProgress(progress);
+                } else {
+                    if (!isSeeking) musicSeekBar.setProgress((int) (progress * 1000));
+                }
+                updateDurationText(progress);
             }
         }
         updatePlayButton();
-
-        transcribeBtn.setVisibility(isVoice ? VISIBLE : GONE);
-        updateTranscriptionUI();
-
         setVisibility(VISIBLE);
+    }
+
+    @SuppressLint("SetTextI18n")
+    private void setupVoiceLayout(byte[] waveform, int duration) {
+        voiceLayout.setVisibility(VISIBLE);
+        musicLayout.setVisibility(GONE);
+
+        voiceLabelView.setText("Voice message");
+        waveformView.setWaveform(waveform);
+        waveformView.setProgress(0);
+        waveformView.setVisibility(VISIBLE);
+        voiceDurationView.setText(FeedUtils.formatVoiceDuration(duration));
+
+        transcribeBtn.setVisibility(VISIBLE);
+        updateTranscriptionUI();
+    }
+
+    @SuppressLint("SetTextI18n")
+    private void setupMusicLayout(String title, String performer, int duration,
+                                  TLRPC.Document doc) {
+        voiceLayout.setVisibility(GONE);
+        musicLayout.setVisibility(VISIBLE);
+
+        // Title
+        musicTitleView.setText(title != null && !title.isEmpty() ? title : "Audio");
+
+        // Artist
+        if (performer != null && !performer.isEmpty()) {
+            musicArtistView.setText(performer);
+            musicArtistView.setVisibility(VISIBLE);
+        } else {
+            musicArtistView.setVisibility(GONE);
+        }
+
+        // Album art
+        loadAlbumArt(doc);
+
+        // SeekBar
+        musicSeekBar.setProgress(0);
+
+        // Time
+        updateMusicTimeText(0);
+    }
+
+    private void loadAlbumArt(TLRPC.Document doc) {
+        if (doc != null && doc.thumbs != null && !doc.thumbs.isEmpty()) {
+            TLRPC.PhotoSize thumb = FeedMediaHelper.bestSize(doc.thumbs);
+            if (thumb != null) {
+                albumArtView.setImage(
+                        ImageLocation.getForDocument(thumb, doc),
+                        "56_56", null, null, 0, doc);
+                musicNotePlaceholder.setVisibility(GONE);
+                albumArtView.setVisibility(VISIBLE);
+                return;
+            }
+        }
+        albumArtView.setImageDrawable(null);
+        albumArtView.setVisibility(GONE);
+        musicNotePlaceholder.setVisibility(VISIBLE);
     }
 
     public void clear() {
         currentMessage = null;
         totalDuration = 0;
         isVoiceMessage = false;
+        isSeeking = false;
         transcriptionLoading = false;
+        voiceLayout.setVisibility(GONE);
+        musicLayout.setVisibility(GONE);
         transcribeBtn.setVisibility(GONE);
         transcriptionTextView.setVisibility(GONE);
         setVisibility(GONE);
@@ -249,6 +456,49 @@ public class FeedVoiceView extends LinearLayout implements NotificationCenter.No
 
     public MessageObject getCurrentMessage() {
         return currentMessage;
+    }
+
+    private void togglePlayback() {
+        if (currentMessage == null) return;
+        MediaController mc = MediaController.getInstance();
+        if (mc.isPlayingMessage(currentMessage)) {
+            if (mc.isMessagePaused()) mc.playMessage(currentMessage);
+            else mc.pauseMessage(currentMessage);
+        } else {
+            mc.playMessage(currentMessage);
+        }
+        updatePlayButton();
+    }
+
+    private void updatePlayButton() {
+        if (currentMessage == null) return;
+        MediaController mc = MediaController.getInstance();
+        boolean playing = mc.isPlayingMessage(currentMessage) && !mc.isMessagePaused();
+        if (isVoiceMessage) {
+            voicePlayButton.setPlaying(playing);
+        } else {
+            musicPlayButton.setPlaying(playing);
+        }
+    }
+
+    @SuppressLint("SetTextI18n")
+    private void updateDurationText(float progress) {
+        if (totalDuration <= 0) return;
+        int current = (int) (progress * totalDuration);
+        if (isVoiceMessage) {
+            voiceDurationView.setText(FeedUtils.formatVoiceDuration(current)
+                    + " / " + FeedUtils.formatVoiceDuration(totalDuration));
+        } else {
+            updateMusicTimeText(progress);
+        }
+    }
+
+    @SuppressLint("SetTextI18n")
+    private void updateMusicTimeText(float progress) {
+        if (totalDuration <= 0) return;
+        int current = (int) (progress * totalDuration);
+        musicTimeView.setText(FeedUtils.formatVoiceDuration(current)
+                + " / " + FeedUtils.formatVoiceDuration(totalDuration));
     }
 
     @SuppressLint("SetTextI18n")
@@ -268,13 +518,11 @@ public class FeedVoiceView extends LinearLayout implements NotificationCenter.No
             transcriptionTextView.setText("Transcribing…");
             transcriptionTextView.setVisibility(VISIBLE);
             transcribeBtn.setAlpha(0.5f);
-
         } else if (isOpen && text != null && isFinal) {
             CharSequence display = currentMessage.getVoiceTranscription();
             transcriptionTextView.setText(display != null ? display : text);
             transcriptionTextView.setVisibility(VISIBLE);
             transcribeBtn.setAlpha(1f);
-
         } else {
             transcriptionTextView.setVisibility(GONE);
             transcribeBtn.setAlpha(1f);
@@ -285,14 +533,16 @@ public class FeedVoiceView extends LinearLayout implements NotificationCenter.No
         if (currentMessage == null || currentMessage.messageOwner == null) return;
         TLRPC.Message raw = currentMessage.messageOwner;
 
-        if (raw.voiceTranscriptionOpen && raw.voiceTranscription != null && raw.voiceTranscriptionFinal) {
+        if (raw.voiceTranscriptionOpen && raw.voiceTranscription != null
+                && raw.voiceTranscriptionFinal) {
             raw.voiceTranscriptionOpen = false;
             saveTranscriptionOpenState();
             updateTranscriptionUI();
             return;
         }
 
-        if (!raw.voiceTranscriptionOpen && raw.voiceTranscription != null && raw.voiceTranscriptionFinal) {
+        if (!raw.voiceTranscriptionOpen && raw.voiceTranscription != null
+                && raw.voiceTranscriptionFinal) {
             raw.voiceTranscriptionOpen = true;
             saveTranscriptionOpenState();
             updateTranscriptionUI();
@@ -351,9 +601,7 @@ public class FeedVoiceView extends LinearLayout implements NotificationCenter.No
                 id      = r.transcription_id;
                 isFinal = !r.pending;
 
-                if (TextUtils.isEmpty(text)) {
-                    text = isFinal ? "" : null;
-                }
+                if (TextUtils.isEmpty(text)) text = isFinal ? "" : null;
 
                 if ((r.flags & 2) != 0) {
                     MessagesController.getInstance(account)
@@ -363,11 +611,7 @@ public class FeedVoiceView extends LinearLayout implements NotificationCenter.No
                 }
 
                 target.messageOwner.voiceTranscriptionId = id;
-
-                if (!isFinal) {
-                    TranscribeButton.registerPendingTranscription(id, target);
-                }
-
+                if (!isFinal) TranscribeButton.registerPendingTranscription(id, target);
             } else {
                 text    = "";
                 isFinal = true;
@@ -391,15 +635,12 @@ public class FeedVoiceView extends LinearLayout implements NotificationCenter.No
             }
 
             final String  finalText  = text;
-            final long    finalId    = id;
             final boolean finalFinal = isFinal;
             final long    elapsed    = SystemClock.elapsedRealtime() - startTime;
 
             target.messageOwner.voiceTranscriptionOpen  = true;
             target.messageOwner.voiceTranscriptionFinal = isFinal;
-            if (finalText != null) {
-                target.messageOwner.voiceTranscription = finalText;
-            }
+            if (finalText != null) target.messageOwner.voiceTranscription = finalText;
 
             MessagesStorage.getInstance(account).updateMessageVoiceTranscription(
                     dialogId, messageId, finalText, target.messageOwner);
@@ -407,15 +648,11 @@ public class FeedVoiceView extends LinearLayout implements NotificationCenter.No
             if (finalFinal) {
                 AndroidUtilities.runOnUIThread(() -> {
                     transcriptionLoading = false;
-                    if (currentMessage == target) {
-                        updateTranscriptionUI();
-                    }
+                    if (currentMessage == target) updateTranscriptionUI();
                 }, Math.max(0, minDuration - elapsed));
             } else {
                 AndroidUtilities.runOnUIThread(() -> {
-                    if (currentMessage == target) {
-                        updateTranscriptionUI();
-                    }
+                    if (currentMessage == target) updateTranscriptionUI();
                 });
             }
         }, flags);
@@ -427,33 +664,6 @@ public class FeedVoiceView extends LinearLayout implements NotificationCenter.No
                 currentMessage.getDialogId(),
                 currentMessage.getId(),
                 currentMessage.messageOwner);
-    }
-
-    private void togglePlayback() {
-        if (currentMessage == null) return;
-        MediaController mc = MediaController.getInstance();
-        if (mc.isPlayingMessage(currentMessage)) {
-            if (mc.isMessagePaused()) mc.playMessage(currentMessage);
-            else mc.pauseMessage(currentMessage);
-        } else {
-            mc.playMessage(currentMessage);
-        }
-        updatePlayButton();
-    }
-
-    private void updatePlayButton() {
-        if (currentMessage == null) return;
-        MediaController mc = MediaController.getInstance();
-        boolean playing = mc.isPlayingMessage(currentMessage) && !mc.isMessagePaused();
-        playButton.setPlaying(playing);
-    }
-
-    @SuppressLint("SetTextI18n")
-    private void updateDurationText(float progress) {
-        if (totalDuration <= 0) return;
-        int current = (int) (progress * totalDuration);
-        durationView.setText(FeedUtils.formatVoiceDuration(current)
-                + " / " + FeedUtils.formatVoiceDuration(totalDuration));
     }
 
     @Override
@@ -482,7 +692,11 @@ public class FeedVoiceView extends LinearLayout implements NotificationCenter.No
 
         if (id == NotificationCenter.messagePlayingDidReset) {
             updatePlayButton();
-            waveformView.setProgress(0);
+            if (isVoiceMessage) {
+                waveformView.setProgress(0);
+            } else {
+                if (!isSeeking) musicSeekBar.setProgress(0);
+            }
             updateDurationText(0);
 
         } else if (id == NotificationCenter.messagePlayingPlayStateChanged) {
@@ -493,8 +707,15 @@ public class FeedVoiceView extends LinearLayout implements NotificationCenter.No
             if (mc.isPlayingMessage(currentMessage)) {
                 MessageObject playing = mc.getPlayingMessageObject();
                 if (playing != null) {
-                    waveformView.setProgress(playing.audioProgress);
-                    updateDurationText(playing.audioProgress);
+                    float progress = playing.audioProgress;
+                    if (isVoiceMessage) {
+                        waveformView.setProgress(progress);
+                    } else {
+                        if (!isSeeking) {
+                            musicSeekBar.setProgress((int) (progress * 1000));
+                        }
+                    }
+                    updateDurationText(progress);
                 }
             }
 
@@ -506,7 +727,6 @@ public class FeedVoiceView extends LinearLayout implements NotificationCenter.No
     private void handleTranscriptionUpdate(Object... args) {
         if (args.length == 0 || !(args[0] instanceof MessageObject)) return;
         MessageObject updated = (MessageObject) args[0];
-
         if (!isSameMessage(updated, currentMessage)) return;
 
         if (updated != currentMessage && updated.messageOwner != null) {
