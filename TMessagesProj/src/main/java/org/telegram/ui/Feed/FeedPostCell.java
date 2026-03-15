@@ -35,11 +35,13 @@ import androidx.core.graphics.ColorUtils;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.Emoji;
 import org.telegram.messenger.ImageLocation;
+import org.telegram.messenger.LanguageDetector;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.MessagesStorage;
 import org.telegram.messenger.R;
+import org.telegram.messenger.TranslateController;
 import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.Theme;
@@ -49,6 +51,7 @@ import org.telegram.ui.Components.BackupImageView;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.LinkPath;
 import org.telegram.ui.Components.LinkSpanDrawable;
+import org.telegram.ui.Components.TranslateAlert2;
 import org.telegram.ui.Components.spoilers.SpoilerEffect;
 
 @SuppressLint("ViewConstructor")
@@ -113,6 +116,12 @@ public class FeedPostCell extends LinearLayout {
     private final Paint dimPaint = new Paint();
 
     private final GestureDetector doubleTapDetector;
+
+    private final TextView translateBtn;
+    private final LinearLayout translationCard;
+    private final TextView translationHeaderView;
+    private final TextView translationTextView;
+    private boolean translationLoading = false;
 
     public LinkSpanDrawable<ClickableSpan> getPressedLink() {
         return pressedLink;
@@ -263,6 +272,46 @@ public class FeedPostCell extends LinearLayout {
         });
         addView(forwardView,
                 LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+
+        translateBtn = new TextView(context);
+        translateBtn.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
+        translateBtn.setTextColor(accentColor);
+        translateBtn.setPadding(0, dp(6), 0, dp(2));
+        translateBtn.setVisibility(GONE);
+        translateBtn.setOnClickListener(v -> onTranslateClick());
+        addView(translateBtn,
+                LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT));
+
+        translationCard = new LinearLayout(context);
+        translationCard.setOrientation(VERTICAL);
+        GradientDrawable translationBg = new GradientDrawable();
+        translationBg.setColor(ColorUtils.setAlphaComponent(accentColor, 0x14));
+        translationBg.setCornerRadius(dp(10));
+        translationCard.setBackground(translationBg);
+        translationCard.setPadding(dp(12), dp(10), dp(12), dp(10));
+        translationCard.setVisibility(GONE);
+
+        translationHeaderView = new TextView(context);
+        translationHeaderView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
+        translationHeaderView.setTextColor(grayColor);
+        translationHeaderView.setTypeface(AndroidUtilities.bold());
+        translationCard.addView(translationHeaderView,
+                LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+
+        translationTextView = new TextView(context);
+        translationTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
+        translationTextView.setTextColor(
+                Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourceProvider));
+        translationTextView.setLineSpacing(dp(2), 1f);
+        translationTextView.setLinkTextColor(accentColor);
+        translationTextView.setPadding(0, dp(4), 0, 0);
+        translationCard.addView(translationTextView,
+                LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+
+        addView(translationCard,
+                LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT,
+                        0, 4, 0, 4));
+
 
         messageTextView = new AnimatedEmojiSpan.TextViewEmojis(context) {
 
@@ -879,6 +928,10 @@ public class FeedPostCell extends LinearLayout {
         summarizeBtn.setVisibility(GONE);
         summaryCard.setVisibility(GONE);
 
+        translationLoading = false;
+        translateBtn.setVisibility(GONE);
+        translationCard.setVisibility(GONE);
+
         if (item == null) return;
 
         textExpanded = item.textExpanded;
@@ -922,6 +975,7 @@ public class FeedPostCell extends LinearLayout {
         bindMessageText(item);
         bindEngagement(raw, item);
         bindSummary(item);
+        bindTranslation(item);
     }
 
     public FeedController.FeedItem getCurrentItem() {
@@ -1412,5 +1466,265 @@ public class FeedPostCell extends LinearLayout {
         if (message == null) return;
         MessagesStorage.getInstance(currentAccount)
                 .updateMessageCustomParams(message.getDialogId(), message.messageOwner);
+    }
+
+
+    private void bindTranslation(FeedController.FeedItem item) {
+        translationLoading = false;
+        MessageObject primary = item.getPrimaryMessage();
+
+        if (primary == null || primary.messageOwner == null) {
+            translateBtn.setVisibility(GONE);
+            translationCard.setVisibility(GONE);
+            return;
+        }
+
+        String text = primary.messageOwner.message;
+        if (TextUtils.isEmpty(text) || text.length() < 30) {
+            translateBtn.setVisibility(GONE);
+            translationCard.setVisibility(GONE);
+            return;
+        }
+
+        TLRPC.Message raw = primary.messageOwner;
+
+        if (raw.translatedText != null && !TextUtils.isEmpty(raw.translatedToLanguage)) {
+            if (item.translationShown) {
+                showTranslatedUI(raw);
+            } else {
+                showTranslateButton();
+            }
+            return;
+        }
+
+        if (raw.originalLanguage != null
+                && !TranslateController.UNKNOWN_LANGUAGE.equals(raw.originalLanguage)) {
+            if (isUserLanguage(raw.originalLanguage)) {
+                translateBtn.setVisibility(GONE);
+                translationCard.setVisibility(GONE);
+            } else {
+                showTranslateButton();
+            }
+            return;
+        }
+
+        if (LanguageDetector.hasSupport()) {
+            translateBtn.setVisibility(GONE);
+            translationCard.setVisibility(GONE);
+            detectLanguage(primary, item);
+        } else {
+            showTranslateButton();
+        }
+    }
+
+    private void detectLanguage(MessageObject message, FeedController.FeedItem item) {
+        if (message == null || message.messageOwner == null
+                || TextUtils.isEmpty(message.messageOwner.message)) return;
+
+        final long dialogId = message.getDialogId();
+        final int msgId = message.getId();
+
+        LanguageDetector.detectLanguage(
+                message.messageOwner.message,
+                detectedLang -> AndroidUtilities.runOnUIThread(() -> {
+                    if (detectedLang == null) {
+                        message.messageOwner.originalLanguage = TranslateController.UNKNOWN_LANGUAGE;
+                    } else {
+                        message.messageOwner.originalLanguage = detectedLang;
+                    }
+                    MessagesStorage.getInstance(currentAccount)
+                            .updateMessageCustomParams(dialogId, message.messageOwner);
+
+                    if (currentItem == item) {
+                        if (!isUserLanguage(detectedLang)) {
+                            showTranslateButton();
+                        }
+                    }
+                }),
+                err -> AndroidUtilities.runOnUIThread(() -> {
+                    message.messageOwner.originalLanguage = TranslateController.UNKNOWN_LANGUAGE;
+                    if (currentItem == item) {
+                        showTranslateButton();
+                    }
+                })
+        );
+    }
+
+    @SuppressLint("SetTextI18n")
+    private void showTranslateButton() {
+        translateBtn.setText("Translate post");
+        translateBtn.setAlpha(1f);
+        translateBtn.setEnabled(true);
+        translateBtn.setVisibility(VISIBLE);
+        translationCard.setVisibility(GONE);
+    }
+
+    @SuppressLint("SetTextI18n")
+    private void showTranslatedUI(TLRPC.Message raw) {
+        String fromLangName = null;
+        if (raw.originalLanguage != null
+                && !TranslateController.UNKNOWN_LANGUAGE.equals(raw.originalLanguage)) {
+            fromLangName = TranslateAlert2.capitalFirst(
+                    TranslateAlert2.languageName(raw.originalLanguage));
+        }
+        if (fromLangName != null) {
+            translationHeaderView.setText("Translated from " + fromLangName);
+        } else {
+            translationHeaderView.setText("Translated");
+        }
+
+        CharSequence display;
+        if (raw.translatedText.entities != null && !raw.translatedText.entities.isEmpty()) {
+            SpannableStringBuilder ssb = SpannableStringBuilder.valueOf(raw.translatedText.text);
+            MessageObject.addEntitiesToText(ssb, raw.translatedText.entities,
+                    false, true, false, false);
+            display = Emoji.replaceEmoji(ssb,
+                    translationTextView.getPaint().getFontMetricsInt(), false);
+        } else {
+            display = Emoji.replaceEmoji(raw.translatedText.text,
+                    translationTextView.getPaint().getFontMetricsInt(), false);
+        }
+        translationTextView.setText(display);
+        translationCard.setVisibility(VISIBLE);
+
+        translateBtn.setText("Show original");
+        translateBtn.setAlpha(1f);
+        translateBtn.setEnabled(true);
+        translateBtn.setVisibility(VISIBLE);
+    }
+
+    private void onTranslateClick() {
+        if (currentItem == null) return;
+        MessageObject primary = currentItem.getPrimaryMessage();
+        if (primary == null || primary.messageOwner == null) return;
+
+        TLRPC.Message raw = primary.messageOwner;
+
+        if (raw.translatedText != null && currentItem.translationShown) {
+            currentItem.translationShown = false;
+            showTranslateButton();
+            return;
+        }
+
+        if (raw.translatedText != null && !TextUtils.isEmpty(raw.translatedToLanguage)) {
+            currentItem.translationShown = true;
+            showTranslatedUI(raw);
+            return;
+        }
+
+        if (translationLoading) return;
+        requestTranslation(primary);
+    }
+
+    @SuppressLint("SetTextI18n")
+    private void requestTranslation(MessageObject message) {
+        translationLoading = true;
+        translateBtn.setText("Translating…");
+        translateBtn.setAlpha(0.5f);
+        translateBtn.setEnabled(false);
+
+        String toLang = TranslateAlert2.getToLanguage();
+        if (toLang != null) toLang = toLang.split("_")[0];
+        if ("nb".equals(toLang)) toLang = "no";
+
+        final String targetLang = toLang;
+        final long dialogId = message.getDialogId();
+        final int msgId = message.getId();
+        final FeedController.FeedItem item = currentItem;
+
+        TLRPC.TL_messages_translateText req = new TLRPC.TL_messages_translateText();
+        req.flags |= 1;
+        req.peer = MessagesController.getInstance(currentAccount).getInputPeer(dialogId);
+        req.id.add(msgId);
+        req.to_lang = targetLang;
+
+        ConnectionsManager.getInstance(currentAccount).sendRequest(req, (res, err) ->
+                AndroidUtilities.runOnUIThread(() -> {
+                    if (err != null && "TRANSLATIONS_DISABLED_ALT".equalsIgnoreCase(err.text)) {
+                        requestTranslationFallback(message, targetLang, item);
+                        return;
+                    }
+
+                    translationLoading = false;
+
+                    if (res instanceof TLRPC.TL_messages_translateResult) {
+                        TLRPC.TL_messages_translateResult result =
+                                (TLRPC.TL_messages_translateResult) res;
+                        if (!result.result.isEmpty() && result.result.get(0) != null) {
+                            TLRPC.TL_textWithEntities source = new TLRPC.TL_textWithEntities();
+                            source.text = message.messageOwner.message;
+                            source.entities = message.messageOwner.entities != null
+                                    ? message.messageOwner.entities : new java.util.ArrayList<>();
+
+                            TLRPC.TL_textWithEntities translated =
+                                    TranslateAlert2.preprocess(source, result.result.get(0));
+
+                            applyTranslation(message, translated, targetLang, item);
+                            return;
+                        }
+                    }
+
+                    handleTranslationError(err, item);
+                })
+        );
+    }
+
+    private void requestTranslationFallback(MessageObject message, String targetLang,
+                                            FeedController.FeedItem item) {
+        String text = message.messageOwner.message;
+        String fromLang = message.messageOwner.originalLanguage;
+
+        TranslateAlert2.alternativeTranslate(text, fromLang, targetLang, (result, rateLimit) ->
+                AndroidUtilities.runOnUIThread(() -> {
+                    translationLoading = false;
+
+                    if (result != null) {
+                        TLRPC.TL_textWithEntities translated = new TLRPC.TL_textWithEntities();
+                        translated.text = result;
+                        translated.entities = new java.util.ArrayList<>();
+                        applyTranslation(message, translated, targetLang, item);
+                    } else {
+                        handleTranslationError(null, item);
+                    }
+                })
+        );
+    }
+
+    private void applyTranslation(MessageObject message, TLRPC.TL_textWithEntities translated,
+                                  String targetLang, FeedController.FeedItem item) {
+        message.messageOwner.translatedText = translated;
+        message.messageOwner.translatedToLanguage = targetLang;
+
+        MessagesStorage.getInstance(currentAccount)
+                .updateMessageCustomParams(message.getDialogId(), message.messageOwner);
+
+        item.translationShown = true;
+
+        if (currentItem == item) {
+            showTranslatedUI(message.messageOwner);
+        }
+    }
+
+    @SuppressLint("SetTextI18n")
+    private void handleTranslationError(TLRPC.TL_error err, FeedController.FeedItem item) {
+        if (currentItem == item) {
+            showTranslateButton();
+        }
+        String errorMsg = "Translation failed";
+        if (err != null && "TO_LANG_INVALID".equals(err.text)) {
+            errorMsg = "Invalid target language";
+        } else if (err != null && "QUOTA_EXCEEDED".equals(err.text)) {
+            errorMsg = "Translation quota exceeded, try later";
+        }
+        android.widget.Toast.makeText(getContext(), errorMsg,
+                android.widget.Toast.LENGTH_SHORT).show();
+    }
+
+    private boolean isUserLanguage(String lang) {
+        if (lang == null || TranslateController.UNKNOWN_LANGUAGE.equals(lang)) return false;
+        String appLang = LocaleController.getInstance().getCurrentLocaleInfo().pluralLangCode;
+        if (appLang != null) appLang = appLang.split("_")[0];
+        String sysLang = java.util.Locale.getDefault().getLanguage();
+        return TextUtils.equals(lang, appLang) || TextUtils.equals(lang, sysLang);
     }
 }

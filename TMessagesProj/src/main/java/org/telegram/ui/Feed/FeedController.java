@@ -132,6 +132,8 @@ public class FeedController implements NotificationCenter.NotificationCenterDele
         public boolean textExpanded = false;
         public final java.util.HashSet<Integer> expandedQuoteOffsets = new java.util.HashSet<>();
 
+        public boolean translationShown = false;
+
         public FeedItem(long channelId, List<MessageObject> messages, long date) {
             this.channelId = channelId;
             this.messages = messages;
