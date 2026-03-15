@@ -443,8 +443,8 @@ public class FeedController implements NotificationCenter.NotificationCenterDele
                                     }
                                 }
 
-                                recommendationEngine.scanIfNeeded(() -> {
-                                    rebuildDisplayList(); // строим display list с нуля
+                                recommendationEngine.refreshPosts(() -> {
+                                    rebuildDisplayList();
                                     callback.onLoaded(cachedFeed, false);
                                 });
                             });

@@ -124,4 +124,8 @@ public class FeedAdapter extends RecyclerView.Adapter<FeedAdapter.ViewHolder> {
             super(v);
         }
     }
+
+    public void syncFeedItems(List<FeedController.FeedItem> items) {
+        this.feedItems = new ArrayList<>(items);
+    }
 }

@@ -452,11 +452,11 @@ public class FeedRecommendationEngine {
 
     private void finishScan() {
         isScanning = false;
+        recommendedPosts.clear();
 
         if (!allDiscovered.isEmpty()) {
             loadPostsBatch(0, this::notifyComplete);
         } else {
-            recommendedPosts.clear();
             notifyComplete();
         }
     }
@@ -861,5 +861,25 @@ public class FeedRecommendationEngine {
         recommendations.addAll(newChannels);
 
         loadPostsBatch(loadedBatchIndex, onDone);
+    }
+
+    public void refreshPosts(Runnable onComplete) {
+        if (!isEnabled()) {
+            if (onComplete != null) onComplete.run();
+            return;
+        }
+
+        if (allDiscovered.isEmpty()
+                || System.currentTimeMillis() - lastScanTime >= SCAN_INTERVAL_MS) {
+            scanIfNeeded(onComplete);
+            return;
+        }
+
+        this.onScanComplete = onComplete;
+        recommendedPosts.clear();
+        loadedBatchIndex = 0;
+        noMoreRecommendations = false;
+        isLoadingMore = false;
+        loadPostsBatch(0, this::notifyComplete);
     }
 }

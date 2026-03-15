@@ -105,6 +105,7 @@ public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFr
             if (addedCount > 0) {
                 adapter.notifyItemRangeInserted(oldSize, addedCount);
             }
+            adapter.syncFeedItems(feedController.getCachedFeed());
         }
 
         updateEmpty();
@@ -1266,15 +1267,15 @@ public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFr
     public void onResume() {
         super.onResume();
         if (feedController.hasCachedFeed()) {
-            List<FeedController.FeedItem> cached = feedController.getCachedFeed();
-
-            if (adapter.getItems().isEmpty() ||
-                    adapter.getItems().size() != cached.size()) {
-                adapter.setItems(cached);
-            }
+            adapter.syncFeedItems(feedController.getCachedFeed());
 
             if (hasScrollState && savedScrollState != null && layoutManager != null) {
-                layoutManager.onRestoreInstanceState(savedScrollState);
+                final Parcelable state = savedScrollState;
+                listView.post(() -> {
+                    if (layoutManager != null) {
+                        layoutManager.onRestoreInstanceState(state);
+                    }
+                });
             }
             updateEmpty();
         } else {
@@ -1296,9 +1297,14 @@ public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFr
 
         cancelScheduledMark();
         markVisibleAsRead();
+
         if (layoutManager != null) {
             savedScrollState = layoutManager.onSaveInstanceState();
             hasScrollState = true;
+        }
+
+        if (adapter != null) {
+            adapter.syncFeedItems(feedController.getCachedFeed());
         }
     }
 
