@@ -128,4 +128,17 @@ public class FeedAdapter extends RecyclerView.Adapter<FeedAdapter.ViewHolder> {
     public void syncFeedItems(List<FeedController.FeedItem> items) {
         this.feedItems = new ArrayList<>(items);
     }
+
+    public int findPositionByUid(String uid) {
+        if (uid == null) return -1;
+        for (int i = 0; i < displayItems.size(); i++) {
+            Object item = displayItems.get(i);
+            if (item instanceof FeedController.FeedItem) {
+                if (uid.equals(((FeedController.FeedItem) item).getUniqueId())) {
+                    return i;
+                }
+            }
+        }
+        return -1;
+    }
 }

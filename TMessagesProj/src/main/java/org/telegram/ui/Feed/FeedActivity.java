@@ -1324,8 +1324,38 @@ public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFr
         }
 
         feedController.loadFeed(force, (items, hasMore) -> {
-            adapter.setItems(items);
-            if (!hasMore) {
+            if (hasMore) {
+                adapter.setItems(items);
+            } else {
+                String visibleUid = null;
+                int visibleOffset = 0;
+
+                if (layoutManager != null) {
+                    int firstPos = layoutManager.findFirstVisibleItemPosition();
+                    if (firstPos >= 0) {
+                        Object displayItem = adapter.getDisplayItem(firstPos);
+                        if (displayItem instanceof FeedController.FeedItem) {
+                            visibleUid = ((FeedController.FeedItem) displayItem)
+                                    .getUniqueId();
+                        }
+                        View firstView = layoutManager
+                                .findViewByPosition(firstPos);
+                        if (firstView != null) {
+                            visibleOffset = firstView.getTop();
+                        }
+                    }
+                }
+
+                adapter.setItems(items);
+
+                if (visibleUid != null) {
+                    int newPos = adapter.findPositionByUid(visibleUid);
+                    if (newPos >= 0 && layoutManager != null) {
+                        layoutManager.scrollToPositionWithOffset(
+                                newPos, visibleOffset);
+                    }
+                }
+
                 swipeRefreshLayout.setRefreshing(false);
             }
             updateEmpty();
