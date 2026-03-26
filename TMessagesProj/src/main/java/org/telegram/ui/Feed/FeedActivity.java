@@ -1325,7 +1325,9 @@ public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFr
 
         feedController.loadFeed(force, (items, hasMore) -> {
             adapter.setItems(items);
-            swipeRefreshLayout.setRefreshing(false);
+            if (!hasMore) {
+                swipeRefreshLayout.setRefreshing(false);
+            }
             updateEmpty();
         });
     }
