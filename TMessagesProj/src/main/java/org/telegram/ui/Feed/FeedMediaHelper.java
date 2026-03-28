@@ -273,10 +273,12 @@ public class FeedMediaHelper {
 
             for (TLRPC.DocumentAttribute attr : doc.attributes) {
                 if (attr instanceof TLRPC.TL_documentAttributeVideo) {
+                    TLRPC.TL_documentAttributeVideo videoAttr =
+                            (TLRPC.TL_documentAttributeVideo) attr;
                     isVideo = true;
-                    duration = attr.duration;
-                    videoW = attr.w;
-                    videoH = attr.h;
+                    duration = videoAttr.duration;
+                    videoW = videoAttr.w;
+                    videoH = videoAttr.h;
                 }
                 if (attr instanceof TLRPC.TL_documentAttributeAnimated) {
                     isGif = true;
@@ -323,11 +325,11 @@ public class FeedMediaHelper {
                     iv.setImage(
                             ImageLocation.getForDocument(thumb, doc), vFilter,
                             docThumbLoc, docThumbFilter,
-                            0, msg);
+                            0, doc);
                 } else if (docThumbLoc != null) {
                     iv.setImage(docThumbLoc,
                             displayWidth + "_" + height + "_b",
-                            null, null, 0, msg);
+                            null, null, 0, doc);
                 }
 
                 if (isVideo) {
@@ -456,10 +458,10 @@ public class FeedMediaHelper {
                 if (thumb != null) {
                     v.setImage(
                             ImageLocation.getForDocument(thumb, doc), "80_80",
-                            docThumbLoc, "b", 0, msg);
+                            docThumbLoc, "b", 0, doc);
                 } else if (docThumbLoc != null) {
                     v.setImage(docThumbLoc, "80_80_b",
-                            null, null, 0, msg);
+                            null, null, 0, doc);
                 }
             }
         }
