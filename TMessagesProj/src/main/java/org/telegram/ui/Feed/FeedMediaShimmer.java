@@ -3,6 +3,7 @@ package org.telegram.ui.Feed;
 import static org.telegram.messenger.AndroidUtilities.dp;
 
 import android.animation.ValueAnimator;
+import android.annotation.SuppressLint;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.LinearGradient;
@@ -10,6 +11,7 @@ import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.RectF;
 import android.graphics.Shader;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.animation.LinearInterpolator;
 
@@ -33,6 +35,15 @@ public class FeedMediaShimmer extends View {
         cornerRadius = dp(12);
         basePaint.setColor(Theme.isCurrentThemeDark() ? 0xFF2A2A2A : 0xFFE8E8E8);
         setVisibility(GONE);
+
+        setClickable(false);
+        setFocusable(false);
+    }
+
+    @SuppressLint("ClickableViewAccessibility")
+    @Override
+    public boolean onTouchEvent(MotionEvent event) {
+        return false;
     }
 
     @Override

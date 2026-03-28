@@ -1693,6 +1693,7 @@ public class FeedPostCell extends LinearLayout {
     @Override
     public boolean dispatchTouchEvent(MotionEvent ev) {
         int action = ev.getAction();
+        boolean onInteractive = isTouchOnInteractiveChild(ev);
 
         switch (action) {
             case MotionEvent.ACTION_DOWN:
@@ -1717,7 +1718,7 @@ public class FeedPostCell extends LinearLayout {
                     cancelPendingLongPress();
                     longPressStarted = false;
                 } else if (!longPressStarted && !longPressTriggered
-                        && !isTouchOnMessageText(ev)) {
+                        && !onInteractive) {                        // ← CHANGED
                     longPressStarted = true;
                     longPressRunnable = () -> {
                         longPressTriggered = true;
@@ -1743,7 +1744,10 @@ public class FeedPostCell extends LinearLayout {
                 break;
         }
 
-        doubleTapDetector.onTouchEvent(ev);
+        if (!onInteractive) {                                       // ← CHANGED
+            doubleTapDetector.onTouchEvent(ev);
+        }
+
         return super.dispatchTouchEvent(ev);
     }
 
@@ -2290,5 +2294,30 @@ public class FeedPostCell extends LinearLayout {
             recommendationHeader.setVisibility(GONE);
             subscribeBtn.setVisibility(GONE);
         }
+    }
+
+    private boolean isPointInsideView(float x, float y, View view) {
+        if (view == null || view.getVisibility() != VISIBLE) return false;
+        int[] loc = new int[2];
+        view.getLocationInWindow(loc);
+        int[] myLoc = new int[2];
+        getLocationInWindow(myLoc);
+        float vx = loc[0] - myLoc[0];
+        float vy = loc[1] - myLoc[1];
+        return x >= vx && x <= vx + view.getWidth()
+                && y >= vy && y <= vy + view.getHeight();
+    }
+
+    private boolean isTouchOnInteractiveChild(MotionEvent ev) {
+        float x = ev.getX();
+        float y = ev.getY();
+        if (isPointInsideView(x, y, mediaContainer)) return true;
+        if (isPointInsideView(x, y, roundVideoView)) return true;
+        if (isPointInsideView(x, y, mediaRow)) return true;
+        if (isPointInsideView(x, y, reactionsView)) return true;
+        if (isPointInsideView(x, y, commentsBtn)) return true;
+        if (isPointInsideView(x, y, shareBtn)) return true;
+        if (isTouchOnMessageText(ev)) return true;
+        return false;
     }
 }
