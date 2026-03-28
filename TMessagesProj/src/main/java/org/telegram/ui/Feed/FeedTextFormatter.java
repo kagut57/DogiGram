@@ -36,13 +36,10 @@ public class FeedTextFormatter {
     private final Theme.ResourcesProvider resourceProvider;
     private RebuildCallback rebuildCallback;
 
-    private final List<int[]> dateReplacements;
-
     public FeedTextFormatter(Theme.ResourcesProvider rp,
-                             HashSet<Integer> expandedOffsets, List<int[]> dateReplacements) {
+                             HashSet<Integer> expandedOffsets) {
         this.resourceProvider = rp;
         this.expandedQuoteOffsets = expandedOffsets;
-        this.dateReplacements = dateReplacements;
     }
 
     public void setRebuildCallback(@Nullable RebuildCallback callback) {
