@@ -2,7 +2,6 @@ package org.telegram.ui.Feed;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
-import android.view.View;
 import android.view.ViewGroup;
 
 import androidx.annotation.NonNull;
@@ -13,10 +12,10 @@ import org.telegram.ui.ActionBar.Theme;
 import java.util.ArrayList;
 import java.util.List;
 
-public class FeedAdapter extends RecyclerView.Adapter<FeedAdapter.ViewHolder> {
+public class FeedAdapter extends RecyclerView.Adapter<FeedViewHolder> {
 
-    private static final int VIEW_TYPE_POST = 0;
-    private static final int VIEW_TYPE_SEPARATOR = 1;
+    static final int VIEW_TYPE_POST = 0;
+    static final int VIEW_TYPE_SEPARATOR = 1;
 
     private final Context context;
     private final int currentAccount;
@@ -44,16 +43,20 @@ public class FeedAdapter extends RecyclerView.Adapter<FeedAdapter.ViewHolder> {
         notifyDataSetChanged();
     }
 
-    private void rebuildDisplay() {
-        displayItems = FeedController.getInstance(currentAccount).getDisplayItems();
+    public void syncFeedItems(List<FeedController.FeedItem> items) {
+        this.feedItems = new ArrayList<>(items);
+    }
+
+    public List<FeedController.FeedItem> getItems() {
+        return feedItems;
     }
 
     public void updateItem(int pos) {
         if (pos >= 0 && pos < displayItems.size()) notifyItemChanged(pos);
     }
 
-    public List<FeedController.FeedItem> getItems() {
-        return feedItems;
+    private void rebuildDisplay() {
+        displayItems = FeedController.getInstance(currentAccount).getDisplayItems();
     }
 
     public Object getDisplayItem(int position) {
@@ -66,6 +69,19 @@ public class FeedAdapter extends RecyclerView.Adapter<FeedAdapter.ViewHolder> {
     public int findItemPosition(FeedController.FeedItem item) {
         for (int i = 0; i < displayItems.size(); i++) {
             if (displayItems.get(i) == item) return i;
+        }
+        return -1;
+    }
+
+    public int findPositionByUid(String uid) {
+        if (uid == null) return -1;
+        for (int i = 0; i < displayItems.size(); i++) {
+            Object item = displayItems.get(i);
+            if (item instanceof FeedController.FeedItem) {
+                if (uid.equals(((FeedController.FeedItem) item).getUniqueId())) {
+                    return i;
+                }
+            }
         }
         return -1;
     }
@@ -86,59 +102,14 @@ public class FeedAdapter extends RecyclerView.Adapter<FeedAdapter.ViewHolder> {
 
     @NonNull
     @Override
-    public ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-        if (viewType == VIEW_TYPE_SEPARATOR) {
-            FeedSeparatorCell sepCell = new FeedSeparatorCell(context, resourceProvider);
-            sepCell.setLayoutParams(new RecyclerView.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT));
-            return new ViewHolder(sepCell);
-        }
-
-        FeedPostCell postCell = new FeedPostCell(context, currentAccount, resourceProvider);
-        postCell.setCallback(cellCallback);
-        postCell.setLayoutParams(new RecyclerView.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT));
-        return new ViewHolder(postCell);
+    public FeedViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+        return FeedViewHolder.create(context, currentAccount, resourceProvider,
+                cellCallback, viewType);
     }
 
     @Override
-    public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
+    public void onBindViewHolder(@NonNull FeedViewHolder holder, int position) {
         if (position < 0 || position >= displayItems.size()) return;
-
-        Object item = displayItems.get(position);
-
-        if (item instanceof FeedController.FeedSeparator
-                && holder.itemView instanceof FeedSeparatorCell) {
-            ((FeedSeparatorCell) holder.itemView).setText(
-                    "You're all caught up! Here are some recommendations");
-        } else if (item instanceof FeedController.FeedItem
-                && holder.itemView instanceof FeedPostCell) {
-            ((FeedPostCell) holder.itemView).setPost((FeedController.FeedItem) item);
-        }
-    }
-
-    static class ViewHolder extends RecyclerView.ViewHolder {
-        ViewHolder(@NonNull View v) {
-            super(v);
-        }
-    }
-
-    public void syncFeedItems(List<FeedController.FeedItem> items) {
-        this.feedItems = new ArrayList<>(items);
-    }
-
-    public int findPositionByUid(String uid) {
-        if (uid == null) return -1;
-        for (int i = 0; i < displayItems.size(); i++) {
-            Object item = displayItems.get(i);
-            if (item instanceof FeedController.FeedItem) {
-                if (uid.equals(((FeedController.FeedItem) item).getUniqueId())) {
-                    return i;
-                }
-            }
-        }
-        return -1;
+        holder.bind(displayItems.get(position));
     }
 }

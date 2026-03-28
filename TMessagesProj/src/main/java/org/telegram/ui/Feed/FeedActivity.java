@@ -2,17 +2,13 @@ package org.telegram.ui.Feed;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
 
-import android.annotation.SuppressLint;
 import android.content.Context;
 import android.os.Bundle;
 import android.os.Parcelable;
-import android.text.TextUtils;
 import android.text.style.ClickableSpan;
-import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
-import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.TextView;
 
@@ -21,100 +17,79 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
-import org.telegram.messenger.UserObject;
-import org.telegram.messenger.browser.Browser;
-import org.telegram.tgnet.TLObject;
-import org.telegram.messenger.FileLoader;
-import org.telegram.messenger.MessagesStorage;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.LocaleController;
-import org.telegram.messenger.MessageObject;
-import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.R;
-import org.telegram.messenger.UserConfig;
-import org.telegram.messenger.Utilities;
-import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.ActionBar;
 import org.telegram.ui.ActionBar.ActionBarMenu;
 import org.telegram.ui.ActionBar.BaseFragment;
-import org.telegram.ui.ActionBar.BottomSheet;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.ChatActivity;
-import org.telegram.ui.Components.AlertsCreator;
 import org.telegram.ui.Components.Bulletin;
-import org.telegram.ui.Components.BulletinFactory;
-import org.telegram.ui.Components.ItemOptions;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.RecyclerListView;
-import org.telegram.ui.Components.ScrimOptions;
-import org.telegram.ui.Components.ShareAlert;
 import org.telegram.ui.DialogsActivity;
 import org.telegram.ui.MainTabsActivity;
-import org.telegram.ui.PhotoViewer;
-import org.telegram.ui.Stars.StarsReactionsSheet;
 
-import java.io.File;
-import java.util.ArrayList;
 import java.util.List;
 
 public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFragmentDelegate {
 
-    private final Runnable onNewPostRunnable = this::onNewPostsReceived;
-
     private static final int MENU_SETTINGS = 1;
 
-    private RecyclerListView listView;
-    private FeedAdapter adapter;
-    private LinearLayoutManager layoutManager;
-    private FeedController feedController;
-    private SwipeRefreshLayout swipeRefreshLayout;
-    private TextView emptyView;
+    private final Runnable onNewPostRunnable = this::onNewPostsReceived;
 
-    private boolean hasMainTabs;
+    RecyclerListView listView;
+    FeedAdapter adapter;
+    LinearLayoutManager layoutManager;
+    SwipeRefreshLayout swipeRefreshLayout;
+    TextView emptyView;
+    View loadingFooter;
+
+    FeedController feedController;
+    boolean hasMainTabs;
+    boolean isLoadingMore;
 
     private static Parcelable savedScrollState;
-    private static boolean hasScrollState = false;
-
+    private static boolean hasScrollState;
     private Runnable markReadRunnable;
 
-    private Runnable pendingPaidSend;
-    private FeedController.FeedItem pendingPaidItem;
-    private int pendingPaidAmount;
-    private long pendingPaidRandomId;
-    private Bulletin currentStarBulletin;
+    FeedActionHandler actionHandler;
+    FeedShareHelper shareHelper;
+    FeedReactionHandler reactionHandler;
+    FeedReportHelper reportHelper;
 
-    private boolean isLoadingMore = false;
-    private View loadingFooter;
-
-    private void onNewPostsReceived() {
-        if (adapter == null) return;
-
-        List<FeedController.FeedItem> merged = feedController.flushMergedItems();
-        for (FeedController.FeedItem item : merged) {
-            int pos = adapter.findItemPosition(item);
-            if (pos >= 0) {
-                adapter.notifyItemChanged(pos);
-            }
-        }
-
-        List<FeedController.FeedItem> pending = feedController.flushPendingNewItems();
-        if (!pending.isEmpty()) {
-            int oldSize = adapter.getItemCount();
-            int addedCount = feedController.appendItemsToDisplay(pending);
-            if (addedCount > 0) {
-                adapter.notifyItemRangeInserted(oldSize, addedCount);
-            }
-            adapter.syncFeedItems(feedController.getCachedFeed());
-        }
-
-        updateEmpty();
+    int getAccount() {
+        return currentAccount;
     }
 
-    @Override
+    Theme.ResourcesProvider getResProvider() {
+        return resourceProvider;
+    }
+
+    void showBulletinTop(Bulletin b) {
+        b.show(true);
+        b.getLayout().post(() -> {
+            View pv = (View) b.getLayout().getParent();
+            if (pv != null && pv.getLayoutParams() instanceof FrameLayout.LayoutParams) {
+                FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) pv.getLayoutParams();
+                lp.topMargin = ActionBar.getCurrentActionBarHeight()
+                        + AndroidUtilities.statusBarHeight + dp(8);
+                pv.setLayoutParams(lp);
+            }
+        });
+    }
+
+   @Override
     public boolean onFragmentCreate() {
         feedController = FeedController.getInstance(currentAccount);
         hasMainTabs = arguments != null && arguments.getBoolean("hasMainTabs", false);
+
+        actionHandler = new FeedActionHandler(this);
+        shareHelper = new FeedShareHelper(this);
+        reactionHandler = new FeedReactionHandler(this);
+        reportHelper = new FeedReportHelper(this);
 
         feedController.startObserving();
         feedController.addNewPostListener(onNewPostRunnable);
@@ -127,6 +102,39 @@ public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFr
         super.onFragmentDestroy();
         feedController.removeNewPostListener(onNewPostRunnable);
         feedController.stopObserving();
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        if (feedController.hasCachedFeed()) {
+            adapter.syncFeedItems(feedController.getCachedFeed());
+            if (hasScrollState && savedScrollState != null && layoutManager != null) {
+                final Parcelable state = savedScrollState;
+                listView.post(() -> {
+                    if (layoutManager != null) layoutManager.onRestoreInstanceState(state);
+                });
+            }
+            updateEmpty();
+        } else {
+            loadFeed(false);
+        }
+    }
+
+    @Override
+    public void onPause() {
+        super.onPause();
+        reactionHandler.flushPending();
+        cancelScheduledMark();
+        markVisibleAsRead();
+
+        if (layoutManager != null) {
+            savedScrollState = layoutManager.onSaveInstanceState();
+            hasScrollState = true;
+        }
+        if (adapter != null) {
+            adapter.syncFeedItems(feedController.getCachedFeed());
+        }
     }
 
     @Override
@@ -161,196 +169,13 @@ public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFr
                 : dp(96);
 
         adapter = new FeedAdapter(context, currentAccount, resourceProvider);
-        adapter.setCellCallback(new FeedPostCell.Callback() {
-            @Override public void onHeaderClick(FeedController.FeedItem item) {
-                saveScroll(); openChannel(item);
-            }
-            @Override public void onMediaClick(FeedController.FeedItem item, int idx) {
-                openMedia(item, idx);
-            }
-            @Override public void onMenuClick(View anchor, FeedController.FeedItem item) {
-                showMenu(anchor, item);
-            }
-            @Override public void onCommentsClick(FeedController.FeedItem item) {
-                saveScroll();
-                openComments(item);
-            }
-            @Override public void onShareClick(FeedController.FeedItem item) {
-                sharePost(item);
-            }
-            @Override public void onForwardClick(long channelId, int messageId) {
-                saveScroll();
-                Bundle args = new Bundle();
-                args.putLong("chat_id", channelId);
-                if (messageId > 0) args.putInt("message_id", messageId);
-                presentFragment(new ChatActivity(args));
-            }
-            @Override public void onReplyClick(long channelId, int messageId) {
-                saveScroll();
-                Bundle args = new Bundle();
-                args.putLong("chat_id", channelId);
-                if (messageId > 0) args.putInt("message_id", messageId);
-                presentFragment(new ChatActivity(args));
-            }
-            @Override
-            public void onInlineButtonClick(FeedController.FeedItem item, TLRPC.KeyboardButton button) {
-                saveScroll();
-                openChannel(item);
-            }
-            @Override
-            public void onReactionToggle(FeedController.FeedItem item, TLRPC.Reaction reaction) {
-                sendReaction(item, reaction);
-            }
-
-            @Override
-            public void onPaidReactionTap(FeedController.FeedItem item) {
-                handlePaidReaction(item, 1);
-            }
-
-            @Override
-            public void onPaidReactionLongPress(FeedController.FeedItem item) {
-                showStarAmountPicker(item);
-            }
-            @Override
-            public void onDoubleTap(FeedController.FeedItem item) {
-                handleDoubleTap(item);
-            }
-            @Override
-            public void onBookmarkClick(FeedController.FeedItem item) {
-                toggleBookmark(item);
-            }
-            @Override
-            public void onLinkClick(String url) {
-                if (url == null) return;
-                AlertsCreator.showOpenUrlAlert(FeedActivity.this, url, true, true, resourceProvider);
-            }
-
-            @Override
-            public void onLinkLongPress(String url, View cell, ClickableSpan span) {
-                if (url == null || getParentActivity() == null) return;
-                showLinkOptions(url, cell, span);
-            }
-            @Override
-            public void onPostLongPress(View cell) {
-                showPostScrim(cell);
-            }
-            @Override
-            public void onSubscribeClick(FeedController.FeedItem item) {
-                subscribeFromRecommendation(item);
-            }
-
-            @Override
-            public void onDismissRecommendation(FeedController.FeedItem item) {
-                dismissRecommendedPost(item);
-            }
-
-            @Override
-            public void onDateEntityClick(TLRPC.TL_messageEntityFormattedDate entity, View anchor) {
-                if (entity == null || getParentActivity() == null) return;
-
-                String fullDate = LocaleController.formatEntityFormattedDate(entity, true);
-
-                final ScrimOptions scrimDialog = new ScrimOptions(getParentActivity(), resourceProvider);
-                final ItemOptions options = ItemOptions.makeOptions(
-                        scrimDialog.getContainerView(), resourceProvider,
-                        scrimDialog.getContainerView());
-
-                options.addText(fullDate, 15);
-                options.addGap();
-
-                options.add(R.drawable.msg_copy,
-                        LocaleController.getString(R.string.Copy),
-                        () -> {
-                            AndroidUtilities.addToClipboard(fullDate);
-                            BulletinFactory.of(FeedActivity.this)
-                                    .createCopyBulletin(
-                                            LocaleController.getString(R.string.TextCopied))
-                                    .show();
-                        });
-
-                options.add(R.drawable.msg_calendar2,
-                        "Add to calendar",
-                        () -> {
-                            try {
-                                android.content.Intent intent = new android.content.Intent(
-                                        android.content.Intent.ACTION_INSERT);
-                                intent.setData(android.provider.CalendarContract.Events.CONTENT_URI);
-                                intent.putExtra(
-                                        android.provider.CalendarContract.EXTRA_EVENT_BEGIN_TIME,
-                                        entity.date * 1000L);
-                                intent.putExtra(
-                                        android.provider.CalendarContract.Events.TITLE,
-                                        fullDate);
-                                getParentActivity().startActivity(intent);
-                            } catch (Exception e) {
-                                BulletinFactory.of(FeedActivity.this)
-                                        .createSimpleBulletin(R.drawable.msg_calendar2,
-                                                "No calendar app found")
-                                        .show();
-                            }
-                        });
-
-                scrimDialog.setItemOptions(options);
-                scrimDialog.setOnDismissListener(d -> options.dismiss());
-                options.setOnDismiss(scrimDialog::dismissFast);
-
-                if (anchor instanceof FeedPostCell) {
-                    TextView tv = ((FeedPostCell) anchor).getMessageTextView();
-                    if (tv.getText() instanceof android.text.Spanned) {
-                        android.text.Spanned spanned = (android.text.Spanned) tv.getText();
-                        FeedDateSpan[] spans = spanned.getSpans(0,
-                                tv.getText().length(), FeedDateSpan.class);
-                        for (FeedDateSpan ds : spans) {
-                            if (ds.entity == entity) {
-                                scrimDialog.setScrimForTextView(tv, ds);
-                                break;
-                            }
-                        }
-                    }
-                }
-
-                scrimDialog.show();
-            }
-        });
+        adapter.setCellCallback(createCellCallback());
 
         layoutManager = new LinearLayoutManager(context);
         listView = new RecyclerListView(context);
         listView.setLayoutManager(layoutManager);
         listView.setAdapter(adapter);
         listView.setClipToPadding(false);
-
-        loadingFooter = new FrameLayout(context) {
-            @Override
-            protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-                super.onMeasure(widthMeasureSpec,
-                        MeasureSpec.makeMeasureSpec(dp(60), MeasureSpec.EXACTLY));
-            }
-        };
-        org.telegram.ui.Components.RadialProgressView progressFooter =
-                new org.telegram.ui.Components.RadialProgressView(context);
-        progressFooter.setSize(dp(28));
-        progressFooter.setProgressColor(Theme.getColor(
-                Theme.key_featuredStickers_addButton, resourceProvider));
-        ((FrameLayout) loadingFooter).addView(progressFooter,
-                LayoutHelper.createFrame(40, 40, Gravity.CENTER));
-        loadingFooter.setVisibility(View.GONE);
-
-        int footerBottom = hasMainTabs
-                ? dp(DialogsActivity.MAIN_TABS_HEIGHT + DialogsActivity.MAIN_TABS_MARGIN + 24)
-                : dp(24);
-        rootView.addView(loadingFooter, LayoutHelper.createFrame(
-                LayoutHelper.MATCH_PARENT, 60,
-                Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL,
-                0, 0, 0, footerBottom / AndroidUtilities.density));
-        org.telegram.ui.Components.RadialProgressView progressView =
-                new org.telegram.ui.Components.RadialProgressView(context);
-        progressView.setSize(dp(28));
-        progressView.setProgressColor(Theme.getColor(
-                Theme.key_featuredStickers_addButton, resourceProvider));
-        ((FrameLayout) loadingFooter).addView(progressView,
-                LayoutHelper.createFrame(40, 40, Gravity.CENTER));
-        loadingFooter.setVisibility(View.GONE);
-
         listView.setVerticalScrollBarEnabled(true);
         listView.setPadding(0, topPad, 0, bottomPad);
         listView.setClipChildren(false);
@@ -372,14 +197,19 @@ public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFr
             }
         });
 
+        buildLoadingFooter(context, rootView);
+
         swipeRefreshLayout = new SwipeRefreshLayout(context);
         swipeRefreshLayout.setClipChildren(false);
         swipeRefreshLayout.setClipToPadding(false);
         swipeRefreshLayout.setProgressViewOffset(false, topPad, topPad + dp(64));
-        swipeRefreshLayout.setColorSchemeColors(Theme.getColor(Theme.key_featuredStickers_addButton, resourceProvider));
+        swipeRefreshLayout.setColorSchemeColors(
+                Theme.getColor(Theme.key_featuredStickers_addButton, resourceProvider));
         swipeRefreshLayout.setOnRefreshListener(() -> loadFeed(true));
-        swipeRefreshLayout.addView(listView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
-        rootView.addView(swipeRefreshLayout, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
+        swipeRefreshLayout.addView(listView,
+                LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
+        rootView.addView(swipeRefreshLayout,
+                LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
 
         emptyView = new TextView(context);
         emptyView.setText(LocaleController.getString("FeedEmpty", R.string.FeedEmpty));
@@ -388,7 +218,8 @@ public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFr
         emptyView.setGravity(Gravity.CENTER);
         emptyView.setVisibility(View.GONE);
         emptyView.setPadding(dp(40), 0, dp(40), 0);
-        rootView.addView(emptyView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
+        rootView.addView(emptyView,
+                LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
 
         FeedPlayerBar playerBar = new FeedPlayerBar(context, this, listView, resourceProvider);
         FrameLayout.LayoutParams playerLp = new FrameLayout.LayoutParams(
@@ -401,918 +232,236 @@ public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFr
         return fragmentView;
     }
 
-    private void showLinkOptions(String url, View cell, ClickableSpan span) {
-        if (getParentActivity() == null || url == null || cell == null) return;
-
-        String cleanUrl = url;
-        try {
-            android.net.Uri uri = android.net.Uri.parse(url);
-            if (uri.getScheme() != null) {
-                cleanUrl = url.replaceFirst(uri.getScheme() + "://", "");
-                if (cleanUrl.endsWith("/")) {
-                    cleanUrl = cleanUrl.substring(0, cleanUrl.length() - 1);
-                }
-            }
-        } catch (Exception ignored) {}
-
-        final String urlFinal = url;
-        final String cleanUrlFinal = cleanUrl;
-
-        boolean isInternal = Browser.isInternalUrl(url, null);
-        boolean customTabs = org.telegram.messenger.SharedConfig.inappBrowser
-                && !isInternal
-                && !url.startsWith("#")
-                && !url.startsWith("$");
-        boolean isMail = url.startsWith("mailto:");
-        boolean isHashtag = url.startsWith("#") || url.startsWith("$");
-
-        final ScrimOptions scrimDialog = new ScrimOptions(getParentActivity(), resourceProvider);
-
-        final ItemOptions options = ItemOptions.makeOptions(
-                scrimDialog.getContainerView(), resourceProvider, scrimDialog.getContainerView());
-
-        if (!isMail) {
-            options.add(R.drawable.msg_openin,
-                    LocaleController.getString(customTabs && !isHashtag
-                            ? R.string.OpenInTelegramBrowser
-                            : R.string.Open),
-                    () -> Browser.openUrl(getParentActivity(), urlFinal, true));
-        }
-
-        if (customTabs && !isHashtag || isMail) {
-            options.add(R.drawable.msg_language,
-                    LocaleController.getString(R.string.OpenInSystemBrowser),
-                    () -> Browser.openUrl(getParentActivity(), urlFinal, false));
-        }
-
-        options.add(R.drawable.msg_copy,
-                LocaleController.getString(isHashtag ? R.string.CopyHashtag
-                        : isMail ? R.string.CopyMail
-                        : R.string.CopyLink),
-                () -> {
-                    AndroidUtilities.addToClipboard(
-                            isMail ? urlFinal.substring("mailto:".length()) : urlFinal);
-                    BulletinFactory.of(FeedActivity.this).createCopyLinkBulletin().show();
-                });
-
-        if (!isHashtag && !isMail) {
-            options.add(R.drawable.msg_copy, "Copy without protocol", () -> {
-                AndroidUtilities.addToClipboard(cleanUrlFinal);
-                BulletinFactory.of(FeedActivity.this).createCopyLinkBulletin().show();
-            });
-        }
-
-        scrimDialog.setItemOptions(options);
-        scrimDialog.setOnDismissListener(d -> options.dismiss());
-        options.setOnDismiss(scrimDialog::dismissFast);
-
-        if (cell instanceof FeedPostCell) {
-            TextView tv = ((FeedPostCell) cell).getMessageTextView();
-            scrimDialog.setScrimForTextView(tv, span);
-        }
-
-        scrimDialog.show();
-    }
-
-    private void toggleBookmark(FeedController.FeedItem item) {
-        if (item.isBookmarked) {
-            item.isBookmarked = false;
-            updateBookmarkIcon(item);
-
-            long selfId = UserConfig.getInstance(currentAccount).getClientUserId();
-            Bulletin b = BulletinFactory.of(FeedActivity.this)
-                    .createSimpleBulletin(R.drawable.msg_saved,
-                            "Removed from bookmarks", "Open Saved", () -> {
-                                Bundle args = new Bundle();
-                                args.putLong("user_id", selfId);
-                                presentFragment(new ChatActivity(args));
-                            });
-            b.setDuration(3000);
-            b.show(true);
-            b.getLayout().post(() -> {
-                View pv = (View) b.getLayout().getParent();
-                if (pv != null && pv.getLayoutParams() instanceof FrameLayout.LayoutParams) {
-                    FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) pv.getLayoutParams();
-                    lp.topMargin = ActionBar.getCurrentActionBarHeight()
-                            + AndroidUtilities.statusBarHeight + dp(8);
-                    pv.setLayoutParams(lp);
-                }
-            });
-            return;
-        }
-
-        long selfId = UserConfig.getInstance(currentAccount).getClientUserId();
-        MessagesController controller = MessagesController.getInstance(currentAccount);
-        TLRPC.Chat chat = controller.getChat(-item.channelId);
-
-        TLRPC.TL_messages_forwardMessages req = new TLRPC.TL_messages_forwardMessages();
-        req.to_peer = controller.getInputPeer(selfId);
-        req.from_peer = controller.getInputPeer(item.channelId);
-        req.random_id = new ArrayList<>();
-        req.id = new ArrayList<>();
-        req.silent = true;
-        if (chat != null && chat.noforwards) {
-            req.drop_author = true;
-        }
-        for (MessageObject m : item.messages) {
-            req.id.add(m.getId());
-            req.random_id.add(Utilities.random.nextLong());
-        }
-
-        item.isBookmarked = true;
-        updateBookmarkIcon(item);
-
-        Bulletin b = BulletinFactory.of(FeedActivity.this)
-                .createSimpleBulletin(R.drawable.msg_saved, "Saved to bookmarks", "View", () -> {
-                    Bundle args = new Bundle();
-                    args.putLong("user_id", selfId);
-                    presentFragment(new ChatActivity(args));
-                });
-        b.setDuration(3000);
-        b.show(true);
-        b.getLayout().post(() -> {
-            View pv = (View) b.getLayout().getParent();
-            if (pv != null && pv.getLayoutParams() instanceof FrameLayout.LayoutParams) {
-                FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) pv.getLayoutParams();
-                lp.topMargin = ActionBar.getCurrentActionBarHeight()
-                        + AndroidUtilities.statusBarHeight + dp(8);
-                pv.setLayoutParams(lp);
-            }
-        });
-
-        ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> {
-            AndroidUtilities.runOnUIThread(() -> {
-                if (error != null) {
-                    item.isBookmarked = false;
-                    updateBookmarkIcon(item);
-                    showTopBulletin(R.drawable.msg_saved);
-                }
-            });
-        });
-    }
-
-    private void updateBookmarkIcon(FeedController.FeedItem item) {
-        int pos = adapter.findItemPosition(item);
-        if (pos < 0) return;
-        RecyclerView.ViewHolder vh = listView.findViewHolderForAdapterPosition(pos);
-        if (vh != null && vh.itemView instanceof FeedPostCell) {
-            ((FeedPostCell) vh.itemView).updateBookmarkState(item.isBookmarked);
-        }
-    }
-
-    private void showTopBulletin(int icon) {
-        Bulletin b = BulletinFactory.of(FeedActivity.this)
-                .createSimpleBulletin(icon, "Failed to save");
-        b.show(true);
-        b.getLayout().post(() -> {
-            View pv = (View) b.getLayout().getParent();
-            if (pv != null && pv.getLayoutParams() instanceof FrameLayout.LayoutParams) {
-                FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) pv.getLayoutParams();
-                lp.topMargin = ActionBar.getCurrentActionBarHeight()
-                        + AndroidUtilities.statusBarHeight + dp(8);
-                pv.setLayoutParams(lp);
-            }
-        });
-    }
-
-    private void handleDoubleTap(FeedController.FeedItem item) {
-        int pos = adapter.findItemPosition(item);
-        if (pos < 0) return;
-
-        RecyclerView.ViewHolder vh = listView.findViewHolderForAdapterPosition(pos);
-        if (vh == null || !(vh.itemView instanceof FeedPostCell)) return;
-
-        FeedPostCell cell = (FeedPostCell) vh.itemView;
-        FeedReactionsView reactionsView = cell.getReactionsView();
-
-        if (reactionsView != null) {
-            boolean sent = reactionsView.triggerDefaultReaction();
-            if (!sent) {
-                reactionsView.animate()
-                        .scaleX(0.95f).scaleY(0.95f)
-                        .setDuration(100)
-                        .withEndAction(() ->
-                                reactionsView.animate()
-                                        .scaleX(1f).scaleY(1f)
-                                        .setDuration(150)
-                                        .start()
-                        ).start();
-            }
-        }
-    }
-
-    private void showMenu(View anchor, FeedController.FeedItem item) {
-        ItemOptions options = ItemOptions.makeOptions(this, anchor);
-
-        options.add(R.drawable.msg_saved, "Save to bookmarks", () -> {
-            forwardToSaved(item);
-            BulletinFactory.of(FeedActivity.this)
-                    .createSimpleBulletin(R.drawable.msg_saved,
-                            LocaleController.getString("FeedSavedToBookmarks", R.string.FeedSavedToBookmarks))
-                    .show();
-        });
-
-        options.add(R.drawable.msg_channel, "Open channel", () -> {
-            saveScroll();
-            openChannel(item);
-        });
-
-        options.add(R.drawable.msg_markread, "Mark as read", () -> {
-            feedController.markAsRead(item);
-            int pos = adapter.findItemPosition(item);
-            if (pos >= 0) adapter.updateItem(pos);
-        });
-
-        options.addGap();
-
-        TLRPC.Chat chat = MessagesController.getInstance(currentAccount).getChat(-item.channelId);
-        String channelName = chat != null ? chat.title : "this channel";
-        options.add(R.drawable.msg_block2, "Hide from feed", () -> {
-            long chatId = -item.channelId;
-            feedController.hideChannel(chatId);
-            adapter.setItems(feedController.getCachedFeed());
-            updateEmpty();
-            BulletinFactory.of(FeedActivity.this)
-                    .createSimpleBulletin(R.drawable.msg_block2,
-                            channelName + " hidden from feed")
-                    .show();
-        });
-
-        options.add(R.drawable.msg_report, LocaleController.getString(R.string.ReportChat), true, () -> {
-            showReportDialog(item);
-        });
-
-        options.show();
-    }
-
-    private void openComments(FeedController.FeedItem item) {
-        MessageObject msg = item.getPrimaryMessage();
-        TLRPC.MessageReplies replies = msg.messageOwner.replies;
-
-        if (replies == null || replies.channel_id == 0) {
-            openChannel(item);
-            return;
-        }
-
-        swipeRefreshLayout.setRefreshing(true);
-
-        TLRPC.TL_messages_getDiscussionMessage req = new TLRPC.TL_messages_getDiscussionMessage();
-        req.peer = MessagesController.getInstance(currentAccount).getInputPeer(item.channelId);
-        req.msg_id = msg.getId();
-
-        ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> {
-            AndroidUtilities.runOnUIThread(() -> {
-                swipeRefreshLayout.setRefreshing(false);
-
-                if (response instanceof TLRPC.TL_messages_discussionMessage) {
-                    TLRPC.TL_messages_discussionMessage res = (TLRPC.TL_messages_discussionMessage) response;
-
-                    MessagesController controller = MessagesController.getInstance(currentAccount);
-                    controller.putUsers(res.users, false);
-                    controller.putChats(res.chats, false);
-
-                    if (!res.messages.isEmpty()) {
-                        TLRPC.Message discussionMsg = res.messages.get(0);
-
-                        long chatId = 0;
-                        if (discussionMsg.peer_id != null) {
-                            if (discussionMsg.peer_id.channel_id != 0) {
-                                chatId = discussionMsg.peer_id.channel_id;
-                            } else if (discussionMsg.peer_id.chat_id != 0) {
-                                chatId = discussionMsg.peer_id.chat_id;
-                            }
-                        }
-
-                        if (chatId != 0) {
-                            ArrayList<MessageObject> threadMessages = new ArrayList<>();
-                            for (TLRPC.Message m : res.messages) {
-                                threadMessages.add(new MessageObject(currentAccount, m, true, true));
-                            }
-
-                            TLRPC.Chat discussionChat = controller.getChat(chatId);
-
-                            Bundle args = new Bundle();
-                            args.putLong("chat_id", chatId);
-                            args.putInt("message_id", discussionMsg.id);
-                            args.putInt("topic_id", discussionMsg.id);
-
-                            ChatActivity chatActivity = new ChatActivity(args);
-
-                            chatActivity.setThreadMessages(
-                                    threadMessages,
-                                    discussionChat,
-                                    discussionMsg.id,
-                                    res.read_inbox_max_id,
-                                    res.read_outbox_max_id,
-                                    null
-                            );
-
-                            presentFragment(chatActivity);
-                            return;
-                        }
-                    }
-                }
-
-                openChannel(item);
-            });
-        });
-    }
-
-    private void sharePost(FeedController.FeedItem item) {
-        if (getParentActivity() == null) return;
-
-        TLRPC.Chat chat = MessagesController.getInstance(currentAccount).getChat(-item.channelId);
-        boolean noForwards = chat != null && chat.noforwards;
-
-        if (!noForwards) {
-            ArrayList<MessageObject> msgs = new ArrayList<>(item.messages);
-            ShareAlert alert = new ShareAlert(getParentActivity(), msgs, null, false, null, false);
-            showDialog(alert);
-        } else {
-            forwardAsCopy(item);
-        }
-    }
-
-    private void forwardAsCopy(FeedController.FeedItem item) {
-        String link = buildPostLink(item);
-
-        new ShareAlert(getParentActivity(), null, link, false, null, false) {
+    private void buildLoadingFooter(Context context, FrameLayout rootView) {
+        loadingFooter = new FrameLayout(context) {
             @Override
-            public void dismissInternal() {
-                super.dismissInternal();
+            protected void onMeasure(int w, int h) {
+                super.onMeasure(w, MeasureSpec.makeMeasureSpec(dp(60), MeasureSpec.EXACTLY));
             }
         };
 
-        showCopyDestinationPicker(item, link);
+        org.telegram.ui.Components.RadialProgressView progress =
+                new org.telegram.ui.Components.RadialProgressView(context);
+        progress.setSize(dp(28));
+        progress.setProgressColor(
+                Theme.getColor(Theme.key_featuredStickers_addButton, resourceProvider));
+        ((FrameLayout) loadingFooter).addView(progress,
+                LayoutHelper.createFrame(40, 40, Gravity.CENTER));
+        loadingFooter.setVisibility(View.GONE);
+
+        int footerBottom = hasMainTabs
+                ? dp(DialogsActivity.MAIN_TABS_HEIGHT + DialogsActivity.MAIN_TABS_MARGIN + 24)
+                : dp(24);
+        rootView.addView(loadingFooter, LayoutHelper.createFrame(
+                LayoutHelper.MATCH_PARENT, 60,
+                Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL,
+                0, 0, 0, footerBottom / AndroidUtilities.density));
     }
 
-    private void showCopyDestinationPicker(FeedController.FeedItem item, String link) {
-        Bundle args = new Bundle();
-        args.putBoolean("onlySelect", true);
-        args.putInt("dialogsType", 3);
-
-        DialogsActivity dialogsActivity = new DialogsActivity(args);
-
-        dialogsActivity.setDelegate((fragment, dids, message, param, param2, scheduleDate, sendMode, topicsFragment) -> {
-            if (dids != null) {
-                for (MessagesStorage.TopicKey topicKey : dids) {
-                    long did = topicKey.dialogId;
-                    if (did != 0) {
-                        forwardDropAuthor(item, did, link);
-                    }
-                }
+    private FeedPostCell.Callback createCellCallback() {
+        return new FeedPostCell.Callback() {
+            @Override
+            public void onHeaderClick(FeedController.FeedItem item) {
+                saveScroll();
+                openChannel(item);
             }
-            fragment.finishFragment();
-            BulletinFactory.of(FeedActivity.this)
-                    .createSimpleBulletin(R.drawable.msg_forward,
-                            LocaleController.getString("FeedSavedToBookmarks", R.string.FeedSavedToBookmarks))
-                    .show();
-            return true;
-        });
 
-        presentFragment(dialogsActivity);
-    }
-
-    private void sendReaction(FeedController.FeedItem item, TLRPC.Reaction reaction) {
-        if (reaction instanceof TLRPC.TL_reactionPaid) return;
-
-        MessageObject msg = item.getPrimaryMessage();
-        MessagesController controller = MessagesController.getInstance(currentAccount);
-
-        boolean nowChosen = false;
-        if (msg.messageOwner.reactions != null && msg.messageOwner.reactions.results != null) {
-            for (TLRPC.ReactionCount rc : msg.messageOwner.reactions.results) {
-                if (FeedReactionsView.reactionsEqual(rc.reaction, reaction) && (rc.flags & 1) != 0) {
-                    nowChosen = true;
-                    break;
-                }
+            @Override
+            public void onMediaClick(FeedController.FeedItem item, int idx) {
+                actionHandler.openMedia(item, idx);
             }
-        }
 
-        TLRPC.TL_messages_sendReaction req = new TLRPC.TL_messages_sendReaction();
-        req.peer = controller.getInputPeer(item.channelId);
-        req.msg_id = msg.getId();
-        req.flags |= 1;
-        req.reaction = new ArrayList<>();
-        if (nowChosen) {
-            req.reaction.add(reaction);
-            req.flags |= 4;
-        }
-
-        ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> {
-            if (error != null) {
-                AndroidUtilities.runOnUIThread(() -> {
-                    int pos = adapter.findItemPosition(item);
-                    if (pos >= 0) adapter.notifyItemChanged(pos);
-                });
+            @Override
+            public void onMenuClick(View anchor, FeedController.FeedItem item) {
+                actionHandler.showMenu(anchor, item);
             }
-        });
-    }
 
-    private void handlePaidReaction(FeedController.FeedItem item, int amount) {
-        if (pendingPaidSend != null && pendingPaidItem != null && pendingPaidItem != item) {
-            AndroidUtilities.cancelRunOnUIThread(pendingPaidSend);
-            doSendPaidReaction(pendingPaidItem, pendingPaidAmount, pendingPaidRandomId);
-            pendingPaidSend = null;
-        }
+            @Override
+            public void onCommentsClick(FeedController.FeedItem item) {
+                saveScroll();
+                actionHandler.openComments(item);
+            }
 
-        if (pendingPaidSend != null && pendingPaidItem == item) {
-            AndroidUtilities.cancelRunOnUIThread(pendingPaidSend);
-            pendingPaidAmount += amount;
-        } else {
-            pendingPaidItem = item;
-            pendingPaidAmount = amount;
-            long currentTime = ConnectionsManager.getInstance(currentAccount).getCurrentTime();
-            pendingPaidRandomId = (Utilities.random.nextLong() & 0xFFFFFFFFL) | (currentTime << 32);
-        }
+            @Override
+            public void onShareClick(FeedController.FeedItem item) {
+                shareHelper.sharePost(item);
+            }
 
-        updatePaidReactionUI(item, amount);
+            @Override
+            public void onForwardClick(long channelId, int messageId) {
+                saveScroll();
+                openChat(channelId, messageId);
+            }
 
-        showPaidUndoBulletin(item, pendingPaidAmount);
+            @Override
+            public void onReplyClick(long channelId, int messageId) {
+                saveScroll();
+                openChat(channelId, messageId);
+            }
 
-        final long randomId = pendingPaidRandomId;
-        pendingPaidSend = () -> {
-            doSendPaidReaction(pendingPaidItem, pendingPaidAmount, randomId);
-            pendingPaidSend = null;
-            pendingPaidItem = null;
-            pendingPaidAmount = 0;
+            @Override
+            public void onInlineButtonClick(FeedController.FeedItem item,
+                                            TLRPC.KeyboardButton button) {
+                saveScroll();
+                openChannel(item);
+            }
+
+            @Override
+            public void onReactionToggle(FeedController.FeedItem item,
+                                         TLRPC.Reaction reaction) {
+                reactionHandler.sendReaction(item, reaction);
+            }
+
+            @Override
+            public void onPaidReactionTap(FeedController.FeedItem item) {
+                reactionHandler.handlePaidReaction(item, 1);
+            }
+
+            @Override
+            public void onPaidReactionLongPress(FeedController.FeedItem item) {
+                reactionHandler.showStarAmountPicker(item);
+            }
+
+            @Override
+            public void onDoubleTap(FeedController.FeedItem item) {
+                actionHandler.handleDoubleTap(item);
+            }
+
+            @Override
+            public void onBookmarkClick(FeedController.FeedItem item) {
+                actionHandler.toggleBookmark(item);
+            }
+
+            @Override
+            public void onLinkClick(String url) {
+                actionHandler.onLinkClick(url);
+            }
+
+            @Override
+            public void onLinkLongPress(String url, View cell, ClickableSpan span) {
+                actionHandler.showLinkOptions(url, cell, span);
+            }
+
+            @Override
+            public void onPostLongPress(View cell) {
+                actionHandler.showPostScrim(cell);
+            }
+
+            @Override
+            public void onSubscribeClick(FeedController.FeedItem item) {
+                actionHandler.subscribeFromRecommendation(item);
+            }
+
+            @Override
+            public void onDismissRecommendation(FeedController.FeedItem item) {
+                actionHandler.dismissRecommendedPost(item);
+            }
+
+            @Override
+            public void onDateEntityClick(TLRPC.TL_messageEntityFormattedDate entity,
+                                          View anchor) {
+                actionHandler.onDateEntityClick(entity, anchor);
+            }
         };
-        AndroidUtilities.runOnUIThread(pendingPaidSend, 5000);
     }
 
-    private void updatePaidReactionUI(FeedController.FeedItem item, int amount) {
-        int pos = adapter.findItemPosition(item);
-        if (pos < 0) return;
-        RecyclerView.ViewHolder vh = listView.findViewHolderForAdapterPosition(pos);
-        if (vh != null && vh.itemView instanceof FeedPostCell) {
-            FeedReactionsView rv = ((FeedPostCell) vh.itemView).getReactionsView();
-            rv.optimisticallyAddPaid(amount);
-        }
-    }
+    private void onNewPostsReceived() {
+        if (adapter == null) return;
 
-    private void showPaidUndoBulletin(FeedController.FeedItem item, int totalAmount) {
-        if (currentStarBulletin != null) {
-            currentStarBulletin.hide();
+        List<FeedController.FeedItem> merged = feedController.flushMergedItems();
+        for (FeedController.FeedItem item : merged) {
+            int pos = adapter.findItemPosition(item);
+            if (pos >= 0) adapter.notifyItemChanged(pos);
         }
 
-        String title = "You sent ⭐ " + totalAmount + " anonymously";
-        String subtitle = "You reacted with " + totalAmount + " star" + (totalAmount != 1 ? "s" : "");
-
-        Bulletin.TwoLineLottieLayout layout = new Bulletin.TwoLineLottieLayout(
-                getParentActivity(), resourceProvider);
-        layout.setAnimation(R.raw.stars_topup, 36, 36);
-        layout.titleTextView.setText(title);
-        layout.subtitleTextView.setText(subtitle);
-
-        Bulletin.UndoButton undoButton = new Bulletin.UndoButton(
-                getParentActivity(), true, false, resourceProvider);
-        undoButton.setText("Undo");
-        undoButton.setUndoAction(() -> undoPaidReaction(item, pendingPaidAmount));
-        layout.setButton(undoButton);
-
-        currentStarBulletin = Bulletin.make(this, layout, 5000);
-        currentStarBulletin.show(true);
-
-        layout.post(() -> {
-            View parentView = (View) layout.getParent();
-            if (parentView != null && parentView.getLayoutParams() instanceof FrameLayout.LayoutParams) {
-                FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) parentView.getLayoutParams();
-                lp.topMargin = ActionBar.getCurrentActionBarHeight()
-                        + AndroidUtilities.statusBarHeight + dp(8);
-                parentView.setLayoutParams(lp);
-            }
-        });
-    }
-
-
-    private void undoPaidReaction(FeedController.FeedItem item, int amount) {
-        if (pendingPaidSend != null) {
-            AndroidUtilities.cancelRunOnUIThread(pendingPaidSend);
-            pendingPaidSend = null;
+        List<FeedController.FeedItem> pending = feedController.flushPendingNewItems();
+        if (!pending.isEmpty()) {
+            int oldSize = adapter.getItemCount();
+            int addedCount = feedController.appendItemsToDisplay(pending);
+            if (addedCount > 0) adapter.notifyItemRangeInserted(oldSize, addedCount);
+            adapter.syncFeedItems(feedController.getCachedFeed());
         }
-
-        int pos = adapter.findItemPosition(item);
-        if (pos >= 0) {
-            RecyclerView.ViewHolder vh = listView.findViewHolderForAdapterPosition(pos);
-            if (vh != null && vh.itemView instanceof FeedPostCell) {
-                ((FeedPostCell) vh.itemView).getReactionsView()
-                        .optimisticallyRemovePaid(amount);
-            }
-        }
-
-        pendingPaidItem = null;
-        pendingPaidAmount = 0;
+        updateEmpty();
     }
 
-    private void doSendPaidReaction(FeedController.FeedItem item, int amount, long randomId) {
-        if (item == null || amount <= 0) return;
+    void loadFeed(boolean force) {
+        swipeRefreshLayout.setRefreshing(true);
+        emptyView.setVisibility(View.GONE);
 
-        MessageObject msg = item.getPrimaryMessage();
-        MessagesController controller = MessagesController.getInstance(currentAccount);
+        if (force) feedController.resetLoadMore();
 
-        TLRPC.TL_messages_sendPaidReaction req = new TLRPC.TL_messages_sendPaidReaction();
-        req.peer = controller.getInputPeer(item.channelId);
-        req.msg_id = msg.getId();
-        req.count = amount;
-        req.random_id = randomId;
-
-        req.flags = 0;
-
-        ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> {
-            AndroidUtilities.runOnUIThread(() -> {
-                if (error != null) {
-                    int pos = adapter.findItemPosition(item);
-                    if (pos >= 0) {
-                        RecyclerView.ViewHolder vh = listView.findViewHolderForAdapterPosition(pos);
-                        if (vh != null && vh.itemView instanceof FeedPostCell) {
-                            ((FeedPostCell) vh.itemView).getReactionsView()
-                                    .optimisticallyRemovePaid(amount);
-                        }
-                    }
-
-                    String errText;
-                    if (error.text != null && error.text.contains("BALANCE")) {
-                        errText = "Not enough Stars";
-                    } else {
-                        errText = "Error: " + error.text;
-                    }
-                    BulletinFactory.of(FeedActivity.this)
-                            .createSimpleBulletin(R.drawable.star_small_inner, errText)
-                            .show();
-                } else if (response instanceof TLRPC.Updates) {
-                    controller.processUpdates((TLRPC.Updates) response, false);
-                }
-            });
-        });
-    }
-
-
-    @SuppressLint("SetTextI18n")
-    private void showStarAmountPicker(FeedController.FeedItem item) {
-        if (getParentActivity() == null) return;
-
-        MessageObject msg = item.getPrimaryMessage();
-
-        ArrayList<TLRPC.MessageReactor> reactors = null;
-        if (msg.messageOwner.reactions != null
-                && msg.messageOwner.reactions.recent_reactions != null
-                && !msg.messageOwner.reactions.recent_reactions.isEmpty()) {
-            reactors = new ArrayList<>();
-            for (TLRPC.MessagePeerReaction mpr : msg.messageOwner.reactions.recent_reactions) {
-                if (mpr.reaction instanceof TLRPC.TL_reactionPaid) {
-                    TLRPC.TL_messageReactor reactor = new TLRPC.TL_messageReactor();
-                    reactor.peer_id = mpr.peer_id;
-                    reactor.count = 1;
-                    reactors.add(reactor);
-                }
-            }
-        }
-
-        StarsReactionsSheet sheet = getStarsReactionsSheet(item, msg, reactors);
-
-        sheet.show();
-    }
-
-    @NonNull
-    private StarsReactionsSheet getStarsReactionsSheet(FeedController.FeedItem item, MessageObject msg, ArrayList<TLRPC.MessageReactor> reactors) {
-        StarsReactionsSheet sheet = new StarsReactionsSheet(
-                getParentActivity(),
-                currentAccount,
-                item.channelId,
-                null,
-                msg,
-                reactors,
-                true,
-                false,
-                UserObject.ANONYMOUS,
-                resourceProvider
-        );
-
-        sheet.setOnSend((peer, stars) -> {
-            AndroidUtilities.runOnUIThread(() -> {
-                handlePaidReaction(item, (int) (long) stars);
-            }, 300);
-            return Integer.MIN_VALUE;
-        });
-        return sheet;
-    }
-
-    private void forwardDropAuthor(FeedController.FeedItem item, long targetDialogId, String link) {
-        MessagesController controller = MessagesController.getInstance(currentAccount);
-
-        TLRPC.TL_messages_forwardMessages req = new TLRPC.TL_messages_forwardMessages();
-        req.to_peer = controller.getInputPeer(targetDialogId);
-        req.from_peer = controller.getInputPeer(item.channelId);
-        req.drop_author = true;
-        req.silent = false;
-        req.random_id = new ArrayList<>();
-        req.id = new ArrayList<>();
-        for (MessageObject m : item.messages) {
-            req.id.add(m.getId());
-            req.random_id.add(Utilities.random.nextLong());
-        }
-
-        ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> {
-            if (error != null) {
-                AndroidUtilities.runOnUIThread(() -> sendManualCopy(item, targetDialogId, link));
+        feedController.loadFeed(force, (items, hasMore) -> {
+            if (hasMore) {
+                adapter.setItems(items);
             } else {
-                AndroidUtilities.runOnUIThread(() -> sendFormattedMessage(targetDialogId, link, null));
+                String visibleUid = null;
+                int visibleOffset = 0;
+                if (layoutManager != null) {
+                    int firstPos = layoutManager.findFirstVisibleItemPosition();
+                    if (firstPos >= 0) {
+                        Object d = adapter.getDisplayItem(firstPos);
+                        if (d instanceof FeedController.FeedItem)
+                            visibleUid = ((FeedController.FeedItem) d).getUniqueId();
+                        View v = layoutManager.findViewByPosition(firstPos);
+                        if (v != null) visibleOffset = v.getTop();
+                    }
+                }
+                adapter.setItems(items);
+                if (visibleUid != null) {
+                    int newPos = adapter.findPositionByUid(visibleUid);
+                    if (newPos >= 0 && layoutManager != null)
+                        layoutManager.scrollToPositionWithOffset(newPos, visibleOffset);
+                }
+                swipeRefreshLayout.setRefreshing(false);
             }
+            updateEmpty();
         });
     }
 
-    private void sendManualCopy(FeedController.FeedItem item, long targetDialogId, String link) {
-        new Thread(() -> {
-            try {
-                String messageText = "";
-                ArrayList<TLRPC.MessageEntity> entities = null;
-                for (MessageObject msg : item.messages) {
-                    String text = msg.messageOwner.message;
-                    if (text != null && !text.trim().isEmpty() && !isCopyPlaceholder(text.trim())) {
-                        messageText = text;
-                        entities = msg.messageOwner.entities;
-                        break;
-                    }
-                }
-
-                String caption = messageText.isEmpty() ? link : messageText + "\n\n" + link;
-
-                ArrayList<MessageObject> mediaMessages = new ArrayList<>();
-                for (MessageObject msg : item.messages) {
-                    TLRPC.MessageMedia media = msg.messageOwner.media;
-                    if (media == null || media instanceof TLRPC.TL_messageMediaEmpty) continue;
-                    if (media instanceof TLRPC.TL_messageMediaWebPage) continue;
-                    if (media instanceof TLRPC.TL_messageMediaPhoto || media instanceof TLRPC.TL_messageMediaDocument) {
-                        File f = getMediaFile(msg);
-                        if (f != null && f.exists()) {
-                            mediaMessages.add(msg);
-                        }
-                    }
-                }
-
-               if (mediaMessages.isEmpty()) {
-                    sendFormattedMessage(targetDialogId, caption, entities);
-                    return;
-                }
-
-                for (int i = 0; i < mediaMessages.size(); i++) {
-                    MessageObject msg = mediaMessages.get(i);
-                    TLRPC.Message raw = msg.messageOwner;
-                    File file = getMediaFile(msg);
-                    if (file == null || !file.exists()) continue;
-
-                    String mediaCaption = (i == 0) ? caption : "";
-                    ArrayList<TLRPC.MessageEntity> mediaEntities = (i == 0) ? entities : null;
-
-                    TLRPC.InputFile uploaded = uploadFile(file);
-                    if (uploaded == null) continue;
-
-                    TLRPC.TL_messages_sendMedia req = new TLRPC.TL_messages_sendMedia();
-                    req.peer = MessagesController.getInstance(currentAccount).getInputPeer(targetDialogId);
-                    req.random_id = Utilities.random.nextLong();
-                    req.message = mediaCaption;
-
-                    if (mediaEntities != null && !mediaEntities.isEmpty()) {
-                        req.entities = new ArrayList<>(mediaEntities);
-                        req.flags |= 8;
-                    }
-
-                    if (raw.media instanceof TLRPC.TL_messageMediaPhoto) {
-                        TLRPC.TL_inputMediaUploadedPhoto photo = new TLRPC.TL_inputMediaUploadedPhoto();
-                        photo.file = uploaded;
-                        req.media = photo;
-                    } else if (raw.media instanceof TLRPC.TL_messageMediaDocument && raw.media.document != null) {
-                        TLRPC.TL_inputMediaUploadedDocument doc = new TLRPC.TL_inputMediaUploadedDocument();
-                        doc.file = uploaded;
-                        doc.mime_type = raw.media.document.mime_type != null
-                                ? raw.media.document.mime_type : "application/octet-stream";
-                        doc.attributes = new ArrayList<>(raw.media.document.attributes);
-                        req.media = doc;
-                    } else {
-                        continue;
-                    }
-
-                    sendRequestSync(req);
-                }
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }).start();
+    void updateEmpty() {
+        emptyView.setVisibility(adapter.getItemCount() == 0 ? View.VISIBLE : View.GONE);
     }
 
-    private boolean isCopyPlaceholder(String text) {
-        switch (text) {
-            case "Photo": case "Video": case "GIF": case "Document":
-            case "Sticker": case "Audio": case "Voice message":
-            case "Video message": case "Contact": case "Location":
-                return true;
+    private void checkLoadMore() {
+        if (isLoadingMore || layoutManager == null || adapter == null) return;
+        int lastVisible = layoutManager.findLastVisibleItemPosition();
+        int total = adapter.getItemCount();
+        if (lastVisible >= total - 3 && total > 0) {
+            if (feedController.hasMore()) loadMorePosts();
+            else if (feedController.getRecommendationEngine().canLoadMore())
+                loadMoreRecommendations();
         }
-        return false;
     }
 
-    private void sendRequestSync(TLObject request) {
-        final Object lock = new Object();
-        final boolean[] done = {false};
-        ConnectionsManager.getInstance(currentAccount).sendRequest(request, (r, e) -> {
-            synchronized (lock) { done[0] = true; lock.notifyAll(); }
+    private void loadMorePosts() {
+        if (isLoadingMore || !feedController.hasMore()) return;
+        isLoadingMore = true;
+        feedController.loadMore((items, hasMore) -> {
+            isLoadingMore = false;
+            updateEmpty();
         });
-        synchronized (lock) {
-            try { while (!done[0]) lock.wait(30000); } catch (InterruptedException e) {}
-        }
     }
 
-    private void sendFormattedMessage(long targetDialogId, String text, ArrayList<TLRPC.MessageEntity> entities) {
-        TLRPC.TL_messages_sendMessage req = new TLRPC.TL_messages_sendMessage();
-        req.peer = MessagesController.getInstance(currentAccount).getInputPeer(targetDialogId);
-        req.message = text;
-        req.random_id = Utilities.random.nextLong();
-        req.no_webpage = true;
-        if (entities != null && !entities.isEmpty()) {
-            req.entities = new ArrayList<>(entities);
-            req.flags |= 8;
-        }
-        ConnectionsManager.getInstance(currentAccount).sendRequest(req, (r, e) -> {});
-    }
+    private void loadMoreRecommendations() {
+        if (isLoadingMore) return;
+        isLoadingMore = true;
+        if (loadingFooter != null) loadingFooter.setVisibility(View.VISIBLE);
 
-    private TLRPC.InputFile uploadFile(File file) {
-        try {
-            long fileSize = file.length();
-            boolean isBigFile = fileSize > 10 * 1024 * 1024; // > 10 MB
-            long fileId = Utilities.random.nextLong();
-            int partSize;
-            int totalParts;
-
-            if (fileSize < 1024 * 1024) {
-                partSize = 64 * 1024;
-            } else if (fileSize < 10 * 1024 * 1024) {
-                partSize = 128 * 1024;
-            } else {
-                partSize = 512 * 1024;
-            }
-
-            totalParts = (int) Math.ceil((double) fileSize / partSize);
-
-            java.io.FileInputStream fis = new java.io.FileInputStream(file);
-            byte[] buffer = new byte[partSize];
-            int bytesRead;
-            int partNum = 0;
-
-            while ((bytesRead = fis.read(buffer)) != -1) {
-                byte[] partData;
-                if (bytesRead < partSize) {
-                    partData = new byte[bytesRead];
-                    System.arraycopy(buffer, 0, partData, 0, bytesRead);
-                } else {
-                    partData = buffer;
-                }
-
-                boolean success;
-                if (isBigFile) {
-                    TLRPC.TL_upload_saveBigFilePart req = new TLRPC.TL_upload_saveBigFilePart();
-                    req.file_id = fileId;
-                    req.file_part = partNum;
-                    req.file_total_parts = totalParts;
-                    req.bytes = new org.telegram.tgnet.NativeByteBuffer(partData.length);
-                    req.bytes.writeBytes(partData);
-                    req.bytes.position(0);
-
-                    final boolean[] done = {false};
-                    final boolean[] result = {false};
-                    ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> {
-                        result[0] = error == null;
-                        synchronized (done) { done[0] = true; done.notifyAll(); }
-                    });
-                    synchronized (done) { while (!done[0]) done.wait(5000); }
-                    success = result[0];
-                } else {
-                    TLRPC.TL_upload_saveFilePart req = new TLRPC.TL_upload_saveFilePart();
-                    req.file_id = fileId;
-                    req.file_part = partNum;
-                    req.bytes = new org.telegram.tgnet.NativeByteBuffer(partData.length);
-                    req.bytes.writeBytes(partData);
-                    req.bytes.position(0);
-
-                    final boolean[] done = {false};
-                    final boolean[] result = {false};
-                    ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> {
-                        result[0] = error == null;
-                        synchronized (done) { done[0] = true; done.notifyAll(); }
-                    });
-                    synchronized (done) { while (!done[0]) done.wait(5000); }
-                    success = result[0];
-                }
-
-                if (!success) {
-                    fis.close();
-                    return null;
-                }
-                partNum++;
-            }
-            fis.close();
-
-            if (isBigFile) {
-                TLRPC.TL_inputFileBig inputFile = new TLRPC.TL_inputFileBig();
-                inputFile.id = fileId;
-                inputFile.parts = totalParts;
-                inputFile.name = file.getName();
-                return inputFile;
-            } else {
-                TLRPC.TL_inputFile inputFile = new TLRPC.TL_inputFile();
-                inputFile.id = fileId;
-                inputFile.parts = totalParts;
-                inputFile.name = file.getName();
-                inputFile.md5_checksum = "";
-                return inputFile;
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-            return null;
-        }
-    }
-
-    private File getMediaFile(MessageObject msg) {
-        TLRPC.Message raw = msg.messageOwner;
-
-        if (raw.media instanceof TLRPC.TL_messageMediaPhoto && raw.media.photo != null) {
-            TLRPC.PhotoSize size = FileLoader.getClosestPhotoSizeWithSize(
-                    raw.media.photo.sizes, AndroidUtilities.getPhotoSize());
-            if (size != null) {
-                File f = FileLoader.getInstance(currentAccount).getPathToAttach(size, true);
-                if (f != null && f.exists()) return f;
-                f = FileLoader.getInstance(currentAccount).getPathToAttach(size, false);
-                if (f != null && f.exists()) return f;
-            }
-        } else if (raw.media instanceof TLRPC.TL_messageMediaDocument && raw.media.document != null) {
-            File f = FileLoader.getInstance(currentAccount).getPathToAttach(raw.media.document, true);
-            if (f != null && f.exists()) return f;
-            f = FileLoader.getInstance(currentAccount).getPathToAttach(raw.media.document, false);
-            if (f != null && f.exists()) return f;
-        }
-
-        File f = FileLoader.getInstance(currentAccount).getPathToMessage(raw);
-        if (f != null && f.exists()) return f;
-
-        return null;
-    }
-
-    private String buildPostLink(FeedController.FeedItem item) {
-        TLRPC.Chat chat = MessagesController.getInstance(currentAccount).getChat(-item.channelId);
-        MessageObject msg = item.getPrimaryMessage();
-        if (chat != null && !TextUtils.isEmpty(chat.username)) {
-            return "https://t.me/" + chat.username + "/" + msg.getId();
-        }
-        return "https://t.me/c/" + (-item.channelId) + "/" + msg.getId();
-    }
-
-    private void forwardToSaved(FeedController.FeedItem item) {
-        try {
-            long selfId = UserConfig.getInstance(currentAccount).getClientUserId();
-            TLRPC.TL_messages_forwardMessages req = new TLRPC.TL_messages_forwardMessages();
-            req.to_peer = MessagesController.getInstance(currentAccount).getInputPeer(selfId);
-            req.from_peer = MessagesController.getInstance(currentAccount).getInputPeer(item.channelId);
-            req.random_id = new ArrayList<>();
-            req.id = new ArrayList<>();
-            req.silent = true;
-            for (MessageObject m : item.messages) {
-                req.id.add(m.getId());
-                req.random_id.add(Utilities.random.nextLong());
-            }
-            ConnectionsManager.getInstance(currentAccount).sendRequest(req, (r, e) -> {});
-        } catch (Exception e) { /* ignore */ }
-    }
-
-    private void openMedia(FeedController.FeedItem item, int index) {
-        ArrayList<MessageObject> media = new ArrayList<>();
-        for (MessageObject msg : item.messages) {
-            TLRPC.MessageMedia m = msg.messageOwner.media;
-            if (m == null || m instanceof TLRPC.TL_messageMediaEmpty || m instanceof TLRPC.TL_messageMediaWebPage) continue;
-            if (m instanceof TLRPC.TL_messageMediaPhoto) media.add(msg);
-            else if (m instanceof TLRPC.TL_messageMediaDocument && m.document != null) {
-                if (MessageObject.isRoundVideoDocument(m.document)) continue;
-                for (TLRPC.DocumentAttribute attr : m.document.attributes) {
-                    if (attr instanceof TLRPC.TL_documentAttributeVideo || attr instanceof TLRPC.TL_documentAttributeAnimated) {
-                        media.add(msg); break;
-                    }
-                }
-            }
-        }
-        if (media.isEmpty()) return;
-        if (index >= media.size()) index = 0;
-
-        PhotoViewer.getInstance().setParentActivity(getParentActivity(), resourceProvider);
-        PhotoViewer.getInstance().openPhoto(
-                media,
-                index,
-                item.channelId,
-                0,
-                0,
-                new PhotoViewer.EmptyPhotoViewerProvider()
-        );
+        feedController.loadMoreRecommendations((items, hasMore) -> {
+            isLoadingMore = false;
+            if (loadingFooter != null) loadingFooter.setVisibility(View.GONE);
+            int oldSize = adapter.getItemCount();
+            int added = feedController.appendNewRecommendationsToDisplay();
+            if (added > 0) adapter.notifyItemRangeInserted(oldSize, added);
+        });
     }
 
     private void scheduleMarkAsRead() {
         if (markReadRunnable != null) return;
-        markReadRunnable = () -> { markVisibleAsRead(); markReadRunnable = null; };
+        markReadRunnable = () -> {
+            markVisibleAsRead();
+            markReadRunnable = null;
+        };
         AndroidUtilities.runOnUIThread(markReadRunnable, 1500);
     }
 
@@ -1331,465 +480,47 @@ public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFr
             Object obj = adapter.getDisplayItem(i);
             if (obj instanceof FeedController.FeedItem) {
                 FeedController.FeedItem item = (FeedController.FeedItem) obj;
-                if (!item.isRead && !item.isRecommendation) {
-                    feedController.markAsRead(item);
-                }
+                if (!item.isRead && !item.isRecommendation) feedController.markAsRead(item);
             }
         }
     }
 
-    @Override
-    public void onResume() {
-        super.onResume();
-        if (feedController.hasCachedFeed()) {
-            adapter.syncFeedItems(feedController.getCachedFeed());
-
-            if (hasScrollState && savedScrollState != null && layoutManager != null) {
-                final Parcelable state = savedScrollState;
-                listView.post(() -> {
-                    if (layoutManager != null) {
-                        layoutManager.onRestoreInstanceState(state);
-                    }
-                });
-            }
-            updateEmpty();
-        } else {
-            loadFeed(false);
-        }
-    }
-
-    @Override
-    public void onPause() {
-        super.onPause();
-
-        if (pendingPaidSend != null) {
-            AndroidUtilities.cancelRunOnUIThread(pendingPaidSend);
-            doSendPaidReaction(pendingPaidItem, pendingPaidAmount, pendingPaidRandomId);
-            pendingPaidSend = null;
-            pendingPaidItem = null;
-            pendingPaidAmount = 0;
-        }
-
-        cancelScheduledMark();
-        markVisibleAsRead();
-
-        if (layoutManager != null) {
-            savedScrollState = layoutManager.onSaveInstanceState();
-            hasScrollState = true;
-        }
-
-        if (adapter != null) {
-            adapter.syncFeedItems(feedController.getCachedFeed());
-        }
-    }
-
-    private void loadFeed(boolean force) {
-        swipeRefreshLayout.setRefreshing(true);
-        emptyView.setVisibility(View.GONE);
-
-        if (force) {
-            feedController.resetLoadMore();
-        }
-
-        feedController.loadFeed(force, (items, hasMore) -> {
-            if (hasMore) {
-                adapter.setItems(items);
-            } else {
-                String visibleUid = null;
-                int visibleOffset = 0;
-
-                if (layoutManager != null) {
-                    int firstPos = layoutManager.findFirstVisibleItemPosition();
-                    if (firstPos >= 0) {
-                        Object displayItem = adapter.getDisplayItem(firstPos);
-                        if (displayItem instanceof FeedController.FeedItem) {
-                            visibleUid = ((FeedController.FeedItem) displayItem)
-                                    .getUniqueId();
-                        }
-                        View firstView = layoutManager
-                                .findViewByPosition(firstPos);
-                        if (firstView != null) {
-                            visibleOffset = firstView.getTop();
-                        }
-                    }
-                }
-
-                adapter.setItems(items);
-
-                if (visibleUid != null) {
-                    int newPos = adapter.findPositionByUid(visibleUid);
-                    if (newPos >= 0 && layoutManager != null) {
-                        layoutManager.scrollToPositionWithOffset(
-                                newPos, visibleOffset);
-                    }
-                }
-
-                swipeRefreshLayout.setRefreshing(false);
-            }
-            updateEmpty();
-        });
-    }
-
-    private void updateEmpty() {
-        emptyView.setVisibility(adapter.getItemCount() == 0 ? View.VISIBLE : View.GONE);
-    }
-
-    private void openChannel(FeedController.FeedItem item) {
+    void openChannel(FeedController.FeedItem item) {
         Bundle args = new Bundle();
         args.putLong("chat_id", -item.channelId);
         args.putInt("message_id", item.getMessageId());
         presentFragment(new ChatActivity(args));
     }
 
-    private void saveScroll() {
+    private void openChat(long channelId, int messageId) {
+        Bundle args = new Bundle();
+        args.putLong("chat_id", channelId);
+        if (messageId > 0) args.putInt("message_id", messageId);
+        presentFragment(new ChatActivity(args));
+    }
+
+    void saveScroll() {
         if (layoutManager != null) {
             savedScrollState = layoutManager.onSaveInstanceState();
             hasScrollState = true;
         }
     }
 
-    @Override
-    public boolean canParentTabsSlide(MotionEvent ev, boolean forward) { return true; }
-
-    @Override
-    public void onParentScrollToTop() {
-        if (listView != null) listView.smoothScrollToPosition(0);
-        loadFeed(true);
-    }
-
-    private void showPostScrim(View cell) {
-        if (cell == null || !(cell instanceof FeedPostCell)) return;
-        FeedPostCell postCell = (FeedPostCell) cell;
-        FeedController.FeedItem item = postCell.getCurrentItem();
-        if (item == null) return;
-
-        ItemOptions options = ItemOptions.makeOptions(this, cell);
-        options.setBlur(true);
-
-        MessageObject primary = item.getPrimaryMessage();
-        String text = primary != null && primary.messageOwner != null
-                ? primary.messageOwner.message : null;
-        if (!TextUtils.isEmpty(text)) {
-            options.add(R.drawable.msg_copy, LocaleController.getString(R.string.Copy), () -> {
-                AndroidUtilities.addToClipboard(text);
-                BulletinFactory.of(FeedActivity.this)
-                        .createCopyBulletin(
-                                LocaleController.getString(R.string.TextCopied))
-                        .show();
-            });
-
-            options.add(R.drawable.msg_select, LocaleController.getString(R.string.Select), () -> {
-                showSelectableTextDialog(text);
-            });
-        }
-
-        options.add(R.drawable.msg_link2, LocaleController.getString(R.string.CopyLink), () -> {
-            String link = buildPostLink(item);
-            AndroidUtilities.addToClipboard(link);
-            BulletinFactory.of(FeedActivity.this)
-                    .createCopyLinkBulletin()
-                    .show();
-        });
-
-        options.addGap();
-
-        options.add(R.drawable.msg_forward, LocaleController.getString(R.string.Forward), () -> {
-            sharePost(item);
-        });
-
-        options.add(R.drawable.msg_channel, "Open channel", () -> {
-            saveScroll();
-            openChannel(item);
-        });
-
-        options.show();
-    }
-
-    private void checkLoadMore() {
-        if (isLoadingMore) return;
-        if (layoutManager == null || adapter == null) return;
-
-        int lastVisible = layoutManager.findLastVisibleItemPosition();
-        int total = adapter.getItemCount();
-
-        if (lastVisible >= total - 3 && total > 0) {
-            if (feedController.hasMore()) {
-                loadMorePosts();
-            } else if (feedController.getRecommendationEngine().canLoadMore()) {
-                loadMoreRecommendations();
-            }
-        }
-    }
-
-    private void loadMorePosts() {
-        if (isLoadingMore || !feedController.hasMore()) return;
-        isLoadingMore = true;
-
-        feedController.loadMore((items, hasMore) -> {
-            isLoadingMore = false;
-            updateEmpty();
-        });
-    }
-
-    private void showReportDialog(FeedController.FeedItem item) {
-        if (getParentActivity() == null) return;
-
-        BottomSheet.Builder builder = new BottomSheet.Builder(getParentActivity(), true, resourceProvider);
-        builder.setTitle(LocaleController.getString(R.string.ReportChat), true);
-
-        CharSequence[] items = new CharSequence[]{
-                LocaleController.getString(R.string.ReportChatSpam),
-                LocaleController.getString(R.string.ReportChatFakeAccount),
-                LocaleController.getString(R.string.ReportChatViolence),
-                LocaleController.getString(R.string.ReportChatChild),
-                LocaleController.getString(R.string.ReportChatIllegalDrugs),
-                LocaleController.getString(R.string.ReportChatPersonalDetails),
-                LocaleController.getString(R.string.ReportChatPornography),
-                LocaleController.getString(R.string.ReportChatOther)
-        };
-
-        int[] icons = new int[]{
-                R.drawable.msg_clearcache,
-                R.drawable.msg_report_fake,
-                R.drawable.msg_report_violence,
-                R.drawable.msg_block2,
-                R.drawable.msg_report_drugs,
-                R.drawable.msg_report_personal,
-                R.drawable.msg_report_xxx,
-                R.drawable.msg_report_other
-        };
-
-        int[] types = new int[]{
-                AlertsCreator.REPORT_TYPE_SPAM,
-                AlertsCreator.REPORT_TYPE_FAKE_ACCOUNT,
-                AlertsCreator.REPORT_TYPE_VIOLENCE,
-                AlertsCreator.REPORT_TYPE_CHILD_ABUSE,
-                AlertsCreator.REPORT_TYPE_ILLEGAL_DRUGS,
-                AlertsCreator.REPORT_TYPE_PERSONAL_DETAILS,
-                AlertsCreator.REPORT_TYPE_PORNOGRAPHY,
-                AlertsCreator.REPORT_TYPE_OTHER
-        };
-
-        builder.setItems(items, icons, (dialogInterface, i) -> {
-            int type = types[i];
-            if (type == AlertsCreator.REPORT_TYPE_OTHER) {
-                showReportOtherDialog(item);
-            } else {
-                sendReport(item, getReportReasonText(type));
-            }
-        });
-
-        showDialog(builder.create());
-    }
-
-    private void showReportOtherDialog(FeedController.FeedItem item) {
-        if (getParentActivity() == null) return;
-
-        android.app.AlertDialog.Builder builder = new android.app.AlertDialog.Builder(getParentActivity());
-        builder.setTitle(LocaleController.getString(R.string.ReportChatOther));
-
-        FrameLayout container = new FrameLayout(getParentActivity());
-        container.setPadding(dp(24), dp(8), dp(24), 0);
-
-        EditText editText = new EditText(getParentActivity());
-        editText.setTextColor(Theme.getColor(Theme.key_dialogTextBlack, resourceProvider));
-        editText.setHintTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText3, resourceProvider));
-        editText.setHint(LocaleController.getString(R.string.ReportChatDescription));
-        editText.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP, 16);
-        editText.setMaxLines(4);
-        editText.setInputType(android.text.InputType.TYPE_CLASS_TEXT
-                | android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
-                | android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE);
-        container.addView(editText, LayoutHelper.createFrame(
-                LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
-
-        builder.setView(container);
-        builder.setPositiveButton(LocaleController.getString(R.string.Send), (dialog, which) -> {
-            String message = editText.getText().toString().trim();
-            if (!message.isEmpty()) {
-                sendReport(item, message);
-            }
-        });
-        builder.setNegativeButton(LocaleController.getString(R.string.Cancel), null);
-
-        android.app.AlertDialog dialog = builder.create();
-        showDialog(dialog);
-
-        editText.requestFocus();
-        AndroidUtilities.runOnUIThread(() ->
-                AndroidUtilities.showKeyboard(editText), 300);
-    }
-
-    private void sendReport(FeedController.FeedItem item, String reason) {
-        if (item == null) return;
-
-        TLRPC.TL_messages_report req = new TLRPC.TL_messages_report();
-        req.peer = MessagesController.getInstance(currentAccount).getInputPeer(item.channelId);
-        for (MessageObject m : item.messages) {
-            req.id.add(m.getId());
-        }
-        req.option = new byte[0];
-        req.message = reason != null ? reason : "";
-
-        ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) ->
-                AndroidUtilities.runOnUIThread(() -> {
-                    Bulletin b = BulletinFactory.of(FeedActivity.this)
-                            .createSimpleBulletin(R.drawable.msg_report,
-                                    LocaleController.getString(R.string.ReportChatSent));
-                    b.show(true);
-                    b.getLayout().post(() -> {
-                        View pv = (View) b.getLayout().getParent();
-                        if (pv != null && pv.getLayoutParams() instanceof FrameLayout.LayoutParams) {
-                            FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) pv.getLayoutParams();
-                            lp.topMargin = ActionBar.getCurrentActionBarHeight()
-                                    + AndroidUtilities.statusBarHeight + dp(8);
-                            pv.setLayoutParams(lp);
-                        }
-                    });
-                })
-        );
-    }
-
-    private String getReportReasonText(int type) {
-        switch (type) {
-            case AlertsCreator.REPORT_TYPE_SPAM:
-                return "Spam";
-            case AlertsCreator.REPORT_TYPE_FAKE_ACCOUNT:
-                return "Fake account";
-            case AlertsCreator.REPORT_TYPE_VIOLENCE:
-                return "Violence";
-            case AlertsCreator.REPORT_TYPE_CHILD_ABUSE:
-                return "Child abuse";
-            case AlertsCreator.REPORT_TYPE_ILLEGAL_DRUGS:
-                return "Illegal drugs";
-            case AlertsCreator.REPORT_TYPE_PERSONAL_DETAILS:
-                return "Personal details";
-            case AlertsCreator.REPORT_TYPE_PORNOGRAPHY:
-                return "Pornography";
-            default:
-                return "";
-        }
-    }
-
-    private void showSelectableTextDialog(String text) {
-        if (getParentActivity() == null || TextUtils.isEmpty(text)) return;
-
-        FrameLayout container = new FrameLayout(getParentActivity());
-        container.setPadding(dp(24), dp(16), dp(24), dp(8));
-
-        TextView selectableTextView = new TextView(getParentActivity());
-        selectableTextView.setText(text);
-        selectableTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
-        selectableTextView.setTextColor(
-                Theme.getColor(Theme.key_dialogTextBlack, resourceProvider));
-        selectableTextView.setLineSpacing(dp(2), 1f);
-        selectableTextView.setTextIsSelectable(true);
-
-        try {
-            int handleColor = Theme.getColor(Theme.key_chat_TextSelectionCursor, resourceProvider);
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-                android.graphics.drawable.Drawable left = selectableTextView.getTextSelectHandleLeft();
-                if (left != null) {
-                    left.setColorFilter(handleColor, android.graphics.PorterDuff.Mode.SRC_IN);
-                    selectableTextView.setTextSelectHandleLeft(left);
-                }
-                android.graphics.drawable.Drawable right = selectableTextView.getTextSelectHandleRight();
-                if (right != null) {
-                    right.setColorFilter(handleColor, android.graphics.PorterDuff.Mode.SRC_IN);
-                    selectableTextView.setTextSelectHandleRight(right);
-                }
-            }
-        } catch (Exception ignored) {}
-
-        selectableTextView.setHighlightColor(
-                Theme.getColor(Theme.key_chat_inTextSelectionHighlight, resourceProvider));
-
-        container.addView(selectableTextView,
-                LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
-
-        org.telegram.ui.ActionBar.BottomSheet.Builder builder =
-                new org.telegram.ui.ActionBar.BottomSheet.Builder(getParentActivity(), false, resourceProvider);
-        builder.setCustomView(container);
-        showDialog(builder.create());
-    }
-
-    private void refreshDisplayList() {
+    void refreshDisplayList() {
         if (adapter != null) {
             feedController.rebuildDisplayList();
             adapter.setItems(feedController.getCachedFeed());
         }
     }
 
-    private void subscribeFromRecommendation(FeedController.FeedItem item) {
-        if (item == null || !item.isRecommendation || item.recommendedChat == null) return;
-
-        TLRPC.TL_channels_joinChannel req = new TLRPC.TL_channels_joinChannel();
-        req.channel = MessagesController.getInputChannel(item.recommendedChat);
-
-        ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) ->
-                AndroidUtilities.runOnUIThread(() -> {
-                    if (error == null) {
-                        String name = item.recommendedChat.title;
-
-                        item.isRecommendation = false;
-                        item.recommendationReason = null;
-
-                        feedController.getRecommendationEngine()
-                                .dismiss(item.recommendedChannelId);
-
-                        refreshDisplayList();
-
-                        BulletinFactory.of(FeedActivity.this)
-                                .createSimpleBulletin(R.drawable.msg_channel,
-                                        "Subscribed to " + name)
-                                .show();
-
-                        AndroidUtilities.runOnUIThread(() -> loadFeed(true), 2000);
-
-                    } else {
-                        String errText = "Failed to subscribe";
-                        if (error.text != null && error.text.contains("CHANNELS_TOO_MUCH")) {
-                            errText = "You have joined too many channels";
-                        }
-                        BulletinFactory.of(FeedActivity.this)
-                                .createSimpleBulletin(R.drawable.msg_channel, errText)
-                                .show();
-                    }
-                })
-        );
+    @Override
+    public boolean canParentTabsSlide(MotionEvent ev, boolean forward) {
+        return true;
     }
 
-    private void dismissRecommendedPost(FeedController.FeedItem item) {
-        if (item == null || !item.isRecommendation) return;
-
-        feedController.getRecommendationEngine().dismissPost(item);
-        refreshDisplayList();
-
-        BulletinFactory.of(FeedActivity.this)
-                .createSimpleBulletin(R.drawable.msg_close,
-                        "Won't recommend this channel")
-                .show();
-    }
-
-    private void loadMoreRecommendations() {
-        if (isLoadingMore) return;
-        isLoadingMore = true;
-
-        if (loadingFooter != null) {
-            loadingFooter.setVisibility(View.VISIBLE);
-        }
-
-        feedController.loadMoreRecommendations((items, hasMore) -> {
-            isLoadingMore = false;
-            if (loadingFooter != null) {
-                loadingFooter.setVisibility(View.GONE);
-            }
-
-            int oldSize = adapter.getItemCount();
-            int added = feedController.appendNewRecommendationsToDisplay();
-            if (added > 0) {
-                adapter.notifyItemRangeInserted(oldSize, added);
-            }
-        });
+    @Override
+    public void onParentScrollToTop() {
+        if (listView != null) listView.smoothScrollToPosition(0);
+        loadFeed(true);
     }
 }

@@ -1,0 +1,534 @@
+package org.telegram.ui.Feed;
+
+import static org.telegram.messenger.AndroidUtilities.dp;
+
+import android.os.Bundle;
+import android.text.TextUtils;
+import android.text.style.ClickableSpan;
+import android.util.TypedValue;
+import android.view.View;
+import android.widget.FrameLayout;
+import android.widget.TextView;
+
+import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.LocaleController;
+import org.telegram.messenger.MessageObject;
+import org.telegram.messenger.MessagesController;
+import org.telegram.messenger.R;
+import org.telegram.messenger.UserConfig;
+import org.telegram.messenger.Utilities;
+import org.telegram.messenger.browser.Browser;
+import org.telegram.tgnet.ConnectionsManager;
+import org.telegram.tgnet.TLRPC;
+import org.telegram.ui.ActionBar.BottomSheet;
+import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.ChatActivity;
+import org.telegram.ui.Components.AlertsCreator;
+import org.telegram.ui.Components.Bulletin;
+import org.telegram.ui.Components.BulletinFactory;
+import org.telegram.ui.Components.ItemOptions;
+import org.telegram.ui.Components.LayoutHelper;
+import org.telegram.ui.Components.ScrimOptions;
+import org.telegram.ui.PhotoViewer;
+
+import java.util.ArrayList;
+
+import androidx.recyclerview.widget.RecyclerView;
+
+class FeedActionHandler {
+
+    private final FeedActivity activity;
+
+    FeedActionHandler(FeedActivity activity) {
+        this.activity = activity;
+    }
+
+    void showMenu(View anchor, FeedController.FeedItem item) {
+        ItemOptions options = ItemOptions.makeOptions(activity, anchor);
+
+        options.add(R.drawable.msg_saved, "Save to bookmarks", () -> {
+            activity.shareHelper.forwardToSaved(item);
+            BulletinFactory.of(activity)
+                    .createSimpleBulletin(R.drawable.msg_saved,
+                            LocaleController.getString("FeedSavedToBookmarks",
+                                    R.string.FeedSavedToBookmarks))
+                    .show();
+        });
+
+        options.add(R.drawable.msg_channel, "Open channel", () -> {
+            activity.saveScroll();
+            activity.openChannel(item);
+        });
+
+        options.add(R.drawable.msg_markread, "Mark as read", () -> {
+            activity.feedController.markAsRead(item);
+            int pos = activity.adapter.findItemPosition(item);
+            if (pos >= 0) activity.adapter.updateItem(pos);
+        });
+
+        options.addGap();
+
+        TLRPC.Chat chat = MessagesController.getInstance(activity.getAccount())
+                .getChat(-item.channelId);
+        String channelName = chat != null ? chat.title : "this channel";
+
+        options.add(R.drawable.msg_block2, "Hide from feed", () -> {
+            long chatId = -item.channelId;
+            activity.feedController.hideChannel(chatId);
+            activity.adapter.setItems(activity.feedController.getCachedFeed());
+            activity.updateEmpty();
+            BulletinFactory.of(activity)
+                    .createSimpleBulletin(R.drawable.msg_block2,
+                            channelName + " hidden from feed")
+                    .show();
+        });
+
+        options.add(R.drawable.msg_report,
+                LocaleController.getString(R.string.ReportChat), true,
+                () -> activity.reportHelper.showReportDialog(item));
+
+        options.show();
+    }
+
+    void showPostScrim(View cell) {
+        if (!(cell instanceof FeedPostCell)) return;
+        FeedPostCell postCell = (FeedPostCell) cell;
+        FeedController.FeedItem item = postCell.getCurrentItem();
+        if (item == null) return;
+
+        ItemOptions options = ItemOptions.makeOptions(activity, cell);
+        options.setBlur(true);
+
+        MessageObject primary = item.getPrimaryMessage();
+        String text = primary != null && primary.messageOwner != null
+                ? primary.messageOwner.message : null;
+
+        if (!TextUtils.isEmpty(text)) {
+            options.add(R.drawable.msg_copy,
+                    LocaleController.getString(R.string.Copy), () -> {
+                        AndroidUtilities.addToClipboard(text);
+                        BulletinFactory.of(activity)
+                                .createCopyBulletin(
+                                        LocaleController.getString(R.string.TextCopied))
+                                .show();
+                    });
+
+            options.add(R.drawable.msg_select,
+                    LocaleController.getString(R.string.Select),
+                    () -> showSelectableTextDialog(text));
+        }
+
+        options.add(R.drawable.msg_link2,
+                LocaleController.getString(R.string.CopyLink), () -> {
+                    String link = activity.shareHelper.buildPostLink(item);
+                    AndroidUtilities.addToClipboard(link);
+                    BulletinFactory.of(activity).createCopyLinkBulletin().show();
+                });
+
+        options.addGap();
+
+        options.add(R.drawable.msg_forward,
+                LocaleController.getString(R.string.Forward),
+                () -> activity.shareHelper.sharePost(item));
+
+        options.add(R.drawable.msg_channel, "Open channel", () -> {
+            activity.saveScroll();
+            activity.openChannel(item);
+        });
+
+        options.show();
+    }
+
+    void openComments(FeedController.FeedItem item) {
+        MessageObject msg = item.getPrimaryMessage();
+        TLRPC.MessageReplies replies = msg.messageOwner.replies;
+
+        if (replies == null || replies.channel_id == 0) {
+            activity.openChannel(item);
+            return;
+        }
+
+        activity.swipeRefreshLayout.setRefreshing(true);
+
+        TLRPC.TL_messages_getDiscussionMessage req = new TLRPC.TL_messages_getDiscussionMessage();
+        req.peer = MessagesController.getInstance(activity.getAccount())
+                .getInputPeer(item.channelId);
+        req.msg_id = msg.getId();
+
+        ConnectionsManager.getInstance(activity.getAccount()).sendRequest(req, (response, error) ->
+                AndroidUtilities.runOnUIThread(() -> {
+                    activity.swipeRefreshLayout.setRefreshing(false);
+                    if (response instanceof TLRPC.TL_messages_discussionMessage) {
+                        TLRPC.TL_messages_discussionMessage res =
+                                (TLRPC.TL_messages_discussionMessage) response;
+                        MessagesController controller =
+                                MessagesController.getInstance(activity.getAccount());
+                        controller.putUsers(res.users, false);
+                        controller.putChats(res.chats, false);
+
+                        if (!res.messages.isEmpty()) {
+                            TLRPC.Message discussionMsg = res.messages.get(0);
+                            long chatId = 0;
+                            if (discussionMsg.peer_id != null) {
+                                if (discussionMsg.peer_id.channel_id != 0)
+                                    chatId = discussionMsg.peer_id.channel_id;
+                                else if (discussionMsg.peer_id.chat_id != 0)
+                                    chatId = discussionMsg.peer_id.chat_id;
+                            }
+                            if (chatId != 0) {
+                                ArrayList<MessageObject> threadMsgs = new ArrayList<>();
+                                for (TLRPC.Message m : res.messages)
+                                    threadMsgs.add(new MessageObject(
+                                            activity.getAccount(), m, true, true));
+
+                                TLRPC.Chat discussionChat = controller.getChat(chatId);
+                                Bundle args = new Bundle();
+                                args.putLong("chat_id", chatId);
+                                args.putInt("message_id", discussionMsg.id);
+                                args.putInt("topic_id", discussionMsg.id);
+
+                                ChatActivity chatActivity = new ChatActivity(args);
+                                chatActivity.setThreadMessages(threadMsgs, discussionChat,
+                                        discussionMsg.id, res.read_inbox_max_id,
+                                        res.read_outbox_max_id, null);
+                                activity.presentFragment(chatActivity);
+                                return;
+                            }
+                        }
+                    }
+                    activity.openChannel(item);
+                }));
+    }
+
+    void toggleBookmark(FeedController.FeedItem item) {
+        int account = activity.getAccount();
+
+        if (item.isBookmarked) {
+            item.isBookmarked = false;
+            updateBookmarkIcon(item);
+            long selfId = UserConfig.getInstance(account).getClientUserId();
+            Bulletin b = BulletinFactory.of(activity)
+                    .createSimpleBulletin(R.drawable.msg_saved,
+                            "Removed from bookmarks", "Open Saved", () -> {
+                                Bundle args = new Bundle();
+                                args.putLong("user_id", selfId);
+                                activity.presentFragment(new ChatActivity(args));
+                            });
+            b.setDuration(3000);
+            activity.showBulletinTop(b);
+            return;
+        }
+
+        long selfId = UserConfig.getInstance(account).getClientUserId();
+        MessagesController controller = MessagesController.getInstance(account);
+        TLRPC.Chat chat = controller.getChat(-item.channelId);
+
+        TLRPC.TL_messages_forwardMessages req = new TLRPC.TL_messages_forwardMessages();
+        req.to_peer = controller.getInputPeer(selfId);
+        req.from_peer = controller.getInputPeer(item.channelId);
+        req.random_id = new ArrayList<>();
+        req.id = new ArrayList<>();
+        req.silent = true;
+        if (chat != null && chat.noforwards) req.drop_author = true;
+        for (MessageObject m : item.messages) {
+            req.id.add(m.getId());
+            req.random_id.add(Utilities.random.nextLong());
+        }
+
+        item.isBookmarked = true;
+        updateBookmarkIcon(item);
+
+        Bulletin b = BulletinFactory.of(activity)
+                .createSimpleBulletin(R.drawable.msg_saved,
+                        "Saved to bookmarks", "View", () -> {
+                            Bundle args = new Bundle();
+                            args.putLong("user_id", selfId);
+                            activity.presentFragment(new ChatActivity(args));
+                        });
+        b.setDuration(3000);
+        activity.showBulletinTop(b);
+
+        ConnectionsManager.getInstance(account).sendRequest(req, (response, error) ->
+                AndroidUtilities.runOnUIThread(() -> {
+                    if (error != null) {
+                        item.isBookmarked = false;
+                        updateBookmarkIcon(item);
+                        Bulletin err = BulletinFactory.of(activity)
+                                .createSimpleBulletin(R.drawable.msg_saved, "Failed to save");
+                        activity.showBulletinTop(err);
+                    }
+                }));
+    }
+
+    private void updateBookmarkIcon(FeedController.FeedItem item) {
+        int pos = activity.adapter.findItemPosition(item);
+        if (pos < 0) return;
+        RecyclerView.ViewHolder vh =
+                activity.listView.findViewHolderForAdapterPosition(pos);
+        if (vh != null && vh.itemView instanceof FeedPostCell)
+            ((FeedPostCell) vh.itemView).updateBookmarkState(item.isBookmarked);
+    }
+
+    void handleDoubleTap(FeedController.FeedItem item) {
+        int pos = activity.adapter.findItemPosition(item);
+        if (pos < 0) return;
+
+        RecyclerView.ViewHolder vh =
+                activity.listView.findViewHolderForAdapterPosition(pos);
+        if (vh == null || !(vh.itemView instanceof FeedPostCell)) return;
+
+        FeedReactionsView reactionsView =
+                ((FeedPostCell) vh.itemView).getReactionsView();
+        if (reactionsView != null) {
+            boolean sent = reactionsView.triggerDefaultReaction();
+            if (!sent) {
+                reactionsView.animate().scaleX(0.95f).scaleY(0.95f)
+                        .setDuration(100)
+                        .withEndAction(() -> reactionsView.animate()
+                                .scaleX(1f).scaleY(1f)
+                                .setDuration(150).start())
+                        .start();
+            }
+        }
+    }
+
+    void openMedia(FeedController.FeedItem item, int index) {
+        ArrayList<MessageObject> media = new ArrayList<>();
+        for (MessageObject msg : item.messages) {
+            TLRPC.MessageMedia m = msg.messageOwner.media;
+            if (m == null || m instanceof TLRPC.TL_messageMediaEmpty
+                    || m instanceof TLRPC.TL_messageMediaWebPage) continue;
+            if (m instanceof TLRPC.TL_messageMediaPhoto) {
+                media.add(msg);
+            } else if (m instanceof TLRPC.TL_messageMediaDocument && m.document != null) {
+                if (MessageObject.isRoundVideoDocument(m.document)) continue;
+                for (TLRPC.DocumentAttribute attr : m.document.attributes) {
+                    if (attr instanceof TLRPC.TL_documentAttributeVideo
+                            || attr instanceof TLRPC.TL_documentAttributeAnimated) {
+                        media.add(msg);
+                        break;
+                    }
+                }
+            }
+        }
+        if (media.isEmpty()) return;
+        if (index >= media.size()) index = 0;
+
+        PhotoViewer.getInstance().setParentActivity(
+                activity.getParentActivity(), activity.getResProvider());
+        PhotoViewer.getInstance().openPhoto(media, index, item.channelId, 0, 0,
+                new PhotoViewer.EmptyPhotoViewerProvider());
+    }
+
+    void onLinkClick(String url) {
+        if (url == null) return;
+        AlertsCreator.showOpenUrlAlert(activity, url, true, true, activity.getResProvider());
+    }
+
+    void showLinkOptions(String url, View cell, ClickableSpan span) {
+        if (activity.getParentActivity() == null || url == null || cell == null) return;
+
+        String cleanUrl = url;
+        try {
+            android.net.Uri uri = android.net.Uri.parse(url);
+            if (uri.getScheme() != null) {
+                cleanUrl = url.replaceFirst(uri.getScheme() + "://", "");
+                if (cleanUrl.endsWith("/"))
+                    cleanUrl = cleanUrl.substring(0, cleanUrl.length() - 1);
+            }
+        } catch (Exception ignored) {}
+
+        final String urlFinal = url;
+        final String cleanUrlFinal = cleanUrl;
+
+        boolean isInternal = Browser.isInternalUrl(url, null);
+        boolean customTabs = org.telegram.messenger.SharedConfig.inappBrowser
+                && !isInternal && !url.startsWith("#") && !url.startsWith("$");
+        boolean isMail = url.startsWith("mailto:");
+        boolean isHashtag = url.startsWith("#") || url.startsWith("$");
+
+        Theme.ResourcesProvider rp = activity.getResProvider();
+        final ScrimOptions scrimDialog = new ScrimOptions(activity.getParentActivity(), rp);
+        final ItemOptions options = ItemOptions.makeOptions(
+                scrimDialog.getContainerView(), rp, scrimDialog.getContainerView());
+
+        if (!isMail) {
+            options.add(R.drawable.msg_openin,
+                    LocaleController.getString(customTabs && !isHashtag
+                            ? R.string.OpenInTelegramBrowser : R.string.Open),
+                    () -> Browser.openUrl(activity.getParentActivity(), urlFinal, true));
+        }
+        if (customTabs && !isHashtag || isMail) {
+            options.add(R.drawable.msg_language,
+                    LocaleController.getString(R.string.OpenInSystemBrowser),
+                    () -> Browser.openUrl(activity.getParentActivity(), urlFinal, false));
+        }
+        options.add(R.drawable.msg_copy,
+                LocaleController.getString(isHashtag ? R.string.CopyHashtag
+                        : isMail ? R.string.CopyMail : R.string.CopyLink),
+                () -> {
+                    AndroidUtilities.addToClipboard(
+                            isMail ? urlFinal.substring("mailto:".length()) : urlFinal);
+                    BulletinFactory.of(activity).createCopyLinkBulletin().show();
+                });
+        if (!isHashtag && !isMail) {
+            options.add(R.drawable.msg_copy, "Copy without protocol", () -> {
+                AndroidUtilities.addToClipboard(cleanUrlFinal);
+                BulletinFactory.of(activity).createCopyLinkBulletin().show();
+            });
+        }
+
+        scrimDialog.setItemOptions(options);
+        scrimDialog.setOnDismissListener(d -> options.dismiss());
+        options.setOnDismiss(scrimDialog::dismissFast);
+
+        if (cell instanceof FeedPostCell) {
+            TextView tv = ((FeedPostCell) cell).getMessageTextView();
+            scrimDialog.setScrimForTextView(tv, span);
+        }
+        scrimDialog.show();
+    }
+
+    void onDateEntityClick(TLRPC.TL_messageEntityFormattedDate entity, View anchor) {
+        if (entity == null || activity.getParentActivity() == null) return;
+
+        String fullDate = LocaleController.formatEntityFormattedDate(entity, true);
+        Theme.ResourcesProvider rp = activity.getResProvider();
+
+        final ScrimOptions scrimDialog = new ScrimOptions(activity.getParentActivity(), rp);
+        final ItemOptions options = ItemOptions.makeOptions(
+                scrimDialog.getContainerView(), rp, scrimDialog.getContainerView());
+
+        options.addText(fullDate, 15);
+        options.addGap();
+
+        options.add(R.drawable.msg_copy,
+                LocaleController.getString(R.string.Copy), () -> {
+                    AndroidUtilities.addToClipboard(fullDate);
+                    BulletinFactory.of(activity)
+                            .createCopyBulletin(LocaleController.getString(R.string.TextCopied))
+                            .show();
+                });
+
+        options.add(R.drawable.msg_calendar2, "Add to calendar", () -> {
+            try {
+                android.content.Intent intent = new android.content.Intent(
+                        android.content.Intent.ACTION_INSERT);
+                intent.setData(android.provider.CalendarContract.Events.CONTENT_URI);
+                intent.putExtra(android.provider.CalendarContract.EXTRA_EVENT_BEGIN_TIME,
+                        entity.date * 1000L);
+                intent.putExtra(android.provider.CalendarContract.Events.TITLE, fullDate);
+                activity.getParentActivity().startActivity(intent);
+            } catch (Exception e) {
+                BulletinFactory.of(activity)
+                        .createSimpleBulletin(R.drawable.msg_calendar2,
+                                "No calendar app found")
+                        .show();
+            }
+        });
+
+        scrimDialog.setItemOptions(options);
+        scrimDialog.setOnDismissListener(d -> options.dismiss());
+        options.setOnDismiss(scrimDialog::dismissFast);
+
+        if (anchor instanceof FeedPostCell) {
+            TextView tv = ((FeedPostCell) anchor).getMessageTextView();
+            if (tv.getText() instanceof android.text.Spanned) {
+                android.text.Spanned spanned = (android.text.Spanned) tv.getText();
+                FeedDateSpan[] spans = spanned.getSpans(0,
+                        tv.getText().length(), FeedDateSpan.class);
+                for (FeedDateSpan ds : spans) {
+                    if (ds.entity == entity) {
+                        scrimDialog.setScrimForTextView(tv, ds);
+                        break;
+                    }
+                }
+            }
+        }
+        scrimDialog.show();
+    }
+
+    void showSelectableTextDialog(String text) {
+        if (activity.getParentActivity() == null || TextUtils.isEmpty(text)) return;
+
+        Theme.ResourcesProvider rp = activity.getResProvider();
+
+        FrameLayout container = new FrameLayout(activity.getParentActivity());
+        container.setPadding(dp(24), dp(16), dp(24), dp(8));
+
+        TextView tv = new TextView(activity.getParentActivity());
+        tv.setText(text);
+        tv.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
+        tv.setTextColor(Theme.getColor(Theme.key_dialogTextBlack, rp));
+        tv.setLineSpacing(dp(2), 1f);
+        tv.setTextIsSelectable(true);
+
+        try {
+            int handleColor = Theme.getColor(Theme.key_chat_TextSelectionCursor, rp);
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                android.graphics.drawable.Drawable left = tv.getTextSelectHandleLeft();
+                if (left != null) {
+                    left.setColorFilter(handleColor, android.graphics.PorterDuff.Mode.SRC_IN);
+                    tv.setTextSelectHandleLeft(left);
+                }
+                android.graphics.drawable.Drawable right = tv.getTextSelectHandleRight();
+                if (right != null) {
+                    right.setColorFilter(handleColor, android.graphics.PorterDuff.Mode.SRC_IN);
+                    tv.setTextSelectHandleRight(right);
+                }
+            }
+        } catch (Exception ignored) {}
+
+        tv.setHighlightColor(
+                Theme.getColor(Theme.key_chat_inTextSelectionHighlight, rp));
+        container.addView(tv,
+                LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+
+        BottomSheet.Builder builder =
+                new BottomSheet.Builder(activity.getParentActivity(), false, rp);
+        builder.setCustomView(container);
+        activity.showDialog(builder.create());
+    }
+
+    void subscribeFromRecommendation(FeedController.FeedItem item) {
+        if (item == null || !item.isRecommendation || item.recommendedChat == null) return;
+
+        TLRPC.TL_channels_joinChannel req = new TLRPC.TL_channels_joinChannel();
+        req.channel = MessagesController.getInputChannel(item.recommendedChat);
+
+        ConnectionsManager.getInstance(activity.getAccount()).sendRequest(req, (resp, err) ->
+                AndroidUtilities.runOnUIThread(() -> {
+                    if (err == null) {
+                        String name = item.recommendedChat.title;
+                        item.isRecommendation = false;
+                        item.recommendationReason = null;
+                        activity.feedController.getRecommendationEngine()
+                                .dismiss(item.recommendedChannelId);
+                        activity.refreshDisplayList();
+
+                        BulletinFactory.of(activity)
+                                .createSimpleBulletin(R.drawable.msg_channel,
+                                        "Subscribed to " + name)
+                                .show();
+                        AndroidUtilities.runOnUIThread(() -> activity.loadFeed(true), 2000);
+                    } else {
+                        String errText = "Failed to subscribe";
+                        if (err.text != null && err.text.contains("CHANNELS_TOO_MUCH"))
+                            errText = "You have joined too many channels";
+                        BulletinFactory.of(activity)
+                                .createSimpleBulletin(R.drawable.msg_channel, errText)
+                                .show();
+                    }
+                }));
+    }
+
+    void dismissRecommendedPost(FeedController.FeedItem item) {
+        if (item == null || !item.isRecommendation) return;
+        activity.feedController.getRecommendationEngine().dismissPost(item);
+        activity.refreshDisplayList();
+        BulletinFactory.of(activity)
+                .createSimpleBulletin(R.drawable.msg_close,
+                        "Won't recommend this channel")
+                .show();
+    }
+}
