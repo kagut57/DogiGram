@@ -8,21 +8,26 @@ import android.animation.ValueAnimator;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.graphics.Canvas;
+import android.graphics.Outline;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RectF;
 import android.graphics.SurfaceTexture;
-import android.graphics.Outline;
 import android.media.MediaPlayer;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.view.Gravity;
+import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
+import android.view.Surface;
 import android.view.TextureView;
 import android.view.View;
 import android.view.ViewOutlineProvider;
+import android.view.ViewParent;
+import android.view.animation.DecelerateInterpolator;
 import android.widget.FrameLayout;
 
 import androidx.annotation.NonNull;
@@ -30,68 +35,159 @@ import androidx.annotation.NonNull;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.FileLoader;
 import org.telegram.messenger.ImageLocation;
+import org.telegram.messenger.MediaController;
 import org.telegram.messenger.MessageObject;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.Components.BackupImageView;
 import org.telegram.ui.Components.LayoutHelper;
+import org.telegram.ui.Components.PlayPauseDrawable;
 
 import java.io.File;
+import java.lang.ref.WeakReference;
 
 @SuppressLint("ViewConstructor")
 public class FeedRoundVideoView extends FrameLayout {
 
     private static final int CIRCLE_COLLAPSED = dp(240);
-    private static final int CIRCLE_EXPANDED  = dp(300);
-    private static final long EXPAND_DURATION = 250;       // ms
-    private static final float[] SPEED_OPTIONS = {1f, 1.5f, 2f};
+    private static final int CIRCLE_EXPANDED = dp(300);
+    private static final long EXPAND_DURATION = 250;
+    private static final long SYNC_INTERVAL = 1000;
+    private static final long LONG_PRESS_DELAY = 300;
+    private static final float RING_TOUCH_WIDTH = dp(32);
+    private static final float TOUCH_SLOP = dp(8);
+    private static final float[] SPEEDS = {1f, 1.5f, 2f};
+
+    private static final long SEEK_THROTTLE_MS = 100;
+    private long lastSeekUpdateTime;
+
+    private static final int TOUCH_IDLE = 0;
+    private static final int TOUCH_PENDING = 1;
+    private static final int TOUCH_SEEKING = 2;
+    private static final int TOUCH_SPEEDUP = 3;
+
+    private int savedSpeedIndex;
+
+    private int touchState = TOUCH_IDLE;
+    private float touchDownX, touchDownY;
+    private boolean wasPlayingBeforeSeek;
 
     private final int currentAccount;
     private final BackupImageView thumbView;
     private final TextureView textureView;
+    private final FeedRoundProgressView progressView;
     private final PlayButtonView playButton;
-    private final SeekProgressView progressView;
-    private final SpeedButtonView speedButton;
-    private final TimestampView timestampView;
+    private final SpeedBadgeView speedBadge;
+    private final TimestampLabel timestampLabel;
 
     private MediaPlayer mediaPlayer;
     private MessageObject currentMessage;
-    private boolean isPlaying   = false;
-    private boolean isPrepared  = false;
-    private boolean surfaceReady = false;
-    private boolean finished    = false;
-
-    private int speedIndex = 0;
+    private boolean isPlaying;
+    private boolean isPrepared;
+    private boolean surfaceReady;
+    private boolean finished;
+    private int speedIndex;
+    private int cachedDuration;
 
     private int currentCircleSize = CIRCLE_COLLAPSED;
-    private ValueAnimator expandAnimator;
-    private boolean isExpanded = false;
-
-    private boolean isSeeking = false;
+    private boolean isExpanded;
+    private ValueAnimator expandAnim;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
-    private final Runnable progressUpdater = new Runnable() {
+
+    private static WeakReference<FeedRoundVideoView> activePlayerRef;
+    private static RoundVideoStateListener stateListener;
+
+    private final Runnable syncRunnable = new Runnable() {
         @Override
         public void run() {
             if (mediaPlayer != null && isPlaying && isPrepared) {
                 try {
                     int pos = mediaPlayer.getCurrentPosition();
                     int dur = mediaPlayer.getDuration();
-                    if (dur > 0) {
-                        float p = (float) pos / dur;
-                        progressView.setProgress(p);
-                        timestampView.setTime(pos, dur);
-                    }
+                    cachedDuration = dur;
+                    progressView.sync(pos, dur, SPEEDS[speedIndex]);
+                    timestampLabel.setTime(pos, dur);
                 } catch (Exception ignored) {}
-                handler.postDelayed(this, 50);
+                handler.postDelayed(this, SYNC_INTERVAL);
             }
         }
     };
 
+    private final Runnable longPressRunnable = () -> {
+        if (touchState == TOUCH_PENDING && isPlaying) {
+            enterSpeedUpMode();
+        }
+    };
+
     public interface SizeChangeListener {
-        void onRoundVideoSizeChanged(int newSizeDp);
+        void onRoundVideoSizeChanged(int newSizePx);
     }
+
+    public interface RoundVideoStateListener {
+        void onRoundVideoStateChanged();
+    }
+
     private SizeChangeListener sizeChangeListener;
     public void setSizeChangeListener(SizeChangeListener l) { sizeChangeListener = l; }
+    public static void setRoundVideoStateListener(RoundVideoStateListener l) {
+        stateListener = l;
+    }
+
+    public static FeedRoundVideoView getActivePlayer() {
+        return activePlayerRef != null ? activePlayerRef.get() : null;
+    }
+
+    public static boolean isActivelyPlaying() {
+        FeedRoundVideoView v = getActivePlayer();
+        return v != null && v.isPlaying;
+    }
+
+    public static boolean isActivePausedOrFinished() {
+        FeedRoundVideoView v = getActivePlayer();
+        return v != null && !v.isPlaying && v.isPrepared;
+    }
+
+    public static MessageObject getActiveMessage() {
+        FeedRoundVideoView v = getActivePlayer();
+        if (v != null && v.currentMessage != null && v.isPrepared
+                && (!v.finished || v.touchState == TOUCH_SEEKING)) {
+            return v.currentMessage;
+        }
+        return null;
+    }
+
+    public static float getActiveProgress() {
+        FeedRoundVideoView v = getActivePlayer();
+        if (v != null && v.progressView != null) {
+            return v.progressView.computeCurrentProgress();
+        }
+        return 0;
+    }
+
+    public static float getActivePlaybackSpeed() {
+        FeedRoundVideoView v = getActivePlayer();
+        return v != null ? SPEEDS[v.speedIndex] : 1f;
+    }
+
+    private void notifyStateChanged() {
+        if (stateListener != null) {
+            stateListener.onRoundVideoStateChanged();
+        }
+    }
+
+    public void externalTogglePlayback() {
+        togglePlayback();
+    }
+
+    public void externalCycleSpeed() {
+        cycleSpeed();
+    }
+
+    public void externalStop() {
+        release();
+        resetToCollapsed();
+        notifyStateChanged();
+    }
 
     public FeedRoundVideoView(Context context, int account) {
         super(context);
@@ -106,7 +202,8 @@ public class FeedRoundVideoView extends FrameLayout {
 
         textureView = new TextureView(context);
         textureView.setOutlineProvider(new ViewOutlineProvider() {
-            @Override public void getOutline(View v, Outline outline) {
+            @Override
+            public void getOutline(View v, Outline outline) {
                 outline.setOval(0, 0, v.getWidth(), v.getHeight());
             }
         });
@@ -115,7 +212,7 @@ public class FeedRoundVideoView extends FrameLayout {
         addView(textureView, LayoutHelper.createFrame(
                 LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
 
-        progressView = new SeekProgressView(context);
+        progressView = new FeedRoundProgressView(context);
         progressView.setVisibility(GONE);
         addView(progressView, LayoutHelper.createFrame(
                 LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
@@ -123,29 +220,31 @@ public class FeedRoundVideoView extends FrameLayout {
         playButton = new PlayButtonView(context);
         addView(playButton, LayoutHelper.createFrame(48, 48, Gravity.CENTER));
 
-        speedButton = new SpeedButtonView(context);
-        speedButton.setVisibility(GONE);
-        addView(speedButton, LayoutHelper.createFrame(
+        speedBadge = new SpeedBadgeView(context);
+        speedBadge.setVisibility(GONE);
+        addView(speedBadge, LayoutHelper.createFrame(
                 36, 36, Gravity.BOTTOM | Gravity.RIGHT, 0, 0, 8, 8));
-        speedButton.setOnClickListener(v -> cycleSpeed());
+        speedBadge.setOnClickListener(v -> cycleSpeed());
 
-        timestampView = new TimestampView(context);
-        timestampView.setVisibility(GONE);
-        addView(timestampView, LayoutHelper.createFrame(
+        timestampLabel = new TimestampLabel(context);
+        timestampLabel.setVisibility(GONE);
+        addView(timestampLabel, LayoutHelper.createFrame(
                 LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT,
                 Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL, 0, 0, 0, 10));
 
-        setOnClickListener(v -> togglePlayback());
-
         textureView.setSurfaceTextureListener(new TextureView.SurfaceTextureListener() {
-            @Override public void onSurfaceTextureAvailable(@NonNull SurfaceTexture s, int w, int h) {
+            @Override
+            public void onSurfaceTextureAvailable(@NonNull SurfaceTexture s, int w, int h) {
                 surfaceReady = true;
                 if (mediaPlayer != null && isPrepared)
-                    mediaPlayer.setSurface(new android.view.Surface(s));
+                    mediaPlayer.setSurface(new Surface(s));
             }
-            @Override public void onSurfaceTextureSizeChanged(@NonNull SurfaceTexture s, int w, int h) {}
-            @Override public boolean onSurfaceTextureDestroyed(@NonNull SurfaceTexture s) {
-                surfaceReady = false; return true;
+            @Override public void onSurfaceTextureSizeChanged(@NonNull SurfaceTexture s,
+                                                              int w, int h) {}
+            @Override
+            public boolean onSurfaceTextureDestroyed(@NonNull SurfaceTexture s) {
+                surfaceReady = false;
+                return true;
             }
             @Override public void onSurfaceTextureUpdated(@NonNull SurfaceTexture s) {}
         });
@@ -161,7 +260,8 @@ public class FeedRoundVideoView extends FrameLayout {
 
         if (msg == null) { setVisibility(GONE); return; }
 
-        TLRPC.Document doc = msg.messageOwner.media != null ? msg.messageOwner.media.document : null;
+        TLRPC.Document doc = msg.messageOwner.media != null
+                ? msg.messageOwner.media.document : null;
         if (doc == null) { setVisibility(GONE); return; }
 
         thumbView.setRoundRadius(CIRCLE_COLLAPSED / 2);
@@ -169,29 +269,39 @@ public class FeedRoundVideoView extends FrameLayout {
             TLRPC.PhotoSize thumb = FeedMediaHelper.bestSize(doc.thumbs);
             if (thumb != null)
                 thumbView.setImage(ImageLocation.getForDocument(thumb, doc),
-                        CIRCLE_COLLAPSED + "_" + CIRCLE_COLLAPSED, null, null, 0, doc);
+                        CIRCLE_COLLAPSED + "_" + CIRCLE_COLLAPSED,
+                        null, null, 0, doc);
         }
 
-        resetToCollapsed(false);
+        resetToCollapsed();
         setVisibility(VISIBLE);
-        FileLoader.getInstance(currentAccount).loadFile(doc, msg, FileLoader.PRIORITY_NORMAL, 0);
+        FileLoader.getInstance(currentAccount)
+                .loadFile(doc, msg, FileLoader.PRIORITY_NORMAL, 0);
     }
 
     public void release() {
-        handler.removeCallbacks(progressUpdater);
+        handler.removeCallbacks(syncRunnable);
+        handler.removeCallbacks(longPressRunnable);
+        progressView.stopSmooth();
         isPlaying = false;
         isPrepared = false;
         if (mediaPlayer != null) {
-            try { mediaPlayer.stop(); } catch (Exception ignored) {}
+            try { mediaPlayer.setOnSeekCompleteListener(null); } catch (Exception ignored) {}
+            try { mediaPlayer.stop(); }    catch (Exception ignored) {}
             try { mediaPlayer.release(); } catch (Exception ignored) {}
             mediaPlayer = null;
+        }
+        if (activePlayerRef != null && activePlayerRef.get() == this) {
+            activePlayerRef = null;
+            notifyStateChanged();
         }
     }
 
     private void togglePlayback() {
         if (currentMessage == null) return;
-        if (finished) { replay(); return; }
-        if (isPlaying) pause(); else play();
+        if (finished)  { replay(); return; }
+        if (isPlaying) { pause();  return; }
+        play();
     }
 
     private void play() {
@@ -203,19 +313,22 @@ public class FeedRoundVideoView extends FrameLayout {
 
         File file = getVideoFile(doc);
         if (file == null || !file.exists()) {
-            FileLoader.getInstance(currentAccount).loadFile(doc, currentMessage,
-                    FileLoader.PRIORITY_HIGH, 0);
+            FileLoader.getInstance(currentAccount)
+                    .loadFile(doc, currentMessage, FileLoader.PRIORITY_HIGH, 0);
             return;
         }
 
         if (mediaPlayer != null && isPrepared) {
             mediaPlayer.start();
             isPlaying = true;
+            activePlayerRef = new WeakReference<>(this);
+            MediaController.getInstance().cleanupPlayer(true, true);
             playButton.setVisibility(GONE);
-            speedButton.setVisibility(VISIBLE);
-            timestampView.setVisibility(VISIBLE);
-            handler.post(progressUpdater);
+            speedBadge.setVisibility(VISIBLE);
+            timestampLabel.setVisibility(VISIBLE);
+            startSmoothProgress();
             animateExpand(true);
+            notifyStateChanged();
             return;
         }
 
@@ -228,29 +341,34 @@ public class FeedRoundVideoView extends FrameLayout {
 
             mediaPlayer.setOnPreparedListener(mp -> {
                 isPrepared = true;
+                cachedDuration = mp.getDuration();
                 if (surfaceReady && textureView.getSurfaceTexture() != null)
-                    mp.setSurface(new android.view.Surface(textureView.getSurfaceTexture()));
+                    mp.setSurface(new Surface(textureView.getSurfaceTexture()));
 
                 applySpeed();
                 mp.start();
                 isPlaying = true;
 
+                activePlayerRef = new WeakReference<>(FeedRoundVideoView.this);
+                MediaController.getInstance().cleanupPlayer(true, true);
+
                 thumbView.setVisibility(GONE);
                 textureView.setVisibility(VISIBLE);
                 playButton.setVisibility(GONE);
                 progressView.setVisibility(VISIBLE);
-                speedButton.setVisibility(VISIBLE);
-                timestampView.setVisibility(VISIBLE);
+                speedBadge.setVisibility(VISIBLE);
+                timestampLabel.setVisibility(VISIBLE);
 
-                handler.post(progressUpdater);
+                progressView.sync(0, cachedDuration, SPEEDS[speedIndex]);
+                startSmoothProgress();
                 animateExpand(true);
+                notifyStateChanged();
             });
 
-            mediaPlayer.setOnCompletionListener(mp -> onPlaybackFinished());
-
+            mediaPlayer.setOnCompletionListener(mp -> onFinished());
             mediaPlayer.setOnErrorListener((mp, what, extra) -> {
                 release();
-                resetToCollapsed(true);
+                resetToCollapsed();
                 return true;
             });
 
@@ -266,23 +384,36 @@ public class FeedRoundVideoView extends FrameLayout {
         if (mediaPlayer != null && isPlaying) {
             mediaPlayer.pause();
             isPlaying = false;
-            playButton.setPlaying();
+            progressView.stopSmooth();
+            handler.removeCallbacks(syncRunnable);
+            playButton.setState(PlayButtonView.STATE_PLAY);
             playButton.setVisibility(VISIBLE);
-            handler.removeCallbacks(progressUpdater);
+            notifyStateChanged();
         }
     }
 
-    private void onPlaybackFinished() {
+    private void onFinished() {
         isPlaying = false;
         finished = true;
-        handler.removeCallbacks(progressUpdater);
-        progressView.setProgress(1f);
+        progressView.stopSmooth();
+        handler.removeCallbacks(syncRunnable);
+        progressView.setDirect(1f);
 
-        playButton.setReplay(true);
+        playButton.setState(PlayButtonView.STATE_REPLAY);
         playButton.setVisibility(VISIBLE);
-        speedButton.setVisibility(GONE);
+        speedBadge.setVisibility(GONE);
+
+        if (touchState == TOUCH_SPEEDUP) {
+            speedIndex = savedSpeedIndex;
+            applySpeed();
+            speedBadge.animate().scaleX(1f).scaleY(1f).setDuration(100).start();
+            touchState = TOUCH_IDLE;
+            ViewParent parent = getParent();
+            if (parent != null) parent.requestDisallowInterceptTouchEvent(false);
+        }
 
         animateExpand(false);
+        notifyStateChanged();
     }
 
     private void replay() {
@@ -291,85 +422,59 @@ public class FeedRoundVideoView extends FrameLayout {
             mediaPlayer.seekTo(0);
             mediaPlayer.start();
             isPlaying = true;
+            activePlayerRef = new WeakReference<>(this);
             playButton.setVisibility(GONE);
-            speedButton.setVisibility(VISIBLE);
-            timestampView.setVisibility(VISIBLE);
-            handler.post(progressUpdater);
+            speedBadge.setVisibility(VISIBLE);
+            timestampLabel.setVisibility(VISIBLE);
+            progressView.sync(0, cachedDuration, SPEEDS[speedIndex]);
+            startSmoothProgress();
             animateExpand(true);
+            notifyStateChanged();
         } else {
             play();
         }
     }
 
+    private void startSmoothProgress() {
+        progressView.startSmooth();
+        handler.removeCallbacks(syncRunnable);
+        handler.postDelayed(syncRunnable, SYNC_INTERVAL);
+    }
+
     private void cycleSpeed() {
-        speedIndex = (speedIndex + 1) % SPEED_OPTIONS.length;
+        speedIndex = (speedIndex + 1) % SPEEDS.length;
         applySpeed();
-        speedButton.setSpeed(SPEED_OPTIONS[speedIndex]);
+        speedBadge.setSpeed(SPEEDS[speedIndex]);
+        if (mediaPlayer != null && isPrepared) {
+            try {
+                progressView.sync(mediaPlayer.getCurrentPosition(),
+                        mediaPlayer.getDuration(), SPEEDS[speedIndex]);
+            } catch (Exception ignored) {}
+        }
     }
 
     private void applySpeed() {
         if (mediaPlayer == null || !isPrepared) return;
         if (Build.VERSION.SDK_INT >= 23) {
             try {
-                boolean wasPlaying = mediaPlayer.isPlaying();
+                boolean was = mediaPlayer.isPlaying();
                 mediaPlayer.setPlaybackParams(
-                        mediaPlayer.getPlaybackParams().setSpeed(SPEED_OPTIONS[speedIndex]));
-                if (!wasPlaying) mediaPlayer.pause();
+                        mediaPlayer.getPlaybackParams().setSpeed(SPEEDS[speedIndex]));
+                if (!was) mediaPlayer.pause();
             } catch (Exception ignored) {}
         }
     }
 
-    private void animateExpand(boolean expand) {
-        if (expand == isExpanded) return;
-        isExpanded = expand;
-
-        int from = currentCircleSize;
-        int to   = expand ? CIRCLE_EXPANDED : CIRCLE_COLLAPSED;
-
-        if (expandAnimator != null) expandAnimator.cancel();
-        expandAnimator = ValueAnimator.ofInt(from, to);
-        expandAnimator.setDuration(EXPAND_DURATION);
-        expandAnimator.addUpdateListener(a -> {
-            currentCircleSize = (int) a.getAnimatedValue();
-            applyCircleSize(currentCircleSize);
-        });
-        expandAnimator.addListener(new AnimatorListenerAdapter() {
-            @Override public void onAnimationEnd(Animator a) { expandAnimator = null; }
-        });
-        expandAnimator.start();
-    }
-
-    private void applyCircleSize(int size) {
-        android.view.ViewGroup.LayoutParams lp = getLayoutParams();
-        if (lp == null) return;
-        lp.width  = size;
-        lp.height = size;
-        setLayoutParams(lp);
-        thumbView.setRoundRadius(size / 2);
-        if (sizeChangeListener != null) sizeChangeListener.onRoundVideoSizeChanged(size);
-    }
-
-    private void resetToCollapsed(boolean showThumb) {
-        currentCircleSize = CIRCLE_COLLAPSED;
-        isExpanded = false;
-        applyCircleSize(CIRCLE_COLLAPSED);
-
-        thumbView.setVisibility(showThumb ? VISIBLE : VISIBLE);
-        textureView.setVisibility(GONE);
-        playButton.setPlaying();
-        playButton.setReplay(false);
-        playButton.setVisibility(VISIBLE);
-        progressView.setVisibility(GONE);
-        progressView.setProgress(0);
-        speedButton.setVisibility(GONE);
-        timestampView.setVisibility(GONE);
-    }
-
     @Override
     public boolean onInterceptTouchEvent(MotionEvent ev) {
-        if (progressView.getVisibility() != VISIBLE) return super.onInterceptTouchEvent(ev);
-        if (ev.getAction() == MotionEvent.ACTION_DOWN && isOnRing(ev)) {
-            isSeeking = true;
+        if (ev.getAction() == MotionEvent.ACTION_DOWN
+                && progressView.getVisibility() == VISIBLE
+                && (isPlaying || finished)
+                && isNearRing(ev)) {
+            touchDownX = ev.getX();
+            touchDownY = ev.getY();
+            enterSeekMode();
+            updateSeekFromTouch(ev);
             return true;
         }
         return super.onInterceptTouchEvent(ev);
@@ -378,60 +483,245 @@ public class FeedRoundVideoView extends FrameLayout {
     @SuppressLint("ClickableViewAccessibility")
     @Override
     public boolean onTouchEvent(MotionEvent ev) {
-        if (isSeeking) {
-            float cx = getWidth()  / 2f;
-            float cy = getHeight() / 2f;
-            double angle = Math.atan2(ev.getY() - cy, ev.getX() - cx);
-            float progress = (float) ((angle + Math.PI / 2) / (2 * Math.PI));
-            if (progress < 0) progress += 1f;
+        switch (ev.getAction()) {
+            case MotionEvent.ACTION_DOWN:
+                touchDownX = ev.getX();
+                touchDownY = ev.getY();
 
-            switch (ev.getAction()) {
-                case MotionEvent.ACTION_MOVE:
-                    progressView.setProgress(progress);
-                    break;
-                case MotionEvent.ACTION_UP:
-                case MotionEvent.ACTION_CANCEL:
-                    isSeeking = false;
-                    seekTo(progress);
-                    if (!isPlaying && !finished) {
-                        if (mediaPlayer != null && isPrepared) {
-                            mediaPlayer.start();
-                            isPlaying = true;
-                            playButton.setVisibility(GONE);
-                            handler.post(progressUpdater);
-                        }
+                if (touchState == TOUCH_SEEKING) {
+                    return true;
+                }
+
+                touchState = TOUCH_PENDING;
+                handler.postDelayed(longPressRunnable, LONG_PRESS_DELAY);
+                return true;
+
+            case MotionEvent.ACTION_MOVE:
+                if (touchState == TOUCH_PENDING) {
+                    if (movedBeyondSlop(ev)) {
+                        handler.removeCallbacks(longPressRunnable);
+                        touchState = TOUCH_IDLE;
+                        return false;
                     }
-                    break;
-            }
-            return true;
+                } else if (touchState == TOUCH_SEEKING) {
+                    updateSeekFromTouch(ev);
+                }
+                return true;
+
+            case MotionEvent.ACTION_UP:
+                handler.removeCallbacks(longPressRunnable);
+                if (touchState == TOUCH_SEEKING) {
+                    exitSeekMode();
+                } else if (touchState == TOUCH_SPEEDUP) {
+                    exitSpeedUpMode();
+                } else if (touchState == TOUCH_PENDING) {
+                    togglePlayback();
+                }
+                touchState = TOUCH_IDLE;
+                return true;
+
+            case MotionEvent.ACTION_CANCEL:
+                handler.removeCallbacks(longPressRunnable);
+                if (touchState == TOUCH_SEEKING) cancelSeek();
+                else if (touchState == TOUCH_SPEEDUP) exitSpeedUpMode();
+                touchState = TOUCH_IDLE;
+                return true;
         }
         return super.onTouchEvent(ev);
     }
 
-    private boolean isOnRing(MotionEvent ev) {
-        float cx = getWidth()  / 2f;
-        float cy = getHeight() / 2f;
-        float dist = (float) Math.hypot(ev.getX() - cx, ev.getY() - cy);
-        float radius = Math.min(cx, cy);
-        float ringWidth = dp(24);
-        return dist >= radius - ringWidth && dist <= radius + dp(8);
+    private void enterSeekMode() {
+        touchState = TOUCH_SEEKING;
+        wasPlayingBeforeSeek = isPlaying;
+
+        ViewParent parent = getParent();
+        if (parent != null) parent.requestDisallowInterceptTouchEvent(true);
+
+        if (isPlaying && mediaPlayer != null) {
+            mediaPlayer.pause();
+            isPlaying = false;
+        }
+        progressView.stopSmooth();
+        handler.removeCallbacks(syncRunnable);
+        handler.removeCallbacks(longPressRunnable);
+
+        progressView.setSeekProgress(progressView.getProgress());
+
+        performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+        notifyStateChanged();
     }
 
-    private void seekTo(float progress) {
+    private void exitSeekMode() {
+        ViewParent parent = getParent();
+        if (parent != null) parent.requestDisallowInterceptTouchEvent(false);
+
+        final float progress = progressView.getProgress();
+        final boolean shouldResume = wasPlayingBeforeSeek || finished;
+
+        if (mediaPlayer != null && isPrepared && cachedDuration > 0) {
+            final int target = (int) (progress * cachedDuration);
+
+            mediaPlayer.setOnSeekCompleteListener(mp -> {
+                mp.setOnSeekCompleteListener(null);
+                progressView.endSeek();
+
+                try {
+                    int pos = mp.getCurrentPosition();
+                    int dur = mp.getDuration();
+                    cachedDuration = dur;
+                    progressView.sync(pos, dur, SPEEDS[speedIndex]);
+                    timestampLabel.setTime(pos, dur);
+                } catch (Exception ignored) {
+                    progressView.sync(target, cachedDuration, SPEEDS[speedIndex]);
+                }
+
+                if (shouldResume) {
+                    finished = false;
+                    try {
+                        mp.start();
+                        isPlaying = true;
+                        playButton.setVisibility(GONE);
+                        speedBadge.setVisibility(VISIBLE);
+                        startSmoothProgress();
+                        animateExpand(true);
+                        notifyStateChanged();
+                    } catch (Exception e) {
+                        onFinished();
+                    }
+                } else {
+                    notifyStateChanged();
+                }
+            });
+
+            try {
+                if (Build.VERSION.SDK_INT >= 26) {
+                    mediaPlayer.seekTo(target, MediaPlayer.SEEK_CLOSEST);
+                } else {
+                    mediaPlayer.seekTo(target);
+                }
+            } catch (Exception e) {
+                mediaPlayer.setOnSeekCompleteListener(null);
+                progressView.endSeek();
+                notifyStateChanged();
+            }
+        } else {
+            progressView.endSeek();
+            notifyStateChanged();
+        }
+    }
+
+    private void cancelSeek() {
+        ViewParent parent = getParent();
+        if (parent != null) parent.requestDisallowInterceptTouchEvent(false);
+
+        progressView.endSeek();
+
         if (mediaPlayer != null && isPrepared) {
-            int duration = mediaPlayer.getDuration();
-            int target = (int) (progress * duration);
-            mediaPlayer.seekTo(target);
-            if (finished) {
-                finished = false;
+            try {
+                int pos = mediaPlayer.getCurrentPosition();
+                int dur = mediaPlayer.getDuration();
+                progressView.sync(pos, dur, SPEEDS[speedIndex]);
+                progressView.setDirect((float) pos / dur);
+                timestampLabel.setTime(pos, dur);
+            } catch (Exception ignored) {}
+
+            if (wasPlayingBeforeSeek) {
                 mediaPlayer.start();
                 isPlaying = true;
-                playButton.setVisibility(GONE);
-                speedButton.setVisibility(VISIBLE);
-                handler.post(progressUpdater);
-                animateExpand(true);
+                startSmoothProgress();
             }
         }
+    }
+
+    private void updateSeekFromTouch(MotionEvent ev) {
+        float cx = getWidth() / 2f;
+        float cy = getHeight() / 2f;
+        double angle = Math.atan2(ev.getY() - cy, ev.getX() - cx);
+        float progress = (float) ((angle + Math.PI / 2) / (2 * Math.PI));
+        if (progress < 0) progress += 1f;
+
+        progressView.setSeekProgress(progress);
+
+        if (cachedDuration > 0) {
+            timestampLabel.setTime((int) (progress * cachedDuration), cachedDuration);
+
+            long now = SystemClock.elapsedRealtime();
+            if (now - lastSeekUpdateTime > SEEK_THROTTLE_MS) {
+                lastSeekUpdateTime = now;
+                seekMediaTo(progress);
+            }
+        }
+    }
+
+    private void seekMediaTo(float progress) {
+        if (mediaPlayer != null && isPrepared) {
+            int target = (int) (progress * mediaPlayer.getDuration());
+            try {
+                if (Build.VERSION.SDK_INT >= 26) {
+                    mediaPlayer.seekTo(target, MediaPlayer.SEEK_CLOSEST);
+                } else {
+                    mediaPlayer.seekTo(target);
+                }
+            } catch (Exception ignored) {}
+        }
+    }
+
+    private boolean isNearRing(MotionEvent ev) {
+        float cx = getWidth() / 2f;
+        float cy = getHeight() / 2f;
+        float dist = (float) Math.hypot(ev.getX() - cx, ev.getY() - cy);
+        float r = Math.min(cx, cy);
+        return dist >= r - RING_TOUCH_WIDTH && dist <= r + dp(12);
+    }
+
+    private boolean movedBeyondSlop(MotionEvent ev) {
+        return Math.hypot(ev.getX() - touchDownX, ev.getY() - touchDownY) > TOUCH_SLOP;
+    }
+
+    private void animateExpand(boolean expand) {
+        if (expand == isExpanded) return;
+        isExpanded = expand;
+
+        int from = currentCircleSize;
+        int to = expand ? CIRCLE_EXPANDED : CIRCLE_COLLAPSED;
+
+        if (expandAnim != null) expandAnim.cancel();
+        expandAnim = ValueAnimator.ofInt(from, to);
+        expandAnim.setDuration(EXPAND_DURATION);
+        expandAnim.setInterpolator(new DecelerateInterpolator());
+        expandAnim.addUpdateListener(a -> {
+            currentCircleSize = (int) a.getAnimatedValue();
+            applyCircleSize(currentCircleSize);
+        });
+        expandAnim.addListener(new AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(Animator a) { expandAnim = null; }
+        });
+        expandAnim.start();
+    }
+
+    private void applyCircleSize(int size) {
+        android.view.ViewGroup.LayoutParams lp = getLayoutParams();
+        if (lp == null) return;
+        lp.width = size;
+        lp.height = size;
+        setLayoutParams(lp);
+        thumbView.setRoundRadius(size / 2);
+        if (sizeChangeListener != null) sizeChangeListener.onRoundVideoSizeChanged(size);
+    }
+
+    private void resetToCollapsed() {
+        currentCircleSize = CIRCLE_COLLAPSED;
+        isExpanded = false;
+        applyCircleSize(CIRCLE_COLLAPSED);
+
+        thumbView.setVisibility(VISIBLE);
+        textureView.setVisibility(GONE);
+        playButton.setState(PlayButtonView.STATE_PLAY);
+        playButton.setVisibility(VISIBLE);
+        progressView.setVisibility(GONE);
+        progressView.setDirect(0);
+        speedBadge.setVisibility(GONE);
+        timestampLabel.setVisibility(GONE);
     }
 
     private File getVideoFile(TLRPC.Document doc) {
@@ -447,102 +737,107 @@ public class FeedRoundVideoView extends FrameLayout {
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
         release();
-        resetToCollapsed(true);
+        resetToCollapsed();
     }
 
-    private static class PlayButtonView extends View {
-        private final Paint bgPaint   = new Paint(Paint.ANTI_ALIAS_FLAG);
+    static class PlayButtonView extends View {
+
+        static final int STATE_PLAY = 0;
+        static final int STATE_PAUSE = 1;
+        static final int STATE_REPLAY = 2;
+
+        private final Paint bgPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint iconPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Path  iconPath  = new Path();
-        private boolean showReplay = false;
+        private final Path path = new Path();
+        private final RectF tmpRect = new RectF();
+
+        private final PlayPauseDrawable playPauseDrawable;
+
+        private int state = STATE_PLAY;
 
         PlayButtonView(Context context) {
             super(context);
-            bgPaint.setColor(0x7F000000);
+            bgPaint.setColor(0x66000000);
             iconPaint.setColor(0xFFFFFFFF);
-            iconPaint.setStyle(Paint.Style.FILL);
+
+            playPauseDrawable = new PlayPauseDrawable(14);
+            playPauseDrawable.setParent(this);
+            playPauseDrawable.setColor(0xFFFFFFFF);
+            playPauseDrawable.setPause(false, false);
         }
 
-        void setPlaying() { showReplay = false; invalidate(); }
-        void setReplay(boolean replay)   { showReplay = replay; invalidate(); }
+        void setState(int s) {
+            boolean animate = (state != STATE_REPLAY && s != STATE_REPLAY);
+            state = s;
+            switch (s) {
+                case STATE_PLAY:
+                    playPauseDrawable.setPause(false, animate);
+                    break;
+                case STATE_PAUSE:
+                    playPauseDrawable.setPause(true, animate);
+                    break;
+                case STATE_REPLAY:
+                    playPauseDrawable.setPause(false, false);
+                    break;
+            }
+            invalidate();
+        }
 
-        @Override protected void onDraw(Canvas canvas) {
+        @Override
+        protected void onDraw(Canvas canvas) {
             float cx = getWidth() / 2f, cy = getHeight() / 2f;
             float r = Math.min(cx, cy);
             canvas.drawCircle(cx, cy, r, bgPaint);
 
-            iconPath.reset();
-            if (showReplay) {
-                iconPaint.setStyle(Paint.Style.STROKE);
-                iconPaint.setStrokeWidth(dp(2));
-                @SuppressLint("DrawAllocation") RectF arc = new RectF(cx - r * 0.35f, cy - r * 0.35f,
-                        cx + r * 0.35f, cy + r * 0.35f);
-                canvas.drawArc(arc, -90, 300, false, iconPaint);
-                iconPaint.setStyle(Paint.Style.FILL);
-                float tx = cx, ty = cy - r * 0.35f;
-                iconPath.moveTo(tx - dp(4), ty - dp(4));
-                iconPath.lineTo(tx + dp(4), ty);
-                iconPath.lineTo(tx - dp(4), ty + dp(4));
-                iconPath.close();
-                canvas.drawPath(iconPath, iconPaint);
+            if (state == STATE_REPLAY) {
+                drawReplay(canvas, cx, cy);
             } else {
-                iconPaint.setStyle(Paint.Style.FILL);
-                float s = r * 0.6f, ox = s * 0.15f;
-                iconPath.moveTo(cx - s * 0.4f + ox, cy - s * 0.5f);
-                iconPath.lineTo(cx - s * 0.4f + ox, cy + s * 0.5f);
-                iconPath.lineTo(cx + s * 0.5f + ox, cy);
-                iconPath.close();
-                canvas.drawPath(iconPath, iconPaint);
+                int size = playPauseDrawable.getIntrinsicWidth();
+                playPauseDrawable.setBounds(
+                        (int) (cx - size / 2f), (int) (cy - size / 2f),
+                        (int) (cx + size / 2f), (int) (cy + size / 2f));
+                playPauseDrawable.draw(canvas);
             }
         }
-    }
 
-    private static class SeekProgressView extends View {
-        private final Paint bgPaint       = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint progressPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint dotPaint      = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final RectF rect          = new RectF();
-        private float progress = 0f;
+        private void drawReplay(Canvas c, float cx, float cy) {
+            float arcR = dp(8);
+            float sw = dp(2f);
 
-        SeekProgressView(Context context) {
-            super(context);
-            bgPaint.setStyle(Paint.Style.STROKE);
-            bgPaint.setStrokeWidth(dp(3));
-            bgPaint.setColor(0x40FFFFFF);
+            iconPaint.setStyle(Paint.Style.STROKE);
+            iconPaint.setStrokeWidth(sw);
+            iconPaint.setStrokeCap(Paint.Cap.ROUND);
+            tmpRect.set(cx - arcR, cy - arcR, cx + arcR, cy + arcR);
+            c.drawArc(tmpRect, -70, 320, false, iconPaint);
 
-            progressPaint.setStyle(Paint.Style.STROKE);
-            progressPaint.setStrokeWidth(dp(3));
-            progressPaint.setStrokeCap(Paint.Cap.ROUND);
-            progressPaint.setColor(0xFFFFFFFF);
+            iconPaint.setStyle(Paint.Style.FILL);
+            iconPaint.setStrokeCap(Paint.Cap.BUTT);
+            float aRad = (float) Math.toRadians(-70);
+            float px = cx + arcR * (float) Math.cos(aRad);
+            float py = cy + arcR * (float) Math.sin(aRad);
+            float as = dp(4f);
+            float tx = -(float) Math.sin(aRad);
+            float ty = (float) Math.cos(aRad);
+            float nx = (float) Math.cos(aRad);
+            float ny = (float) Math.sin(aRad);
 
-            dotPaint.setColor(0xFFFFFFFF);
-            dotPaint.setStyle(Paint.Style.FILL);
-        }
-
-        void setProgress(float p) { progress = p; invalidate(); }
-
-        @Override protected void onDraw(Canvas canvas) {
-            float stroke = dp(3);
-            float inset  = stroke / 2f + dp(2);
-            rect.set(inset, inset, getWidth() - inset, getHeight() - inset);
-
-            canvas.drawArc(rect, 0, 360, false, bgPaint);
-            float sweep = progress * 360f;
-            canvas.drawArc(rect, -90, sweep, false, progressPaint);
-
-            float angle = (float) Math.toRadians(-90 + sweep);
-            float dotCx = rect.centerX() + rect.width()  / 2f * (float) Math.cos(angle);
-            float dotCy = rect.centerY() + rect.height() / 2f * (float) Math.sin(angle);
-            canvas.drawCircle(dotCx, dotCy, dp(5), dotPaint);
+            path.reset();
+            path.moveTo(px + tx * as, py + ty * as);
+            path.lineTo(px - tx * as * 0.3f + nx * as * 0.65f,
+                    py - ty * as * 0.3f + ny * as * 0.65f);
+            path.lineTo(px - tx * as * 0.3f - nx * as * 0.65f,
+                    py - ty * as * 0.3f - ny * as * 0.65f);
+            path.close();
+            c.drawPath(path, iconPaint);
         }
     }
 
-    private static class SpeedButtonView extends View {
-        private final Paint bgPaint   = new Paint(Paint.ANTI_ALIAS_FLAG);
+    static class SpeedBadgeView extends View {
+        private final Paint bgPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private String label = "1×";
 
-        SpeedButtonView(Context context) {
+        SpeedBadgeView(Context context) {
             super(context);
             bgPaint.setColor(0x7F000000);
             textPaint.setColor(0xFFFFFFFF);
@@ -552,26 +847,27 @@ public class FeedRoundVideoView extends FrameLayout {
         }
 
         void setSpeed(float speed) {
-            if (speed == (int) speed) label = (int) speed + "×";
-            else label = speed + "×";
+            label = (speed == (int) speed) ? ((int) speed + "×") : (speed + "×");
             invalidate();
         }
 
-        @Override protected void onDraw(Canvas canvas) {
+        @Override
+        protected void onDraw(Canvas canvas) {
             float cx = getWidth() / 2f, cy = getHeight() / 2f;
             canvas.drawCircle(cx, cy, Math.min(cx, cy), bgPaint);
             Paint.FontMetrics fm = textPaint.getFontMetrics();
-            float ty = cy - (fm.ascent + fm.descent) / 2f;
-            canvas.drawText(label, cx, ty, textPaint);
+            canvas.drawText(label, cx, cy - (fm.ascent + fm.descent) / 2f, textPaint);
         }
     }
 
-    private static class TimestampView extends View {
-        private final Paint bgPaint   = new Paint(Paint.ANTI_ALIAS_FLAG);
+    @SuppressLint("DefaultLocale")
+    static class TimestampLabel extends View {
+        private final Paint bgPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private String text = "";
+        private int lastWidth = -1;
 
-        TimestampView(Context context) {
+        TimestampLabel(Context context) {
             super(context);
             bgPaint.setColor(0x66000000);
             textPaint.setColor(0xFFFFFFFF);
@@ -579,25 +875,87 @@ public class FeedRoundVideoView extends FrameLayout {
             textPaint.setTextAlign(Paint.Align.CENTER);
         }
 
-        @SuppressLint("DefaultLocale")
         void setTime(int posMs, int durMs) {
             int ps = posMs / 1000, ds = durMs / 1000;
-            text = String.format("%d:%02d / %d:%02d", ps / 60, ps % 60, ds / 60, ds % 60);
+            String newText = String.format("%d:%02d / %d:%02d",
+                    ps / 60, ps % 60, ds / 60, ds % 60);
+            if (newText.equals(text)) return;
+            text = newText;
+
             int w = (int) textPaint.measureText(text) + dp(16);
             int h = dp(20);
             if (getLayoutParams() != null) {
+                boolean sizeChanged = getLayoutParams().width != w
+                        || getLayoutParams().height != h;
                 getLayoutParams().width = w;
                 getLayoutParams().height = h;
+                if (sizeChanged) {
+                    requestLayout();
+                }
             }
             invalidate();
         }
 
-        @Override protected void onDraw(Canvas canvas) {
+        @Override
+        protected void onDraw(Canvas canvas) {
             float cx = getWidth() / 2f, cy = getHeight() / 2f;
             float r = getHeight() / 2f;
             canvas.drawRoundRect(0, 0, getWidth(), getHeight(), r, r, bgPaint);
             Paint.FontMetrics fm = textPaint.getFontMetrics();
             canvas.drawText(text, cx, cy - (fm.ascent + fm.descent) / 2f, textPaint);
         }
+
+        public int getLastWidth() {
+            return lastWidth;
+        }
+
+        public void setLastWidth(int lastWidth) {
+            this.lastWidth = lastWidth;
+        }
+    }
+
+    private void enterSpeedUpMode() {
+        touchState = TOUCH_SPEEDUP;
+        savedSpeedIndex = speedIndex;
+        speedIndex = SPEEDS.length - 1;
+        applySpeed();
+        speedBadge.setSpeed(SPEEDS[speedIndex]);
+
+        speedBadge.animate().scaleX(1.3f).scaleY(1.3f).setDuration(150).start();
+
+        if (mediaPlayer != null && isPrepared) {
+            try {
+                progressView.sync(mediaPlayer.getCurrentPosition(),
+                        mediaPlayer.getDuration(), SPEEDS[speedIndex]);
+            } catch (Exception ignored) {}
+        }
+
+        performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+
+        ViewParent parent = getParent();
+        if (parent != null) parent.requestDisallowInterceptTouchEvent(true);
+    }
+
+    private void exitSpeedUpMode() {
+        speedIndex = savedSpeedIndex;
+        applySpeed();
+        speedBadge.setSpeed(SPEEDS[speedIndex]);
+
+        speedBadge.animate().scaleX(1f).scaleY(1f).setDuration(150).start();
+
+        if (mediaPlayer != null && isPrepared) {
+            try {
+                progressView.sync(mediaPlayer.getCurrentPosition(),
+                        mediaPlayer.getDuration(), SPEEDS[speedIndex]);
+            } catch (Exception ignored) {}
+        }
+
+        ViewParent parent = getParent();
+        if (parent != null) parent.requestDisallowInterceptTouchEvent(false);
+    }
+
+    public static boolean isActiveSeeking() {
+        FeedRoundVideoView v = getActivePlayer();
+        return v != null && v.touchState == TOUCH_SEEKING;
     }
 }

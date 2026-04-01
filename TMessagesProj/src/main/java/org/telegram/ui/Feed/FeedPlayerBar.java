@@ -68,6 +68,13 @@ public class FeedPlayerBar extends FrameLayout implements NotificationCenter.Not
     private float topPadding;
     private final View applyingView;
 
+    private int baseTopPadding = -1;
+
+    private boolean isShowingRoundVideo;
+
+    private final FeedRoundVideoView.RoundVideoStateListener roundVideoListener =
+            () -> checkPlayer(false);
+
     public FeedPlayerBar(Context context, BaseFragment fragment, View applyingView,
                          Theme.ResourcesProvider resourcesProvider) {
         super(context);
@@ -101,14 +108,16 @@ public class FeedPlayerBar extends FrameLayout implements NotificationCenter.Not
         playButton.setBackground(Theme.createSelectorDrawable(
                 getThemedColor(Theme.key_inappPlayerPlayPause) & 0x19ffffff, 1, dp(14)));
         playButton.setOnClickListener(v -> {
+            if (isShowingRoundVideo) {
+                FeedRoundVideoView player = FeedRoundVideoView.getActivePlayer();
+                if (player != null) player.externalTogglePlayback();
+                return;
+            }
             MediaController mc = MediaController.getInstance();
             MessageObject playing = mc.getPlayingMessageObject();
             if (playing != null) {
-                if (mc.isMessagePaused()) {
-                    mc.playMessage(playing);
-                } else {
-                    mc.pauseMessage(playing);
-                }
+                if (mc.isMessagePaused()) mc.playMessage(playing);
+                else mc.pauseMessage(playing);
             }
         });
         addView(playButton, LayoutHelper.createFrame(36, 36, Gravity.TOP | Gravity.LEFT, 3, 0, 0, 0));
@@ -138,14 +147,21 @@ public class FeedPlayerBar extends FrameLayout implements NotificationCenter.Not
         closeButton.setBackground(Theme.createSelectorDrawable(
                 getThemedColor(Theme.key_inappPlayerClose) & 0x19ffffff, 1, dp(14)));
         closeButton.setScaleType(ImageView.ScaleType.CENTER);
-        closeButton.setOnClickListener(v ->
-                MediaController.getInstance().cleanupPlayer(true, true));
+        closeButton.setOnClickListener(v -> {
+            if (isShowingRoundVideo) {
+                FeedRoundVideoView player = FeedRoundVideoView.getActivePlayer();
+                if (player != null) player.externalStop();
+                return;
+            }
+            MediaController.getInstance().cleanupPlayer(true, true);
+        });
         addView(closeButton, LayoutHelper.createFrame(
                 36, 36, Gravity.RIGHT | Gravity.TOP, 0, 0, 4, 0));
 
         createPlaybackSpeedButton();
 
         setOnClickListener(v -> {
+            if (isShowingRoundVideo) return;
             MessageObject messageObject = MediaController.getInstance().getPlayingMessageObject();
             if (fragment != null && messageObject != null) {
                 if (messageObject.isMusic()) {
@@ -169,6 +185,7 @@ public class FeedPlayerBar extends FrameLayout implements NotificationCenter.Not
         playbackSpeedButton.setShowSubmenuByMove(false);
         playbackSpeedButton.setDelegate(id -> {
             if (id < 0 || id >= speeds.length) return;
+            if (isShowingRoundVideo) return;
             MediaController.getInstance().setPlaybackSpeed(isMusic, speeds[id]);
         });
         playbackSpeedButton.setIcon(speedIcon = new SpeedIconDrawable(true));
@@ -182,18 +199,32 @@ public class FeedPlayerBar extends FrameLayout implements NotificationCenter.Not
         });
 
         speedItems = new ActionBarMenuItem.Item[6];
-        speedItems[0] = playbackSpeedButton.lazilyAddSubItem(0, R.drawable.msg_speed_slow, org.telegram.messenger.LocaleController.getString(R.string.SpeedSlow));
-        speedItems[1] = playbackSpeedButton.lazilyAddSubItem(1, R.drawable.msg_speed_normal, org.telegram.messenger.LocaleController.getString(R.string.SpeedNormal));
-        speedItems[2] = playbackSpeedButton.lazilyAddSubItem(2, R.drawable.msg_speed_medium, org.telegram.messenger.LocaleController.getString(R.string.SpeedMedium));
-        speedItems[3] = playbackSpeedButton.lazilyAddSubItem(3, R.drawable.msg_speed_fast, org.telegram.messenger.LocaleController.getString(R.string.SpeedFast));
-        speedItems[4] = playbackSpeedButton.lazilyAddSubItem(4, R.drawable.msg_speed_veryfast, org.telegram.messenger.LocaleController.getString(R.string.SpeedVeryFast));
-        speedItems[5] = playbackSpeedButton.lazilyAddSubItem(5, R.drawable.msg_speed_superfast, org.telegram.messenger.LocaleController.getString(R.string.SpeedSuperFast));
+        speedItems[0] = playbackSpeedButton.lazilyAddSubItem(0, R.drawable.msg_speed_slow,
+                org.telegram.messenger.LocaleController.getString(R.string.SpeedSlow));
+        speedItems[1] = playbackSpeedButton.lazilyAddSubItem(1, R.drawable.msg_speed_normal,
+                org.telegram.messenger.LocaleController.getString(R.string.SpeedNormal));
+        speedItems[2] = playbackSpeedButton.lazilyAddSubItem(2, R.drawable.msg_speed_medium,
+                org.telegram.messenger.LocaleController.getString(R.string.SpeedMedium));
+        speedItems[3] = playbackSpeedButton.lazilyAddSubItem(3, R.drawable.msg_speed_fast,
+                org.telegram.messenger.LocaleController.getString(R.string.SpeedFast));
+        speedItems[4] = playbackSpeedButton.lazilyAddSubItem(4, R.drawable.msg_speed_veryfast,
+                org.telegram.messenger.LocaleController.getString(R.string.SpeedVeryFast));
+        speedItems[5] = playbackSpeedButton.lazilyAddSubItem(5, R.drawable.msg_speed_superfast,
+                org.telegram.messenger.LocaleController.getString(R.string.SpeedSuperFast));
 
         playbackSpeedButton.setAdditionalXOffset(dp(8));
         addView(playbackSpeedButton, LayoutHelper.createFrame(
                 36, 36, Gravity.TOP | Gravity.RIGHT, 0, 0, 36, 0));
 
         playbackSpeedButton.setOnClickListener(v -> {
+            if (isShowingRoundVideo) {
+                FeedRoundVideoView player = FeedRoundVideoView.getActivePlayer();
+                if (player != null) {
+                    player.externalCycleSpeed();
+                    updatePlaybackButton(true);
+                }
+                return;
+            }
             float current = MediaController.getInstance().getPlaybackSpeed(isMusic);
             int index = -1;
             for (int i = 0; i < toggleSpeeds.length; ++i) {
@@ -209,10 +240,13 @@ public class FeedPlayerBar extends FrameLayout implements NotificationCenter.Not
         });
 
         playbackSpeedButton.setOnLongClickListener(view -> {
+            if (isShowingRoundVideo) return false;
             float speed = MediaController.getInstance().getPlaybackSpeed(isMusic);
             speedSlider.setSpeed(speed, false);
-            speedSlider.setBackgroundColor(Theme.getColor(Theme.key_actionBarDefaultSubmenuBackground, resourcesProvider));
-            playbackSpeedButton.redrawPopup(Theme.getColor(Theme.key_actionBarDefaultSubmenuBackground));
+            speedSlider.setBackgroundColor(Theme.getColor(
+                    Theme.key_actionBarDefaultSubmenuBackground, resourcesProvider));
+            playbackSpeedButton.redrawPopup(Theme.getColor(
+                    Theme.key_actionBarDefaultSubmenuBackground));
             playbackSpeedButton.updateColor();
             updatePlaybackButton(false);
             playbackSpeedButton.setDimMenu(.3f);
@@ -223,7 +257,12 @@ public class FeedPlayerBar extends FrameLayout implements NotificationCenter.Not
 
     private void updatePlaybackButton(boolean animated) {
         if (speedIcon == null) return;
-        float speed = MediaController.getInstance().getPlaybackSpeed(isMusic);
+        float speed;
+        if (isShowingRoundVideo) {
+            speed = FeedRoundVideoView.getActivePlaybackSpeed();
+        } else {
+            speed = MediaController.getInstance().getPlaybackSpeed(isMusic);
+        }
         speedIcon.setValue(speed, animated);
 
         int color = getThemedColor(!equals(speed, 1.0f)
@@ -233,18 +272,22 @@ public class FeedPlayerBar extends FrameLayout implements NotificationCenter.Not
         playbackSpeedButton.setBackground(Theme.createSelectorDrawable(
                 color & 0x19ffffff, 1, dp(14)));
 
-        boolean isFinal = !slidingSpeed;
-        slidingSpeed = false;
-        for (int a = 0; a < speedItems.length; a++) {
-            if (isFinal && Math.abs(speed - speeds[a]) < 0.05f) {
-                speedItems[a].setColors(getThemedColor(Theme.key_featuredStickers_addButtonPressed),
-                        getThemedColor(Theme.key_featuredStickers_addButtonPressed));
-            } else {
-                speedItems[a].setColors(getThemedColor(Theme.key_actionBarDefaultSubmenuItem),
-                        getThemedColor(Theme.key_actionBarDefaultSubmenuItem));
+        if (!isShowingRoundVideo) {
+            boolean isFinal = !slidingSpeed;
+            slidingSpeed = false;
+            for (int a = 0; a < speedItems.length; a++) {
+                if (isFinal && Math.abs(speed - speeds[a]) < 0.05f) {
+                    speedItems[a].setColors(
+                            getThemedColor(Theme.key_featuredStickers_addButtonPressed),
+                            getThemedColor(Theme.key_featuredStickers_addButtonPressed));
+                } else {
+                    speedItems[a].setColors(
+                            getThemedColor(Theme.key_actionBarDefaultSubmenuItem),
+                            getThemedColor(Theme.key_actionBarDefaultSubmenuItem));
+                }
             }
+            speedSlider.setSpeed(speed, animated);
         }
-        speedSlider.setSpeed(speed, animated);
     }
 
     private boolean equals(float a, float b) {
@@ -260,18 +303,39 @@ public class FeedPlayerBar extends FrameLayout implements NotificationCenter.Not
     public void setTopPadding(float value) {
         topPadding = value;
         if (applyingView != null) {
-            int currentTop = applyingView.getPaddingTop();
-            int target = (int) (getVisibility() == VISIBLE ? topPadding : 0);
-            if (currentTop != target) {
-                applyingView.setPadding(0, target, 0, applyingView.getPaddingBottom());
+            if (baseTopPadding < 0) {
+                baseTopPadding = applyingView.getPaddingTop();
+            }
+            int target = baseTopPadding + (int) value;
+            if (applyingView.getPaddingTop() != target) {
+                applyingView.setPadding(
+                        applyingView.getPaddingLeft(),
+                        target,
+                        applyingView.getPaddingRight(),
+                        applyingView.getPaddingBottom()
+                );
             }
         }
     }
 
     public void checkPlayer(boolean create) {
-        MessageObject messageObject = MediaController.getInstance().getPlayingMessageObject();
+        MessageObject audioMsg = MediaController.getInstance().getPlayingMessageObject();
+        boolean hasAudio = audioMsg != null && audioMsg.getId() != 0 && !audioMsg.isVideo();
 
-        if (messageObject == null || messageObject.getId() == 0 || messageObject.isVideo()) {
+        MessageObject roundMsg = FeedRoundVideoView.getActiveMessage();
+        boolean hasRound = roundMsg != null;
+
+        if (hasAudio && hasRound) {
+            FeedRoundVideoView player = FeedRoundVideoView.getActivePlayer();
+            if (player != null) player.externalStop();
+            hasRound = false;
+        }
+
+        boolean showRound = hasRound && !hasAudio;
+        MessageObject displayMsg = showRound ? roundMsg : (hasAudio ? audioMsg : null);
+
+        if (displayMsg == null) {
+            isShowingRoundVideo = false;
             if (visible) {
                 visible = false;
                 lastMessageObject = null;
@@ -301,6 +365,8 @@ public class FeedPlayerBar extends FrameLayout implements NotificationCenter.Not
             return;
         }
 
+        isShowingRoundVideo = showRound;
+
         if (create && topPadding == 0) {
             setTopPadding(AndroidUtilities.dp2(BAR_HEIGHT + 2));
         }
@@ -329,13 +395,17 @@ public class FeedPlayerBar extends FrameLayout implements NotificationCenter.Not
             setVisibility(VISIBLE);
         }
 
-        playPauseDrawable.setPause(!MediaController.getInstance().isMessagePaused(), !create);
+        if (showRound) {
+            playPauseDrawable.setPause(FeedRoundVideoView.isActivelyPlaying(), !create);
+        } else {
+            playPauseDrawable.setPause(!MediaController.getInstance().isMessagePaused(), !create);
+        }
 
-        if (lastMessageObject != messageObject) {
-            lastMessageObject = messageObject;
+        if (lastMessageObject != displayMsg) {
+            lastMessageObject = displayMsg;
             SpannableStringBuilder sb;
 
-            if (messageObject.isVoice() || messageObject.isRoundVideo()) {
+            if (showRound || displayMsg.isVoice() || displayMsg.isRoundVideo()) {
                 isMusic = false;
                 playbackSpeedButton.setAlpha(1.0f);
                 playbackSpeedButton.setEnabled(true);
@@ -343,7 +413,7 @@ public class FeedPlayerBar extends FrameLayout implements NotificationCenter.Not
                 playbackSpeedButton.setTag(1);
                 titleTextView.setPadding(0, 0, dp(44), 0);
                 sb = new SpannableStringBuilder(String.format("%s %s",
-                        messageObject.getMusicAuthor(), messageObject.getMusicTitle()));
+                        displayMsg.getMusicAuthor(), displayMsg.getMusicTitle()));
                 for (int i = 0; i < 2; i++) {
                     android.widget.TextView tv = i == 0
                             ? titleTextView.getTextView() : titleTextView.getNextTextView();
@@ -351,7 +421,7 @@ public class FeedPlayerBar extends FrameLayout implements NotificationCenter.Not
                 }
             } else {
                 isMusic = true;
-                if (messageObject.getDuration() >= 10 * 60) {
+                if (displayMsg.getDuration() >= 10 * 60) {
                     playbackSpeedButton.setAlpha(1.0f);
                     playbackSpeedButton.setEnabled(true);
                     playbackSpeedButton.setVisibility(VISIBLE);
@@ -363,7 +433,7 @@ public class FeedPlayerBar extends FrameLayout implements NotificationCenter.Not
                     titleTextView.setPadding(0, 0, 0, 0);
                 }
                 sb = new SpannableStringBuilder(String.format("%s - %s",
-                        messageObject.getMusicAuthor(), messageObject.getMusicTitle()));
+                        displayMsg.getMusicAuthor(), displayMsg.getMusicTitle()));
                 for (int i = 0; i < 2; i++) {
                     android.widget.TextView tv = i == 0
                             ? titleTextView.getTextView() : titleTextView.getNextTextView();
@@ -373,28 +443,49 @@ public class FeedPlayerBar extends FrameLayout implements NotificationCenter.Not
 
             TypefaceSpan span = new TypefaceSpan(AndroidUtilities.bold(), 0,
                     getThemedColor(Theme.key_inappPlayerPerformer));
-            sb.setSpan(span, 0, messageObject.getMusicAuthor().length(),
+            sb.setSpan(span, 0, displayMsg.getMusicAuthor().length(),
                     Spanned.SPAN_INCLUSIVE_INCLUSIVE);
             titleTextView.setText(sb, visible && isMusic);
 
             updatePlaybackButton(false);
         }
+
+        invalidate();
     }
 
     @Override
     protected void dispatchDraw(@NonNull Canvas canvas) {
         super.dispatchDraw(canvas);
 
-        MessageObject playing = MediaController.getInstance().getPlayingMessageObject();
-        if (playing != null) {
+        if (!visible) return;
+
+        float progress = 0;
+        boolean needsContinuousUpdate = false;
+
+        if (isShowingRoundVideo) {
+            progress = FeedRoundVideoView.getActiveProgress();
+            needsContinuousUpdate = FeedRoundVideoView.isActivelyPlaying()
+                    || FeedRoundVideoView.isActiveSeeking();
+        } else {
+            MessageObject playing = MediaController.getInstance().getPlayingMessageObject();
+            if (playing != null) {
+                progress = playing.audioProgress;
+            }
+        }
+
+        if (progress > 0) {
             float left = -dpf2(1);
             float right = getMeasuredWidth() + dpf2(1);
-            float p = lerp(left, right, playing.audioProgress);
+            float p = lerp(left, right, progress);
             float bottom = dp(BAR_HEIGHT);
             float top = bottom - dpf2(2);
 
             progressPaint.setColor(getThemedColor(Theme.key_featuredStickers_addButton));
             canvas.drawRoundRect(left, top, p, bottom, dpf2(1), dpf2(1), progressPaint);
+        }
+
+        if (needsContinuousUpdate) {
+            postInvalidateOnAnimation();
         }
     }
 
@@ -414,6 +505,8 @@ public class FeedPlayerBar extends FrameLayout implements NotificationCenter.Not
             NotificationCenter.getInstance(a).addObserver(this, NotificationCenter.messagePlayingProgressDidChanged);
         }
         NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.messagePlayingSpeedChanged);
+
+        FeedRoundVideoView.setRoundVideoStateListener(roundVideoListener);
         checkPlayer(true);
     }
 
@@ -427,6 +520,9 @@ public class FeedPlayerBar extends FrameLayout implements NotificationCenter.Not
             NotificationCenter.getInstance(a).removeObserver(this, NotificationCenter.messagePlayingProgressDidChanged);
         }
         NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.messagePlayingSpeedChanged);
+
+        FeedRoundVideoView.setRoundVideoStateListener(null);
+
         if (animatorSet != null) {
             animatorSet.cancel();
             animatorSet = null;
