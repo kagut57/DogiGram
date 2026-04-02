@@ -978,4 +978,13 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
             }
         }
     }
+
+    @Override
+    public void onBecomeFullyVisible() {
+        super.onBecomeFullyVisible();
+        BaseFragment current = getCurrentVisibleFragment();
+        if (current != null) {
+            current.onBecomeFullyVisible();
+        }
+    }
 }

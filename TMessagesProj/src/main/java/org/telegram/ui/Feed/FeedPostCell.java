@@ -169,6 +169,7 @@ public class FeedPostCell extends LinearLayout {
         void onDismissRecommendation(FeedController.FeedItem item);
         void onDateEntityClick(TLRPC.TL_messageEntityFormattedDate entity, View anchor);
         void onStickerClick(FeedStickerView stickerView, TLRPC.InputStickerSet stickerSet);
+        void onAvatarLongPress(View anchor, FeedController.FeedItem item);
     }
 
     public void setCallback(Callback cb) {
@@ -516,6 +517,16 @@ public class FeedPostCell extends LinearLayout {
 
         avatarView = new BackupImageView(context);
         avatarView.setRoundRadius(dp(22));
+        avatarView.setOnLongClickListener(v -> {
+            if (callback != null && currentItem != null) {
+                callback.onAvatarLongPress(avatarView, currentItem);
+                return true;
+            }
+            return false;
+        });
+        avatarView.setOnClickListener(v -> {
+            if (callback != null && currentItem != null) callback.onHeaderClick(currentItem);
+        });
         headerClickZone.addView(avatarView,
                 LayoutHelper.createLinear(44, 44, Gravity.CENTER_VERTICAL));
 
@@ -1212,6 +1223,7 @@ public class FeedPostCell extends LinearLayout {
                 || isPointInsideView(x, y, reactionsView)
                 || isPointInsideView(x, y, commentsBtn)
                 || isPointInsideView(x, y, shareBtn)
+                || isPointInsideView(x, y, avatarView)
                 || isTouchOnMessageText(ev);
     }
 

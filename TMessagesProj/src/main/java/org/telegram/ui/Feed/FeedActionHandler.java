@@ -14,13 +14,17 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.MessagesController;
+import org.telegram.messenger.NotificationsController;
 import org.telegram.messenger.R;
 import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.Utilities;
 import org.telegram.messenger.browser.Browser;
 import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.TLRPC;
+import org.telegram.ui.ActionBar.ActionBarMenuSubItem;
+import org.telegram.ui.ActionBar.ActionBarPopupWindow;
 import org.telegram.ui.ActionBar.BottomSheet;
+import org.telegram.ui.ActionBar.INavigationLayout;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.ChatActivity;
 import org.telegram.ui.Components.AlertsCreator;
@@ -30,6 +34,7 @@ import org.telegram.ui.Components.ItemOptions;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.ScrimOptions;
 import org.telegram.ui.Components.StickersAlert;
+import org.telegram.ui.LaunchActivity;
 import org.telegram.ui.PhotoViewer;
 
 import java.util.ArrayList;
@@ -547,5 +552,156 @@ class FeedActionHandler {
         );
 
         activity.showDialog(alert);
+    }
+
+    void showChannelPreview(View anchor, FeedController.FeedItem item) {
+        if (activity.getParentActivity() == null || item == null) return;
+
+        long channelId = -item.channelId;
+        TLRPC.Chat chat = MessagesController.getInstance(activity.getAccount())
+                .getChat(channelId);
+        if (chat == null) return;
+
+        anchor.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
+
+        Bundle args = new Bundle();
+        args.putLong("chat_id", channelId);
+
+        int flags = ActionBarPopupWindow.ActionBarPopupWindowLayout.FLAG_SHOWN_FROM_BOTTOM;
+        ActionBarPopupWindow.ActionBarPopupWindowLayout previewMenu =
+                new ActionBarPopupWindow.ActionBarPopupWindowLayout(
+                        activity.getParentActivity(),
+                        R.drawable.popup_fixed_alert2,
+                        activity.getResProvider(),
+                        flags);
+
+        ActionBarMenuSubItem openItem = new ActionBarMenuSubItem(
+                activity.getParentActivity(), true, false);
+        openItem.setTextAndIcon(
+                LocaleController.getString(R.string.OpenChannel),
+                R.drawable.msg_channel);
+        openItem.setMinimumWidth(dp(160));
+        openItem.setOnClickListener(v -> {
+            activity.finishPreviewAndResetBlur();
+            AndroidUtilities.runOnUIThread(() -> {
+                activity.saveScroll();
+                activity.openChannel(item);
+            }, 100);
+        });
+
+        previewMenu.addView(openItem);
+
+        TLRPC.Dialog dialog = MessagesController.getInstance(activity.getAccount())
+                .dialogs_dict.get(item.channelId);
+        if (dialog != null && (dialog.unread_count > 0 || dialog.unread_mark)) {
+            ActionBarMenuSubItem readItem = new ActionBarMenuSubItem(
+                    activity.getParentActivity(), false, false);
+            readItem.setTextAndIcon(
+                    LocaleController.getString(R.string.MarkAsRead),
+                    R.drawable.msg_markread);
+            readItem.setMinimumWidth(dp(160));
+            readItem.setOnClickListener(v -> {
+                markChannelAsRead(item);
+                activity.finishPreviewAndResetBlur();
+            });
+            previewMenu.addView(readItem);
+        }
+
+        boolean isMuted = MessagesController.getInstance(activity.getAccount())
+                .isDialogMuted(item.channelId, 0);
+        ActionBarMenuSubItem muteItem = new ActionBarMenuSubItem(
+                activity.getParentActivity(), false, false);
+        muteItem.setTextAndIcon(
+                isMuted ? LocaleController.getString(R.string.ChatsUnmute)
+                        : LocaleController.getString(R.string.ChatsMute),
+                isMuted ? R.drawable.msg_unmute : R.drawable.msg_mute);
+        muteItem.setMinimumWidth(dp(160));
+        muteItem.setOnClickListener(v -> {
+            if (!isMuted) {
+                NotificationsController.getInstance(activity.getAccount())
+                        .setDialogNotificationsSettings(item.channelId, 0,
+                                NotificationsController.SETTING_MUTE_FOREVER);
+            } else {
+                NotificationsController.getInstance(activity.getAccount())
+                        .setDialogNotificationsSettings(item.channelId, 0,
+                                NotificationsController.SETTING_MUTE_UNMUTE);
+            }
+            BulletinFactory.createMuteBulletin(activity, !isMuted, null).show();
+            activity.finishPreviewAndResetBlur();
+        });
+        previewMenu.addView(muteItem);
+
+        String channelName = chat.title;
+        ActionBarMenuSubItem hideItem = new ActionBarMenuSubItem(
+                activity.getParentActivity(), false, true);
+        hideItem.setIconColor(Theme.getColor(Theme.key_text_RedRegular, activity.getResProvider()));
+        hideItem.setTextColor(Theme.getColor(Theme.key_text_RedBold, activity.getResProvider()));
+        hideItem.setSelectorColor(Theme.multAlpha(
+                Theme.getColor(Theme.key_text_RedBold, activity.getResProvider()), .12f));
+        hideItem.setTextAndIcon("Hide from feed", R.drawable.msg_block2);
+        hideItem.setMinimumWidth(dp(160));
+        hideItem.setOnClickListener(v -> {
+            activity.finishPreviewAndResetBlur();
+            AndroidUtilities.runOnUIThread(() -> {
+                activity.feedController.hideChannel(item.channelId);
+                activity.adapter.setItems(activity.feedController.getCachedFeed());
+                activity.updateEmpty();
+                BulletinFactory.of(activity)
+                        .createSimpleBulletin(R.drawable.msg_block2,
+                                channelName + " hidden from feed")
+                        .show();
+            }, 100);
+        });
+        previewMenu.addView(hideItem);
+
+        ChatActivity chatActivity = new ChatActivity(args);
+
+        INavigationLayout layout = activity.getParentLayout();
+        if (layout == null && activity.getParentActivity() instanceof LaunchActivity) {
+            layout = ((LaunchActivity) activity.getParentActivity()).getActionBarLayout();
+        }
+
+        if (layout != null) {
+            activity.prepareBlurBitmap();
+            activity.previewLayout = layout;
+            layout.setHighlightActionButtons(true);
+
+            if (AndroidUtilities.displaySize.x > AndroidUtilities.displaySize.y) {
+                layout.presentFragment(
+                        new INavigationLayout.NavigationParams(chatActivity)
+                                .setPreview(true));
+            } else {
+                layout.presentFragment(
+                        new INavigationLayout.NavigationParams(chatActivity)
+                                .setPreview(true)
+                                .setMenuView(previewMenu));
+                chatActivity.allowExpandPreviewByClick = true;
+            }
+        }
+    }
+
+    private void markChannelAsRead(FeedController.FeedItem item) {
+        int account = activity.getAccount();
+        long dialogId = item.channelId;
+
+        TLRPC.Dialog dialog = MessagesController.getInstance(account)
+                .dialogs_dict.get(dialogId);
+        if (dialog == null) return;
+
+        MessagesController.getInstance(account).markDialogAsRead(
+                dialogId, dialog.top_message, dialog.top_message,
+                dialog.last_message_date, false, 0, 0, true, 0);
+
+        for (FeedController.FeedItem fi : activity.adapter.getItems()) {
+            if (fi.channelId == item.channelId) {
+                fi.isRead = true;
+            }
+        }
+        int pos = activity.adapter.findItemPosition(item);
+        if (pos >= 0) activity.adapter.notifyItemChanged(pos);
+
+        BulletinFactory.of(activity)
+                .createSimpleBulletin(R.drawable.msg_markread, "Marked as read")
+                .show();
     }
 }

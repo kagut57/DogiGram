@@ -2,7 +2,11 @@ package org.telegram.ui.Feed;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
 
+import android.annotation.SuppressLint;
 import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.drawable.BitmapDrawable;
 import android.os.Bundle;
 import android.os.Parcelable;
 import android.text.style.ClickableSpan;
@@ -20,10 +24,12 @@ import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.R;
+import org.telegram.messenger.Utilities;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.ActionBar;
 import org.telegram.ui.ActionBar.ActionBarMenu;
 import org.telegram.ui.ActionBar.BaseFragment;
+import org.telegram.ui.ActionBar.INavigationLayout;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.ChatActivity;
 import org.telegram.ui.Components.Bulletin;
@@ -54,6 +60,9 @@ public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFr
     private static Parcelable savedScrollState;
     private static boolean hasScrollState;
     private Runnable markReadRunnable;
+    private View blurredView;
+
+    INavigationLayout previewLayout;
 
     FeedActionHandler actionHandler;
     FeedShareHelper shareHelper;
@@ -228,6 +237,23 @@ public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFr
         playerLp.gravity = Gravity.TOP;
         rootView.addView(playerBar, playerLp);
 
+        blurredView = new View(context) {
+            @SuppressLint("ClickableViewAccessibility")
+            @Override
+            public boolean onTouchEvent(MotionEvent event) {
+                if (getVisibility() != VISIBLE || getAlpha() < 0.01f) {
+                    return false;
+                }
+                if (event.getAction() == MotionEvent.ACTION_UP) {
+                    finishPreviewAndResetBlur();
+                }
+                return true;
+            }
+        };
+        blurredView.setVisibility(View.GONE);
+        rootView.addView(blurredView,
+                LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
+
         fragmentView = rootView;
         return fragmentView;
     }
@@ -367,6 +393,11 @@ public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFr
             public void onStickerClick(FeedStickerView stickerView,
                                        TLRPC.InputStickerSet stickerSet) {
                 actionHandler.openStickerSet(stickerSet);
+            }
+
+            @Override
+            public void onAvatarLongPress(View anchor, FeedController.FeedItem item) {
+                actionHandler.showChannelPreview(anchor, item);
             }
         };
     }
@@ -528,5 +559,101 @@ public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFr
     public void onParentScrollToTop() {
         if (listView != null) listView.smoothScrollToPosition(0);
         loadFeed(true);
+    }
+
+    void prepareBlurBitmap() {
+        if (blurredView == null || fragmentView == null
+                || fragmentView.getMeasuredWidth() == 0
+                || fragmentView.getMeasuredHeight() == 0) {
+            return;
+        }
+        int w = (int) (fragmentView.getMeasuredWidth() / 9.0f);
+        int h = (int) (fragmentView.getMeasuredHeight() / 9.0f);
+        Bitmap bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+        bitmap.eraseColor(Theme.getColor(Theme.key_windowBackgroundWhite, resourceProvider));
+        Canvas canvas = new Canvas(bitmap);
+        canvas.scale(1.0f / 9.0f, 1.0f / 9.0f);
+        fragmentView.draw(canvas);
+        Utilities.stackBlurBitmap(bitmap, Math.max(9, Math.max(w, h) / 180));
+        blurredView.setBackground(new BitmapDrawable(bitmap));
+        blurredView.setAlpha(0.0f);
+        blurredView.setVisibility(View.VISIBLE);
+        blurredView.animate().alpha(1f).setDuration(220).start();
+
+        scheduleBlurAutoCheck();
+    }
+
+    private Runnable blurAutoCheckRunnable;
+
+    private void scheduleBlurAutoCheck() {
+        cancelBlurAutoCheck();
+        blurAutoCheckRunnable = new Runnable() {
+            @Override
+            public void run() {
+                if (blurredView == null || blurredView.getVisibility() != View.VISIBLE) return;
+
+                boolean stillInPreview = false;
+                if (previewLayout != null) {
+                    try {
+                        BaseFragment last = previewLayout.getLastFragment();
+                        if (last != null && last.isInPreviewMode()) {
+                            stillInPreview = true;
+                        }
+                    } catch (Exception ignored) {}
+                }
+
+                if (!stillInPreview) {
+                    resetBlurBitmap();
+                    previewLayout = null;
+                } else if (fragmentView != null) {
+                    fragmentView.postDelayed(this, 150);
+                }
+            }
+        };
+        if (fragmentView != null) {
+            fragmentView.postDelayed(blurAutoCheckRunnable, 300);
+        }
+    }
+
+    private void cancelBlurAutoCheck() {
+        if (blurAutoCheckRunnable != null && fragmentView != null) {
+            fragmentView.removeCallbacks(blurAutoCheckRunnable);
+            blurAutoCheckRunnable = null;
+        }
+    }
+
+    void resetBlurBitmap() {
+        if (blurredView == null) return;
+        cancelBlurAutoCheck();
+        if (blurredView.getVisibility() == View.VISIBLE) {
+            blurredView.animate().cancel();
+            blurredView.animate()
+                    .alpha(0f)
+                    .setDuration(220)
+                    .withEndAction(() -> {
+                        blurredView.setVisibility(View.GONE);
+                        blurredView.setBackground(null);
+                    })
+                    .start();
+        }
+    }
+
+    @Override
+    public void onBecomeFullyVisible() {
+        super.onBecomeFullyVisible();
+        resetBlurBitmap();
+    }
+
+    void finishPreviewAndResetBlur() {
+        if (previewLayout != null) {
+            try {
+                BaseFragment last = previewLayout.getLastFragment();
+                if (last != null && last.isInPreviewMode()) {
+                    previewLayout.finishPreviewFragment();
+                }
+            } catch (Exception ignored) {}
+            previewLayout = null;
+        }
+        resetBlurBitmap();
     }
 }

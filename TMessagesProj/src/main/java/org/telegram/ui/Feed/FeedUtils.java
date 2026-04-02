@@ -1,10 +1,8 @@
 package org.telegram.ui.Feed;
 
-import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.MessagesController;
 import org.telegram.tgnet.TLRPC;
 
-import java.util.List;
 import java.util.Locale;
 
 import android.app.Activity;
@@ -75,23 +73,6 @@ public class FeedUtils {
         return "Attachment";
     }
 
-    public static List<TLRPC.Document> getDocuments(FeedController.FeedItem item) {
-        List<TLRPC.Document> result = new java.util.ArrayList<>();
-        if (item == null) return result;
-
-        for (MessageObject msg : item.messages) {
-            TLRPC.MessageMedia media = msg.messageOwner.media;
-            if (!(media instanceof TLRPC.TL_messageMediaDocument)) continue;
-            TLRPC.Document doc = media.document;
-            if (doc == null) continue;
-
-            if (!isGenericDocument(doc)) continue;
-
-            result.add(doc);
-        }
-        return result;
-    }
-
     public static Activity getActivity(Context context) {
         while (context instanceof ContextWrapper) {
             if (context instanceof Activity) return (Activity) context;
@@ -126,7 +107,7 @@ public class FeedUtils {
         if (doc == null) return false;
         for (TLRPC.DocumentAttribute attr : doc.attributes) {
             if (attr instanceof TLRPC.TL_documentAttributeVideo) {
-                return ((TLRPC.TL_documentAttributeVideo) attr).round_message;
+                return attr.round_message;
             }
         }
         return false;
@@ -169,14 +150,4 @@ public class FeedUtils {
         return false;
     }
 
-    public static boolean isGenericDocument(TLRPC.Document doc) {
-        if (doc == null) return false;
-        if (isRoundVideo(doc)) return false;
-        if (isVideo(doc)) return false;
-        if (isVoiceOrAudio(doc)) return false;
-        if (isSticker(doc)) return false;
-        if (isGif(doc)) return false;
-
-        return true;
-    }
 }

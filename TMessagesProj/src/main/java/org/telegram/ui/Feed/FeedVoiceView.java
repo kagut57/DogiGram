@@ -362,7 +362,7 @@ public class FeedVoiceView extends LinearLayout implements NotificationCenter.No
         if (isVoice) {
             setupVoiceLayout(waveform, duration);
         } else {
-            setupMusicLayout(title, performer, duration, audioDoc);
+            setupMusicLayout(title, performer, audioDoc);
         }
 
         MediaController mc = MediaController.getInstance();
@@ -398,15 +398,13 @@ public class FeedVoiceView extends LinearLayout implements NotificationCenter.No
     }
 
     @SuppressLint("SetTextI18n")
-    private void setupMusicLayout(String title, String performer, int duration,
+    private void setupMusicLayout(String title, String performer,
                                   TLRPC.Document doc) {
         voiceLayout.setVisibility(GONE);
         musicLayout.setVisibility(VISIBLE);
 
-        // Title
         musicTitleView.setText(title != null && !title.isEmpty() ? title : "Audio");
 
-        // Artist
         if (performer != null && !performer.isEmpty()) {
             musicArtistView.setText(performer);
             musicArtistView.setVisibility(VISIBLE);
@@ -414,13 +412,10 @@ public class FeedVoiceView extends LinearLayout implements NotificationCenter.No
             musicArtistView.setVisibility(GONE);
         }
 
-        // Album art
         loadAlbumArt(doc);
 
-        // SeekBar
         musicSeekBar.setProgress(0);
 
-        // Time
         updateMusicTimeText(0);
     }
 
@@ -592,8 +587,8 @@ public class FeedVoiceView extends LinearLayout implements NotificationCenter.No
 
         ConnectionsManager.getInstance(account).sendRequest(req, (res, err) -> {
             String text;
-            long   id      = 0;
-            boolean isFinal = false;
+            long   id;
+            boolean isFinal;
 
             if (res instanceof TLRPC.TL_messages_transcribedAudio) {
                 TLRPC.TL_messages_transcribedAudio r = (TLRPC.TL_messages_transcribedAudio) res;

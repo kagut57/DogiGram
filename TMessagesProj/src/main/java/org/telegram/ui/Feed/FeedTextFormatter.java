@@ -1,7 +1,5 @@
 package org.telegram.ui.Feed;
 
-import static org.telegram.messenger.AndroidUtilities.dp;
-
 import android.graphics.Paint;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
