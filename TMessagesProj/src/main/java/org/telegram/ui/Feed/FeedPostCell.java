@@ -26,6 +26,7 @@ import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.core.graphics.ColorUtils;
+import androidx.recyclerview.widget.RecyclerView;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ImageLocation;
@@ -911,6 +912,8 @@ public class FeedPostCell extends LinearLayout {
         } else {
             setCollapsedText();
             readMoreView.setText(LocaleController.getString("FeedReadMore", R.string.FeedReadMore));
+
+            scrollToTopOfPost();
         }
         scheduleQuoteWidthUpdate();
         requestLayout();
@@ -1297,5 +1300,25 @@ public class FeedPostCell extends LinearLayout {
                         .start();
             }
         }
+    }
+
+    private void scrollToTopOfPost() {
+        android.view.ViewParent parent = getParent();
+        while (parent != null && !(parent instanceof RecyclerView)) {
+            parent = parent.getParent();
+        }
+        if (parent == null) return;
+
+        RecyclerView rv = (RecyclerView) parent;
+
+        post(() -> {
+            int top = getTop();
+            int rvTop = rv.getPaddingTop();
+
+            if (top < rvTop) {
+                int scrollBy = top - rvTop;
+                rv.smoothScrollBy(0, scrollBy);
+            }
+        });
     }
 }
