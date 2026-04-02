@@ -362,6 +362,12 @@ public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFr
                                           View anchor) {
                 actionHandler.onDateEntityClick(entity, anchor);
             }
+
+            @Override
+            public void onStickerClick(FeedStickerView stickerView,
+                                       TLRPC.InputStickerSet stickerSet) {
+                actionHandler.openStickerSet(stickerSet);
+            }
         };
     }
 

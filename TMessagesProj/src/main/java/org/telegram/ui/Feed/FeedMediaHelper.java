@@ -466,4 +466,17 @@ public class FeedMediaHelper {
             }
         }
     }
+
+    public static MessageObject findStickerMessage(FeedController.FeedItem item) {
+        if (item == null) return null;
+        for (MessageObject msg : item.messages) {
+            TLRPC.MessageMedia media = msg.messageOwner.media;
+            if (!(media instanceof TLRPC.TL_messageMediaDocument) || media.document == null)
+                continue;
+            if (FeedUtils.isSticker(media.document)) {
+                return msg;
+            }
+        }
+        return null;
+    }
 }

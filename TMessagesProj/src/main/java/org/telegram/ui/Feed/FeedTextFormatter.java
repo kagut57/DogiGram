@@ -352,7 +352,11 @@ public class FeedTextFormatter {
                 }
             }
         } else {
-            if (primary.caption != null && primary.caption.length() > 0) {
+            TLRPC.Document primaryDoc = primary.messageOwner != null
+                    && primary.messageOwner.media != null
+                    ? primary.messageOwner.media.document : null;
+            if (primaryDoc != null && FeedUtils.isSticker(primaryDoc)) {
+            } else if (primary.caption != null && primary.caption.length() > 0) {
                 text = primary.caption;
                 sourceMsg = primary;
             } else {
@@ -411,7 +415,8 @@ public class FeedTextFormatter {
                     || text.equals(LocaleController.getString(R.string.AttachContact))
                     || text.equals(LocaleController.getString(R.string.AttachLocation))
                     || text.equals(LocaleController.getString(R.string.AttachLiveLocation))
-                    || text.equals(LocaleController.getString(R.string.Poll)))
+                    || text.equals(LocaleController.getString(R.string.Poll))
+                    || text.equals(LocaleController.getString(R.string.AttachSticker)))
                 return true;
         } catch (Exception e) { /* ignore */ }
         return false;

@@ -29,6 +29,7 @@ import org.telegram.ui.Components.BulletinFactory;
 import org.telegram.ui.Components.ItemOptions;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.ScrimOptions;
+import org.telegram.ui.Components.StickersAlert;
 import org.telegram.ui.PhotoViewer;
 
 import java.util.ArrayList;
@@ -530,5 +531,21 @@ class FeedActionHandler {
                 .createSimpleBulletin(R.drawable.msg_close,
                         "Won't recommend this channel")
                 .show();
+    }
+
+    void openStickerSet(TLRPC.InputStickerSet inputSet) {
+        if (inputSet == null || activity.getParentActivity() == null) return;
+
+        StickersAlert alert = new StickersAlert(
+                activity.getParentActivity(),
+                activity,
+                inputSet,
+                null,
+                null,
+                activity.getResProvider(),
+                false
+        );
+
+        activity.showDialog(alert);
     }
 }

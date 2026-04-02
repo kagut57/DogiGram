@@ -75,6 +75,7 @@ public class FeedPostCell extends LinearLayout {
     final TextView mediaOverlayLabel;
     final TextView albumLabel;
     final FeedMediaShimmer mediaShimmer;
+    final FeedStickerView stickerView;
 
     private ImageView viewsIcon;
     private TextView viewsCountView;
@@ -166,6 +167,7 @@ public class FeedPostCell extends LinearLayout {
         void onSubscribeClick(FeedController.FeedItem item);
         void onDismissRecommendation(FeedController.FeedItem item);
         void onDateEntityClick(TLRPC.TL_messageEntityFormattedDate entity, View anchor);
+        void onStickerClick(FeedStickerView stickerView, TLRPC.InputStickerSet stickerSet);
     }
 
     public void setCallback(Callback cb) {
@@ -420,6 +422,20 @@ public class FeedPostCell extends LinearLayout {
                 roundVideoView.setLayoutParams(rvLp);
             }
         });
+
+        stickerView = new FeedStickerView(context);
+        stickerView.setVisibility(GONE);
+        stickerView.setOnClickListener(v -> {
+            if (callback != null && currentItem != null) {
+                TLRPC.InputStickerSet inputSet = stickerView.getInputStickerSet();
+                if (inputSet != null) {
+                    callback.onStickerClick(stickerView, inputSet);
+                }
+            }
+        });
+        addView(stickerView,
+                LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT,
+                        Gravity.CENTER_HORIZONTAL, 0, 8, 0, 0));
 
         mediaRow = new LinearLayout(context);
         mediaRow.setOrientation(HORIZONTAL);
@@ -695,6 +711,7 @@ public class FeedPostCell extends LinearLayout {
         voiceView.clear();
         buttonsView.clear();
         readMoreView.setVisibility(GONE);
+        stickerView.clear();
 
         summaryHelper.reset();
         translationHelper.reset();
@@ -727,6 +744,13 @@ public class FeedPostCell extends LinearLayout {
         } else {
             pollView.setVisibility(GONE);
             bindMedia(item);
+        }
+
+        MessageObject stickerMsg = FeedMediaHelper.findStickerMessage(item);
+        if (stickerMsg != null) {
+            stickerView.setSticker(stickerMsg);
+        } else {
+            stickerView.clear();
         }
 
         documentView.setData(item);
