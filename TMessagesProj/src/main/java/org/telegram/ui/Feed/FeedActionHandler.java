@@ -704,4 +704,12 @@ class FeedActionHandler {
                 .createSimpleBulletin(R.drawable.msg_markread, "Marked as read")
                 .show();
     }
+
+    void onTextLongPress(View cell, FeedController.FeedItem item, CharSequence text) {
+        if (TextUtils.isEmpty(text)) {
+            showPostScrim(cell);
+            return;
+        }
+        showSelectableTextDialog(text.toString());
+    }
 }

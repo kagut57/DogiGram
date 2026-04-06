@@ -645,4 +645,87 @@ class FeedMessageTextView extends AnimatedEmojiSpan.TextViewEmojis {
         }
         return null;
     }
+
+    boolean hasInteractiveElementAt(float viewX, float viewY) {
+        if (getVisibility() != VISIBLE) return false;
+
+        Layout layout = getLayout();
+        if (layout == null || !(getText() instanceof Spanned)) return false;
+
+        Spanned spanned = (Spanned) getText();
+
+        if (isTouchOnSpoiler(viewX, viewY)) {
+            return true;
+        }
+
+        if (findCopyBlock(viewX, viewY) != null) {
+            return true;
+        }
+
+        if (findQuoteClickable(viewX, viewY, spanned) != null) {
+            return true;
+        }
+
+        int x = (int) viewX - getTotalPaddingLeft() + getScrollX();
+        int y = (int) viewY - getTotalPaddingTop() + getScrollY();
+
+        if (y < 0 || y > layout.getHeight()) return false;
+
+        int line = layout.getLineForVertical(y);
+        float lineLeft = layout.getLineLeft(line);
+        float lineRight = layout.getLineRight(line);
+        if (x < lineLeft || x > lineRight) return false;
+
+        int off = layout.getOffsetForHorizontal(line, x);
+
+        URLSpanMono[] monoSpans = spanned.getSpans(off, off, URLSpanMono.class);
+        if (monoSpans != null && monoSpans.length > 0) {
+            return true;
+        }
+
+        ClickableSpan[] spans = spanned.getSpans(off, off, ClickableSpan.class);
+        if (spans != null) {
+            for (ClickableSpan span : spans) {
+                if (!(span instanceof FeedQuoteSpan.Clickable)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    boolean hasPlainTextAt(float viewX, float viewY) {
+        if (getVisibility() != VISIBLE) return false;
+        if (hasInteractiveElementAt(viewX, viewY)) return false;
+
+        Layout layout = getLayout();
+        if (layout == null) return false;
+
+        int x = (int) viewX - getTotalPaddingLeft() + getScrollX();
+        int y = (int) viewY - getTotalPaddingTop() + getScrollY();
+
+        if (y < 0 || y > layout.getHeight()) return false;
+
+        int line = layout.getLineForVertical(y);
+        float lineLeft = layout.getLineLeft(line);
+        float lineRight = layout.getLineRight(line);
+
+        return x >= lineLeft && x <= lineRight;
+    }
+
+    private boolean isTouchOnSpoiler(float viewX, float viewY) {
+        if (spoilerEffects.isEmpty() || spoilersRevealed) return false;
+
+        float x = viewX - getCompoundPaddingLeft();
+        float y = viewY - getExtendedPaddingTop();
+
+        for (SpoilerEffect eff : spoilerEffects) {
+            android.graphics.Rect b = eff.getBounds();
+            if (x >= b.left && x <= b.right && y >= b.top && y <= b.bottom) {
+                return true;
+            }
+        }
+        return false;
+    }
 }

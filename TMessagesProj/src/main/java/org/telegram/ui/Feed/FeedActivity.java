@@ -399,6 +399,10 @@ public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFr
             public void onAvatarLongPress(View anchor, FeedController.FeedItem item) {
                 actionHandler.showChannelPreview(anchor, item);
             }
+            @Override
+            public void onTextLongPress(View cell, FeedController.FeedItem item, CharSequence text) {
+                actionHandler.onTextLongPress(cell, item, text);
+            }
         };
     }
 

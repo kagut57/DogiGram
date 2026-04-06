@@ -119,9 +119,10 @@ public class FeedPostCell extends LinearLayout {
     private Runnable longPressRunnable;
     private boolean longPressTriggered;
     private float longPressDownX, longPressDownY;
-    private boolean longPressStarted;
-    private static final long LONG_PRESS_TIMEOUT = 500;
-    private static final float TOUCH_SLOP = dp(10);
+
+    private boolean downAllowsDoubleTap;
+    private int touchSlop;
+    private int longPressTimeout;
 
     final FeedPostSummaryHelper summaryHelper;
     final FeedPostTranslationHelper translationHelper;
@@ -165,6 +166,7 @@ public class FeedPostCell extends LinearLayout {
         void onLinkClick(String url);
         void onLinkLongPress(String url, View cell, ClickableSpan span);
         void onPostLongPress(View cell);
+        void onTextLongPress(View cell, FeedController.FeedItem item, CharSequence text);
         void onSubscribeClick(FeedController.FeedItem item);
         void onDismissRecommendation(FeedController.FeedItem item);
         void onDateEntityClick(TLRPC.TL_messageEntityFormattedDate entity, View anchor);
@@ -202,6 +204,11 @@ public class FeedPostCell extends LinearLayout {
         setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite, resourceProvider));
         setClipChildren(false);
         setClipToPadding(false);
+        setClickable(true);
+
+        android.view.ViewConfiguration vc = android.view.ViewConfiguration.get(context);
+        touchSlop = vc.getScaledTouchSlop();
+        longPressTimeout = android.view.ViewConfiguration.getLongPressTimeout();
 
         int grayColor = Theme.getColor(Theme.key_windowBackgroundWhiteGrayText3, resourceProvider);
         int accentColor = Theme.getColor(Theme.key_windowBackgroundWhiteBlueText2, resourceProvider);
@@ -517,16 +524,21 @@ public class FeedPostCell extends LinearLayout {
 
         avatarView = new BackupImageView(context);
         avatarView.setRoundRadius(dp(22));
-        avatarView.setOnLongClickListener(v -> {
+        avatarView.setOnClickListener(v -> {
+            if (callback != null && currentItem != null) callback.onHeaderClick(currentItem);
+        });
+
+        View.OnLongClickListener previewLongClick = v -> {
             if (callback != null && currentItem != null) {
                 callback.onAvatarLongPress(avatarView, currentItem);
                 return true;
             }
             return false;
-        });
-        avatarView.setOnClickListener(v -> {
-            if (callback != null && currentItem != null) callback.onHeaderClick(currentItem);
-        });
+        };
+
+        headerClickZone.setOnLongClickListener(previewLongClick);
+        avatarView.setOnLongClickListener(previewLongClick);
+
         headerClickZone.addView(avatarView,
                 LayoutHelper.createLinear(44, 44, Gravity.CENTER_VERTICAL));
 
@@ -1156,47 +1168,69 @@ public class FeedPostCell extends LinearLayout {
 
     @Override
     public boolean dispatchTouchEvent(MotionEvent ev) {
-        int action = ev.getAction();
-        boolean onInteractive = isTouchOnInteractiveChild(ev);
+        int action = ev.getActionMasked();
 
         switch (action) {
-            case MotionEvent.ACTION_DOWN:
+            case MotionEvent.ACTION_DOWN: {
                 longPressTriggered = false;
-                longPressStarted = false;
                 longPressDownX = ev.getX();
                 longPressDownY = ev.getY();
-                cancelPendingLongPress();
-                break;
 
-            case MotionEvent.ACTION_MOVE:
-                float dx = Math.abs(ev.getX() - longPressDownX);
-                float dy = Math.abs(ev.getY() - longPressDownY);
-                if (dx > TOUCH_SLOP || dy > TOUCH_SLOP) {
-                    cancelPendingLongPress();
-                    longPressStarted = false;
-                } else if (!longPressStarted && !longPressTriggered && !onInteractive) {
-                    longPressStarted = true;
-                    longPressRunnable = () -> {
-                        longPressTriggered = true;
-                        if (callback != null && currentItem != null)
-                            callback.onPostLongPress(FeedPostCell.this);
-                    };
-                    AndroidUtilities.runOnUIThread(longPressRunnable, LONG_PRESS_TIMEOUT);
+                boolean onPlainText = isTouchOnPlainText(ev);
+                boolean onInteractive = isTouchOnInteractiveChild(ev);
+
+                downAllowsDoubleTap = onPlainText || !onInteractive;
+
+                cancelPendingLongPress();
+
+                if (onPlainText) {
+                    scheduleTextLongPress();
+                } else if (!onInteractive) {
+                    schedulePostLongPress();
+                }
+
+                if (downAllowsDoubleTap) {
+                    doubleTapDetector.onTouchEvent(ev);
                 }
                 break;
+            }
 
-            case MotionEvent.ACTION_UP:
-                cancelPendingLongPress();
-                if (longPressTriggered) { longPressTriggered = false; return true; }
+            case MotionEvent.ACTION_MOVE: {
+                float dx = Math.abs(ev.getX() - longPressDownX);
+                float dy = Math.abs(ev.getY() - longPressDownY);
+
+                if (dx > touchSlop || dy > touchSlop) {
+                    cancelPendingLongPress();
+                }
+
+                if (downAllowsDoubleTap) {
+                    doubleTapDetector.onTouchEvent(ev);
+                }
                 break;
+            }
 
-            case MotionEvent.ACTION_CANCEL:
+            case MotionEvent.ACTION_UP: {
+                cancelPendingLongPress();
+
+                if (longPressTriggered) {
+                    longPressTriggered = false;
+                    return true;
+                }
+
+                if (downAllowsDoubleTap && doubleTapDetector.onTouchEvent(ev)) {
+                    return true;
+                }
+                break;
+            }
+
+            case MotionEvent.ACTION_CANCEL: {
                 cancelPendingLongPress();
                 longPressTriggered = false;
+                downAllowsDoubleTap = false;
                 break;
+            }
         }
 
-        if (!onInteractive) doubleTapDetector.onTouchEvent(ev);
         return super.dispatchTouchEvent(ev);
     }
 
@@ -1216,25 +1250,33 @@ public class FeedPostCell extends LinearLayout {
     }
 
     private boolean isTouchOnInteractiveChild(MotionEvent ev) {
-        float x = ev.getX(), y = ev.getY();
-        return isPointInsideView(x, y, mediaContainer)
-                || isPointInsideView(x, y, roundVideoView)
-                || isPointInsideView(x, y, mediaRow)
-                || isPointInsideView(x, y, reactionsView)
-                || isPointInsideView(x, y, commentsBtn)
-                || isPointInsideView(x, y, shareBtn)
-                || isPointInsideView(x, y, avatarView)
-                || isTouchOnMessageText(ev);
+        return hasInteractiveTarget(this, ev.getX(), ev.getY());
     }
 
-    private boolean isPointInsideView(float x, float y, View view) {
+    private boolean hasInteractiveTarget(View view, float x, float y) {
         if (view == null || view.getVisibility() != VISIBLE) return false;
-        int[] loc = new int[2], myLoc = new int[2];
-        view.getLocationInWindow(loc);
-        getLocationInWindow(myLoc);
-        float vx = loc[0] - myLoc[0], vy = loc[1] - myLoc[1];
-        return x >= vx && x <= vx + view.getWidth()
-                && y >= vy && y <= vy + view.getHeight();
+        if (x < 0 || y < 0 || x > view.getWidth() || y > view.getHeight()) return false;
+
+        if (view == messageTextView) {
+            return messageTextView.hasInteractiveElementAt(x, y);
+        }
+
+        if (view != this && (view.isClickable() || view.isLongClickable())) {
+            return true;
+        }
+
+        if (view instanceof ViewGroup) {
+            ViewGroup vg = (ViewGroup) view;
+            for (int i = vg.getChildCount() - 1; i >= 0; i--) {
+                View child = vg.getChildAt(i);
+                float childX = x - child.getLeft();
+                float childY = y - child.getTop();
+                if (hasInteractiveTarget(child, childX, childY)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     @Override
@@ -1332,5 +1374,43 @@ public class FeedPostCell extends LinearLayout {
                 rv.smoothScrollBy(0, scrollBy);
             }
         });
+    }
+
+    public CharSequence getSelectableText() {
+        if (fullText != null) {
+            return fullText;
+        }
+        return messageTextView != null ? messageTextView.getText() : "";
+    }
+
+    private boolean isTouchOnPlainText(MotionEvent ev) {
+        if (messageTextView == null || messageTextView.getVisibility() != VISIBLE) return false;
+
+        float localX = ev.getX() - messageTextView.getLeft();
+        float localY = ev.getY() - messageTextView.getTop();
+
+        return messageTextView.hasPlainTextAt(localX, localY);
+    }
+
+    private void schedulePostLongPress() {
+        longPressRunnable = () -> {
+            longPressTriggered = true;
+            performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
+            if (callback != null && currentItem != null) {
+                callback.onPostLongPress(this);
+            }
+        };
+        AndroidUtilities.runOnUIThread(longPressRunnable, longPressTimeout);
+    }
+
+    private void scheduleTextLongPress() {
+        longPressRunnable = () -> {
+            longPressTriggered = true;
+            performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
+            if (callback != null && currentItem != null) {
+                callback.onTextLongPress(this, currentItem, getSelectableText());
+            }
+        };
+        AndroidUtilities.runOnUIThread(longPressRunnable, longPressTimeout);
     }
 }
