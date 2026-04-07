@@ -69,6 +69,10 @@ public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFr
     FeedReactionHandler reactionHandler;
     FeedReportHelper reportHelper;
 
+    private int lastAppliedDisplayVersion = -1;
+
+    private boolean snapshotRequested;
+
     int getAccount() {
         return currentAccount;
     }
@@ -116,8 +120,11 @@ public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFr
     @Override
     public void onResume() {
         super.onResume();
+
         if (feedController.hasCachedFeed()) {
-            adapter.syncFeedItems(feedController.getCachedFeed());
+            adapter.setItems(feedController.getCachedFeed());
+            lastAppliedDisplayVersion = feedController.getDisplayVersion();
+
             if (hasScrollState && savedScrollState != null && layoutManager != null) {
                 final Parcelable state = savedScrollState;
                 listView.post(() -> {
@@ -125,9 +132,22 @@ public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFr
                 });
             }
             updateEmpty();
-        } else {
-            loadFeed(false);
+            return;
         }
+
+        if (!snapshotRequested) {
+            snapshotRequested = true;
+            feedController.loadFeedSnapshot(items -> {
+                if (adapter == null || items == null || items.isEmpty()) return;
+                if (adapter.getItemCount() == 0) {
+                    adapter.setItems(items);
+                    lastAppliedDisplayVersion = feedController.getDisplayVersion();
+                    updateEmpty();
+                }
+            });
+        }
+
+        loadFeed(false);
     }
 
     @Override
@@ -412,16 +432,28 @@ public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFr
         List<FeedController.FeedItem> merged = feedController.flushMergedItems();
         for (FeedController.FeedItem item : merged) {
             int pos = adapter.findItemPosition(item);
-            if (pos >= 0) adapter.notifyItemChanged(pos);
+            if (pos >= 0) {
+                adapter.notifyItemChanged(pos);
+            }
         }
 
+        boolean appended = false;
         List<FeedController.FeedItem> pending = feedController.flushPendingNewItems();
         if (!pending.isEmpty()) {
-            int oldSize = adapter.getItemCount();
             int addedCount = feedController.appendItemsToDisplay(pending);
-            if (addedCount > 0) adapter.notifyItemRangeInserted(oldSize, addedCount);
-            adapter.syncFeedItems(feedController.getCachedFeed());
+            if (addedCount > 0) {
+                adapter.syncFeedItems(feedController.getCachedFeed());
+                int start = Math.max(0, adapter.getItemCount() - addedCount);
+                adapter.notifyItemRangeInserted(start, addedCount);
+                appended = true;
+            }
         }
+
+        if (!appended && lastAppliedDisplayVersion != feedController.getDisplayVersion()) {
+            adapter.setItems(feedController.getCachedFeed());
+        }
+
+        lastAppliedDisplayVersion = feedController.getDisplayVersion();
         updateEmpty();
     }
 
@@ -429,32 +461,42 @@ public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFr
         swipeRefreshLayout.setRefreshing(true);
         emptyView.setVisibility(View.GONE);
 
-        if (force) feedController.resetLoadMore();
+        String visibleUid = null;
+        int visibleOffset = 0;
+
+        if (layoutManager != null) {
+            int firstPos = layoutManager.findFirstVisibleItemPosition();
+            if (firstPos >= 0) {
+                Object d = adapter.getDisplayItem(firstPos);
+                if (d instanceof FeedController.FeedItem) {
+                    visibleUid = ((FeedController.FeedItem) d).getUniqueId();
+                }
+                View v = layoutManager.findViewByPosition(firstPos);
+                if (v != null) {
+                    visibleOffset = v.getTop();
+                }
+            }
+        }
+
+        if (force) {
+            feedController.resetLoadMore();
+        }
+
+        final String anchorUid = visibleUid;
+        final int anchorOffset = visibleOffset;
 
         feedController.loadFeed(force, (items, hasMore) -> {
-            if (hasMore) {
-                adapter.setItems(items);
-            } else {
-                String visibleUid = null;
-                int visibleOffset = 0;
-                if (layoutManager != null) {
-                    int firstPos = layoutManager.findFirstVisibleItemPosition();
-                    if (firstPos >= 0) {
-                        Object d = adapter.getDisplayItem(firstPos);
-                        if (d instanceof FeedController.FeedItem)
-                            visibleUid = ((FeedController.FeedItem) d).getUniqueId();
-                        View v = layoutManager.findViewByPosition(firstPos);
-                        if (v != null) visibleOffset = v.getTop();
-                    }
+            adapter.setItems(items);
+            lastAppliedDisplayVersion = feedController.getDisplayVersion();
+
+            if (anchorUid != null && layoutManager != null) {
+                int newPos = adapter.findPositionByUid(anchorUid);
+                if (newPos >= 0) {
+                    layoutManager.scrollToPositionWithOffset(newPos, anchorOffset);
                 }
-                adapter.setItems(items);
-                if (visibleUid != null) {
-                    int newPos = adapter.findPositionByUid(visibleUid);
-                    if (newPos >= 0 && layoutManager != null)
-                        layoutManager.scrollToPositionWithOffset(newPos, visibleOffset);
-                }
-                swipeRefreshLayout.setRefreshing(false);
             }
+
+            swipeRefreshLayout.setRefreshing(false);
             updateEmpty();
         });
     }
@@ -476,10 +518,31 @@ public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFr
 
     private void loadMorePosts() {
         if (isLoadingMore || !feedController.hasMore()) return;
+
         isLoadingMore = true;
-        feedController.loadMore((items, hasMore) -> {
+        if (loadingFooter != null) {
+            loadingFooter.setVisibility(View.VISIBLE);
+        }
+
+        feedController.loadMore((addedDisplayItems, hasMore) -> {
             isLoadingMore = false;
+
+            if (loadingFooter != null) {
+                loadingFooter.setVisibility(View.GONE);
+            }
+
+            if (addedDisplayItems > 0) {
+                adapter.syncFeedItems(feedController.getCachedFeed());
+                int start = Math.max(0, adapter.getItemCount() - addedDisplayItems);
+                adapter.notifyItemRangeInserted(start, addedDisplayItems);
+            }
+
+            lastAppliedDisplayVersion = feedController.getDisplayVersion();
             updateEmpty();
+
+            if (!hasMore && feedController.getRecommendationEngine().canLoadMore()) {
+                checkLoadMore();
+            }
         });
     }
 
@@ -491,9 +554,14 @@ public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFr
         feedController.loadMoreRecommendations((items, hasMore) -> {
             isLoadingMore = false;
             if (loadingFooter != null) loadingFooter.setVisibility(View.GONE);
-            int oldSize = adapter.getItemCount();
+
             int added = feedController.appendNewRecommendationsToDisplay();
-            if (added > 0) adapter.notifyItemRangeInserted(oldSize, added);
+            if (added > 0) {
+                int start = Math.max(0, adapter.getItemCount() - added);
+                adapter.notifyItemRangeInserted(start, added);
+            }
+
+            lastAppliedDisplayVersion = feedController.getDisplayVersion();
         });
     }
 
@@ -551,6 +619,7 @@ public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFr
         if (adapter != null) {
             feedController.rebuildDisplayList();
             adapter.setItems(feedController.getCachedFeed());
+            lastAppliedDisplayVersion = feedController.getDisplayVersion();
         }
     }
 

@@ -23,15 +23,61 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicInteger;
 
 public class FeedController implements NotificationCenter.NotificationCenterDelegate {
     private boolean observing = false;
     private final List<Runnable> newPostListeners = new ArrayList<>();
 
-private static final int MAX_MESSAGES_PER_CHANNEL = 20; // было 50
+    private static final int CHANNEL_BATCH_MESSAGES = 20;
+    private static final int INITIAL_GLOBAL_ITEMS = 40;
+    private static final int LOAD_MORE_GLOBAL_ITEMS = 30;
+
+    private static final int HYDRATION_CHANNELS_PER_ROUND = 3;
+    private static final int HYDRATION_BATCH_MESSAGES = 20;
+    private static final int MAX_HYDRATION_ROUNDS = 2;
+    private static final int SNAPSHOT_MAX_ITEMS = 200;
+
+    private final FeedHistoryHydrator historyHydrator;
+    private final FeedDiskCache diskCache;
+    private Runnable saveSnapshotRunnable;
+
+    private final LinkedHashMap<Long, ChannelCursorState> channelCursors = new LinkedHashMap<>();
+    private int displayVersion = 0;
 
     private final FeedRecommendationEngine recommendationEngine;
+
+    public int getDisplayVersion() {
+        return displayVersion;
+    }
+
+    @FunctionalInterface
+    public interface FeedAppendCallback {
+        void onAppended(int addedDisplayItems, boolean hasMore);
+    }
+
+    private static class ChannelCursorState {
+        final long dialogId;
+        final int readMaxId;
+        final int topMessageId;
+
+        int lastConsumedMid;
+        boolean exhausted;
+
+        final ArrayList<FeedItem> buffer = new ArrayList<>();
+
+        ChannelCursorState(long dialogId, int readMaxId, int topMessageId) {
+            this.dialogId = dialogId;
+            this.readMaxId = readMaxId;
+            this.topMessageId = topMessageId;
+            this.lastConsumedMid = readMaxId;
+        }
+    }
+
+    private static class DbChunkResult {
+        final ArrayList<MessageObject> validMessages = new ArrayList<>();
+        int consumedToMid;
+        boolean hasAnyRows;
+    }
 
     private interface LocalLoadCallback {
         void onLoaded(List<FeedItem> items);
@@ -102,6 +148,7 @@ private static final int MAX_MESSAGES_PER_CHANNEL = 20; // было 50
 
             if (changed) {
                 Collections.sort(cachedFeed, Comparator.comparingLong(a -> a.sortDate));
+                scheduleSnapshotSave();
                 AndroidUtilities.runOnUIThread(this::notifyNewPostListeners);
             }
         }
@@ -112,8 +159,6 @@ private static final int MAX_MESSAGES_PER_CHANNEL = 20; // было 50
         observing = true;
         NotificationCenter.getInstance(currentAccount)
                 .addObserver(this, NotificationCenter.didReceiveNewMessages);
-        NotificationCenter.getInstance(currentAccount)
-                .addObserver(this, NotificationCenter.messagesDidLoad);
     }
 
     public void stopObserving() {
@@ -121,8 +166,6 @@ private static final int MAX_MESSAGES_PER_CHANNEL = 20; // было 50
         observing = false;
         NotificationCenter.getInstance(currentAccount)
                 .removeObserver(this, NotificationCenter.didReceiveNewMessages);
-        NotificationCenter.getInstance(currentAccount)
-                .removeObserver(this, NotificationCenter.messagesDidLoad);
     }
 
     public void addNewPostListener(Runnable listener) {
@@ -212,6 +255,8 @@ private static final int MAX_MESSAGES_PER_CHANNEL = 20; // было 50
         this.currentAccount = account;
         loadPersistedData();
         this.recommendationEngine = FeedRecommendationEngine.getInstance(account);
+        this.historyHydrator = new FeedHistoryHydrator(account);
+        this.diskCache = new FeedDiskCache(account);
     }
 
     private SharedPreferences getPrefs() {
@@ -273,6 +318,7 @@ private static final int MAX_MESSAGES_PER_CHANNEL = 20; // было 50
         localReadIds.add(uid);
 
         saveNow();
+        scheduleSnapshotSave();
 
         final int finalMaxId = maxId;
         final long dialogId = item.channelId;
@@ -331,65 +377,72 @@ private static final int MAX_MESSAGES_PER_CHANNEL = 20; // было 50
 
     public boolean isBookmarked(String uid) { return bookmarkedIds.contains(uid); }
 
-    public boolean hasCachedFeed() { return feedLoaded && !cachedFeed.isEmpty(); }
+    public boolean hasCachedFeed() {
+        return !cachedFeed.isEmpty();
+    }
     public List<FeedItem> getCachedFeed() { return cachedFeed; }
     public boolean isLoading() { return isLoading; }
 
     public void loadFeed(boolean force, FeedLoadCallback callback) {
-        if (isLoading) return;
-        if (!force && feedLoaded && !cachedFeed.isEmpty()) {
-            callback.onLoaded(cachedFeed, false);
+        if (!force && feedLoaded) {
+            callback.onLoaded(new ArrayList<>(cachedFeed), hasMore());
             return;
         }
+        if (isLoading) return;
+
         isLoading = true;
 
         MessagesController controller = MessagesController.getInstance(currentAccount);
         List<TLRPC.Dialog> channels = collectUnreadChannels(controller);
 
         if (channels.isEmpty()) {
-            if (force) {
-                cachedFeed.clear();
-                feedLoaded = true;
-                pendingNewItems.clear();
-            }
+            channelCursors.clear();
+            clearReloadedFeedDataButKeepCursors();
+            feedLoaded = true;
             isLoading = false;
-            noMorePosts = true;
             rebuildDisplayList();
+            diskCache.clear();
             callback.onLoaded(new ArrayList<>(), false);
             return;
         }
 
-        loadFromLocalDB(channels, localItems -> {
-            boolean hasLocalData = !localItems.isEmpty();
+        final Set<String> readSnapshot = new HashSet<>(localReadIds);
+        final LinkedHashMap<Long, ChannelCursorState> workingCursors = new LinkedHashMap<>();
+        for (TLRPC.Dialog dialog : channels) {
+            workingCursors.put(dialog.id,
+                    new ChannelCursorState(dialog.id, dialog.read_inbox_max_id, dialog.top_message));
+        }
 
-            if (hasLocalData) {
-                cachedFeed.clear();
-                cachedFeed.addAll(localItems);
-                loadedItemIds.clear();
-                for (FeedItem item : localItems) {
-                    loadedItemIds.add(item.getUniqueId());
-                    for (MessageObject msg : item.messages) {
-                        loadedItemIds.add(item.channelId + "_" + msg.getId());
-                    }
-                }
-                rebuildDisplayList();
-                callback.onLoaded(cachedFeed, true);
-            }
+        loadMergedPageWithHydration(
+                workingCursors,
+                readSnapshot,
+                INITIAL_GLOBAL_ITEMS,
+                MAX_HYDRATION_ROUNDS,
+                new ArrayList<>(),
+                (page, finalCursors, hasMore) -> {
+                    channelCursors.clear();
+                    channelCursors.putAll(finalCursors);
 
-            loadFromServer(channels, controller, () -> {
-                feedLoaded = true;
-                isLoading = false;
-                noMorePosts = true;
+                    clearReloadedFeedDataButKeepCursors();
+                    appendPageToCache(page);
 
-                rebuildDisplayList();
-                callback.onLoaded(cachedFeed, false);
+                    feedLoaded = true;
+                    isLoading = false;
+                    noMorePosts = !hasMore;
 
-                recommendationEngine.refreshPosts(() -> {
                     rebuildDisplayList();
-                    notifyNewPostListeners();
-                });
-            });
-        });
+                    scheduleSnapshotSave();
+                    callback.onLoaded(new ArrayList<>(cachedFeed), hasMore);
+
+                    recommendationEngine.refreshPosts(() ->
+                            AndroidUtilities.runOnUIThread(() -> {
+                                rebuildDisplayList();
+                                scheduleSnapshotSave();
+                                notifyNewPostListeners();
+                            })
+                    );
+                }
+        );
     }
 
     private List<TLRPC.Dialog> collectUnreadChannels(MessagesController controller) {
@@ -407,215 +460,6 @@ private static final int MAX_MESSAGES_PER_CHANNEL = 20; // было 50
             channels.add(dialog);
         }
         return channels;
-    }
-
-    private void loadFromLocalDB(List<TLRPC.Dialog> channels,
-                                 LocalLoadCallback callback) {
-        MessagesStorage storage = MessagesStorage.getInstance(currentAccount);
-
-        storage.getStorageQueue().postRunnable(() -> {
-            List<FeedItem> allLocalItems = new ArrayList<>();
-
-            try {
-                long selfId = UserConfig.getInstance(currentAccount).getClientUserId();
-
-                for (TLRPC.Dialog dialog : channels) {
-                    int readMaxId = dialog.read_inbox_max_id;
-                    int limit = Math.min(
-                            dialog.unread_count + 2, MAX_MESSAGES_PER_CHANNEL);
-
-                    SQLiteCursor cursor = null;
-                    try {
-                        cursor = storage.getDatabase().queryFinalized(
-                                "SELECT data, mid, date FROM messages_v2"
-                                        + " WHERE uid = " + dialog.id
-                                        + " AND mid > " + readMaxId
-                                        + " ORDER BY mid ASC"
-                                        + " LIMIT " + limit
-                        );
-
-                        List<MessageObject> localMessages = new ArrayList<>();
-
-                        while (cursor.next()) {
-                            NativeByteBuffer data = cursor.byteBufferValue(0);
-                            if (data == null) continue;
-
-                            try {
-                                TLRPC.Message message = TLRPC.Message.TLdeserialize(
-                                        data, data.readInt32(false), false);
-                                if (message == null) continue;
-
-                                message.readAttachPath(data, selfId);
-                                message.id = cursor.intValue(1);
-                                message.date = cursor.intValue(2);
-                                message.dialog_id = dialog.id;
-
-                                if (message.peer_id == null) {
-                                    TLRPC.TL_peerChannel peer =
-                                            new TLRPC.TL_peerChannel();
-                                    peer.channel_id = -dialog.id;
-                                    message.peer_id = peer;
-                                }
-
-                                if (isLocallyRead(dialog.id, message.id))
-                                    continue;
-
-                                MessageObject obj = new MessageObject(
-                                        currentAccount, message, true, true);
-                                if (obj.isOut()) continue;
-                                if (obj.messageOwner.action != null) continue;
-
-                                boolean hasContent =
-                                        (obj.messageText != null
-                                                && obj.messageText.length() > 0)
-                                                || obj.messageOwner.media != null;
-                                if (!hasContent) continue;
-
-                                localMessages.add(obj);
-
-                            } finally {
-                                data.reuse();
-                            }
-                        }
-
-                        if (!localMessages.isEmpty()) {
-                            allLocalItems.addAll(
-                                    groupIntoItems(localMessages, dialog.id));
-                        }
-
-                    } finally {
-                        if (cursor != null) {
-                            cursor.dispose();
-                        }
-                    }
-                }
-            } catch (Exception e) {
-                android.util.Log.w("FeedController",
-                        "loadFromLocalDB failed", e);
-            }
-
-            Collections.sort(allLocalItems,
-                    Comparator.comparingLong(a -> a.sortDate));
-
-            final List<FeedItem> result = allLocalItems;
-            AndroidUtilities.runOnUIThread(() -> callback.onLoaded(result));
-        });
-    }
-
-    private void loadFromServer(List<TLRPC.Dialog> channels,
-                                MessagesController controller,
-                                Runnable onComplete) {
-        final List<FeedItem> serverItems =
-                Collections.synchronizedList(new ArrayList<>());
-        final List<TLRPC.User> collectedUsers =
-                Collections.synchronizedList(new ArrayList<>());
-        final List<TLRPC.Chat> collectedChats =
-                Collections.synchronizedList(new ArrayList<>());
-        final AtomicInteger completed = new AtomicInteger(0);
-        final int totalChannels = channels.size();
-
-        for (TLRPC.Dialog dialog : channels) {
-            final int readMaxId = dialog.read_inbox_max_id;
-            int limit = Math.min(
-                    dialog.unread_count + 2, MAX_MESSAGES_PER_CHANNEL);
-
-            TLRPC.TL_messages_getHistory req = new TLRPC.TL_messages_getHistory();
-            req.peer = controller.getInputPeer(dialog.id);
-            req.limit = limit;
-            req.offset_id = 0;
-            req.max_id = 0;
-            req.min_id = readMaxId;
-
-            ConnectionsManager.getInstance(currentAccount)
-                    .sendRequest(req, (response, error) -> {
-                        if (response instanceof TLRPC.messages_Messages) {
-                            TLRPC.messages_Messages msgs =
-                                    (TLRPC.messages_Messages) response;
-
-                           collectedUsers.addAll(msgs.users);
-                            collectedChats.addAll(msgs.chats);
-
-                            List<MessageObject> channelMessages =
-                                    new ArrayList<>();
-                            for (TLRPC.Message msg : msgs.messages) {
-                                if (msg.id <= readMaxId) continue;
-                                if (isLocallyRead(dialog.id, msg.id))
-                                    continue;
-
-                                MessageObject obj = new MessageObject(
-                                        currentAccount, msg, true, true);
-                                if (obj.isOut()) continue;
-                                if (obj.messageOwner.action != null) continue;
-
-                                boolean hasContent =
-                                        (obj.messageText != null
-                                                && obj.messageText.length() > 0)
-                                                || obj.messageOwner.media
-                                                != null;
-                                if (!hasContent) continue;
-
-                                channelMessages.add(obj);
-                            }
-
-                            serverItems.addAll(
-                                    groupIntoItems(channelMessages, dialog.id));
-                        }
-
-                        int done = completed.incrementAndGet();
-                        if (done >= totalChannels) {
-                            AndroidUtilities.runOnUIThread(() -> {
-                                controller.putUsers(
-                                        new ArrayList<>(collectedUsers), false);
-                                controller.putChats(
-                                        new ArrayList<>(collectedChats), false);
-
-                                mergeServerItems(new ArrayList<>(serverItems));
-
-                                onComplete.run();
-                            });
-                        }
-                    });
-        }
-    }
-
-    private void mergeServerItems(List<FeedItem> serverItems) {
-        for (FeedItem item : serverItems) {
-            MessageObject primary = item.getPrimaryMessage();
-            long groupedId = primary.messageOwner.grouped_id;
-
-            if (groupedId != 0) {
-                FeedItem existing = findExistingAlbum(item.channelId, groupedId);
-                if (existing != null) {
-                    mergeAlbumMessages(existing, item);
-                    for (MessageObject msg : item.messages) {
-                        loadedItemIds.add(
-                                item.channelId + "_" + msg.getId());
-                    }
-                    continue;
-                }
-            }
-
-            String uid = item.getUniqueId();
-            if (loadedItemIds.contains(uid)) continue;
-
-            loadedItemIds.add(uid);
-            for (MessageObject msg : item.messages) {
-                loadedItemIds.add(item.channelId + "_" + msg.getId());
-            }
-            item.isRead = false;
-            item.isBookmarked = isBookmarked(uid);
-            cachedFeed.add(item);
-        }
-
-        Collections.sort(cachedFeed, Comparator.comparingLong(a -> a.sortDate));
-
-        loadedItemIds.clear();
-        for (FeedItem item : cachedFeed) {
-            loadedItemIds.add(item.getUniqueId());
-            for (MessageObject msg : item.messages) {
-                loadedItemIds.add(item.channelId + "_" + msg.getId());
-            }
-        }
     }
 
     private List<FeedItem> groupIntoItems(List<MessageObject> messages,
@@ -655,6 +499,8 @@ private static final int MAX_MESSAGES_PER_CHANNEL = 20; // было 50
                 item -> item.channelId == -channelId
                         || item.channelId == channelId);
         saveNow();
+        rebuildDisplayList();
+        scheduleSnapshotSave();
     }
 
     public void unhideChannel(long channelId) {
@@ -671,18 +517,49 @@ private static final int MAX_MESSAGES_PER_CHANNEL = 20; // было 50
     }
 
     public boolean hasMore() {
-        return !noMorePosts;
+        return hasRemainingChannelsInternal(channelCursors);
     }
 
     public void resetLoadMore() {
         noMorePosts = false;
-        loadedItemIds.clear();
-        pendingNewItems.clear();
+        channelCursors.clear();
     }
 
-    public void loadMore(FeedLoadCallback callback) {
-        noMorePosts = true;
-        callback.onLoaded(cachedFeed, false);
+    public void loadMore(FeedAppendCallback callback) {
+        if (!feedLoaded || !hasMore()) {
+            callback.onAppended(0, false);
+            return;
+        }
+        if (isLoading) return;
+
+        isLoading = true;
+
+        final Set<String> readSnapshot = new HashSet<>(localReadIds);
+        final LinkedHashMap<Long, ChannelCursorState> workingCursors = copyCursorMap();
+
+        loadMergedPageWithHydration(
+                workingCursors,
+                readSnapshot,
+                LOAD_MORE_GLOBAL_ITEMS,
+                MAX_HYDRATION_ROUNDS,
+                new ArrayList<>(),
+                (page, finalCursors, hasMore) -> {
+                    channelCursors.clear();
+                    channelCursors.putAll(finalCursors);
+
+                    appendPageToCache(page);
+                    int addedDisplayItems = appendItemsToDisplay(page);
+
+                    isLoading = false;
+                    noMorePosts = !hasMore;
+
+                    if (addedDisplayItems > 0) {
+                        scheduleSnapshotSave();
+                    }
+
+                    callback.onAppended(addedDisplayItems, hasMore);
+                }
+        );
     }
 
     public FeedRecommendationEngine getRecommendationEngine() {
@@ -718,6 +595,7 @@ private static final int MAX_MESSAGES_PER_CHANNEL = 20; // было 50
         while (recPostsUsedIndex < recPosts.size()) {
             displayItems.add(recPosts.get(recPostsUsedIndex++));
         }
+        displayVersion++;
     }
 
     public List<FeedItem> flushPendingNewItems() {
@@ -745,6 +623,9 @@ private static final int MAX_MESSAGES_PER_CHANNEL = 20; // было 50
                 added++;
             }
         }
+        if (added > 0) {
+            displayVersion++;
+        }
         return added;
     }
 
@@ -757,6 +638,9 @@ private static final int MAX_MESSAGES_PER_CHANNEL = 20; // было 50
         while (recPostsUsedIndex < recPosts.size()) {
             displayItems.add(recPosts.get(recPostsUsedIndex++));
             added++;
+        }
+        if (added > 0) {
+            displayVersion++;
         }
         return added;
     }
@@ -819,5 +703,530 @@ private static final int MAX_MESSAGES_PER_CHANNEL = 20; // было 50
         List<FeedItem> result = new ArrayList<>(mergedItems);
         mergedItems.clear();
         return result;
+    }
+
+    private boolean isValidFeedMessage(MessageObject obj, long dialogId, Set<String> readSnapshot) {
+        if (obj == null) return false;
+        if (isLocallyRead(readSnapshot, dialogId, obj.getId())) return false;
+        if (obj.isOut()) return false;
+        if (obj.messageOwner.action != null) return false;
+
+        return (obj.messageText != null && obj.messageText.length() > 0)
+                || obj.messageOwner.media != null;
+    }
+
+    private static int compareFeedItemsOrder(FeedItem a, FeedItem b) {
+        int c = Long.compare(a.sortDate, b.sortDate);
+        if (c != 0) return c;
+
+        c = Long.compare(a.channelId, b.channelId);
+        if (c != 0) return c;
+
+        return Integer.compare(a.getMessageId(), b.getMessageId());
+    }
+
+    private void clearReloadedFeedDataButKeepCursors() {
+        cachedFeed.clear();
+        loadedItemIds.clear();
+        pendingNewItems.clear();
+        mergedItems.clear();
+        displayItems.clear();
+        postsSinceLastRec = 0;
+        recPostsUsedIndex = 0;
+        noMorePosts = false;
+    }
+
+    private void appendPageToCache(List<FeedItem> pageItems) {
+        for (FeedItem item : pageItems) {
+            String uid = item.getUniqueId();
+            if (loadedItemIds.contains(uid)) continue;
+
+            item.isRead = false;
+            item.isBookmarked = isBookmarked(uid);
+
+            cachedFeed.add(item);
+            loadedItemIds.add(uid);
+
+            for (MessageObject msg : item.messages) {
+                loadedItemIds.add(item.channelId + "_" + msg.getId());
+            }
+        }
+    }
+
+    private boolean hasRemainingChannelsInternal(LinkedHashMap<Long, ChannelCursorState> cursors) {
+        for (ChannelCursorState state : cursors.values()) {
+            if (!state.buffer.isEmpty() || !state.exhausted) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private DbChunkResult loadNextChunkFromDb(MessagesStorage storage,
+                                              ChannelCursorState state,
+                                              long selfId,
+                                              Set<String> readSnapshot) {
+        DbChunkResult result = new DbChunkResult();
+        SQLiteCursor cursor = null;
+        long lastGroupedId = 0;
+
+        try {
+            cursor = storage.getDatabase().queryFinalized(
+                    "SELECT data, mid, date FROM messages_v2" +
+                            " WHERE uid = " + state.dialogId +
+                            " AND mid > " + state.lastConsumedMid +
+                            " AND mid <= " + state.topMessageId +
+                            " ORDER BY mid ASC" +
+                            " LIMIT " + CHANNEL_BATCH_MESSAGES
+            );
+
+            while (cursor.next()) {
+                result.hasAnyRows = true;
+
+                NativeByteBuffer data = cursor.byteBufferValue(0);
+                int mid = cursor.intValue(1);
+                int date = cursor.intValue(2);
+
+                result.consumedToMid = mid;
+
+                if (data == null) {
+                    continue;
+                }
+
+                try {
+                    TLRPC.Message message = TLRPC.Message.TLdeserialize(
+                            data, data.readInt32(false), false);
+                    if (message == null) {
+                        continue;
+                    }
+
+                    message.readAttachPath(data, selfId);
+                    message.id = mid;
+                    message.date = date;
+                    message.dialog_id = state.dialogId;
+
+                    if (message.peer_id == null) {
+                        TLRPC.TL_peerChannel peer = new TLRPC.TL_peerChannel();
+                        peer.channel_id = -state.dialogId;
+                        message.peer_id = peer;
+                    }
+
+                    lastGroupedId = message.grouped_id;
+
+                    MessageObject obj = new MessageObject(currentAccount, message, true, true);
+                    if (isValidFeedMessage(obj, state.dialogId, readSnapshot)) {
+                        result.validMessages.add(obj);
+                    }
+                } finally {
+                    data.reuse();
+                }
+            }
+        } catch (Exception e) {
+            android.util.Log.e("FeedController", "loadNextChunkFromDb failed", e);
+        } finally {
+            if (cursor != null) {
+                cursor.dispose();
+            }
+        }
+
+        if (!result.hasAnyRows) {
+            return result;
+        }
+
+        if (lastGroupedId != 0 && result.consumedToMid > 0) {
+            while (true) {
+                SQLiteCursor extra = null;
+                try {
+                    extra = storage.getDatabase().queryFinalized(
+                            "SELECT data, mid, date FROM messages_v2" +
+                                    " WHERE uid = " + state.dialogId +
+                                    " AND mid > " + result.consumedToMid +
+                                    " AND mid <= " + state.topMessageId +
+                                    " ORDER BY mid ASC LIMIT 1"
+                    );
+
+                    if (!extra.next()) {
+                        break;
+                    }
+
+                    NativeByteBuffer data = extra.byteBufferValue(0);
+                    int mid = extra.intValue(1);
+                    int date = extra.intValue(2);
+
+                    if (data == null) {
+                        break;
+                    }
+
+                    try {
+                        TLRPC.Message message = TLRPC.Message.TLdeserialize(
+                                data, data.readInt32(false), false);
+                        if (message == null) {
+                            break;
+                        }
+
+                        if (message.grouped_id != lastGroupedId) {
+                            break;
+                        }
+
+                        message.readAttachPath(data, selfId);
+                        message.id = mid;
+                        message.date = date;
+                        message.dialog_id = state.dialogId;
+
+                        if (message.peer_id == null) {
+                            TLRPC.TL_peerChannel peer = new TLRPC.TL_peerChannel();
+                            peer.channel_id = -state.dialogId;
+                            message.peer_id = peer;
+                        }
+
+                        result.consumedToMid = mid;
+
+                        MessageObject obj = new MessageObject(currentAccount, message, true, true);
+                        if (isValidFeedMessage(obj, state.dialogId, readSnapshot)) {
+                            result.validMessages.add(obj);
+                        }
+                    } finally {
+                        data.reuse();
+                    }
+                } catch (Exception e) {
+                    android.util.Log.e("FeedController", "album tail read failed", e);
+                    break;
+                } finally {
+                    if (extra != null) {
+                        extra.dispose();
+                    }
+                }
+            }
+        }
+
+        return result;
+    }
+
+    private void fillCursorBuffer(MessagesStorage storage,
+                                  ChannelCursorState state,
+                                  long selfId,
+                                  Set<String> readSnapshot) {
+        while (!state.exhausted && state.buffer.isEmpty()) {
+            DbChunkResult chunk = loadNextChunkFromDb(storage, state, selfId, readSnapshot);
+
+            if (!chunk.hasAnyRows || chunk.consumedToMid <= state.lastConsumedMid) {
+                state.exhausted = true;
+                break;
+            }
+
+            state.lastConsumedMid = chunk.consumedToMid;
+
+            if (!chunk.validMessages.isEmpty()) {
+                state.buffer.addAll(groupIntoItems(chunk.validMessages, state.dialogId));
+            }
+
+            if (state.lastConsumedMid >= state.topMessageId) {
+                state.exhausted = true;
+            }
+        }
+    }
+
+    private List<FeedItem> buildNextMergedPage(MessagesStorage storage,
+                                               int targetItems,
+                                               long selfId,
+                                               Set<String> readSnapshot,
+                                               LinkedHashMap<Long, ChannelCursorState> cursors) {
+        ArrayList<FeedItem> result = new ArrayList<>();
+
+        while (result.size() < targetItems) {
+            for (ChannelCursorState state : cursors.values()) {
+                if (state.buffer.isEmpty() && !state.exhausted) {
+                    fillCursorBuffer(storage, state, selfId, readSnapshot);
+                }
+            }
+
+            ChannelCursorState bestState = null;
+            FeedItem bestItem = null;
+
+            for (ChannelCursorState state : cursors.values()) {
+                if (state.buffer.isEmpty()) continue;
+
+                FeedItem candidate = state.buffer.get(0);
+                if (bestItem == null || compareFeedItemsOrder(candidate, bestItem) < 0) {
+                    bestItem = candidate;
+                    bestState = state;
+                }
+            }
+
+            if (bestState == null || bestItem == null) {
+                break;
+            }
+
+            bestState.buffer.remove(0);
+            result.add(bestItem);
+        }
+
+        return result;
+    }
+
+    private static ChannelCursorState copyCursor(ChannelCursorState src) {
+        ChannelCursorState dst = new ChannelCursorState(src.dialogId, src.readMaxId, src.topMessageId);
+        dst.lastConsumedMid = src.lastConsumedMid;
+        dst.exhausted = src.exhausted;
+        dst.buffer.addAll(src.buffer);
+        return dst;
+    }
+
+    private LinkedHashMap<Long, ChannelCursorState> copyCursorMap() {
+        LinkedHashMap<Long, ChannelCursorState> copy = new LinkedHashMap<>();
+        for (ChannelCursorState state : channelCursors.values()) {
+            copy.put(state.dialogId, copyCursor(state));
+        }
+        return copy;
+    }
+
+    private static boolean isLocallyRead(Set<String> readSnapshot, long channelId, int messageId) {
+        return readSnapshot.contains(channelId + "_" + messageId);
+    }
+
+    @FunctionalInterface
+    public interface FeedSnapshotCallback {
+        void onLoaded(List<FeedItem> items);
+    }
+
+    private ArrayList<FeedDiskCache.SnapshotItem> buildSnapshotData() {
+        ArrayList<FeedDiskCache.SnapshotItem> result = new ArrayList<>();
+        for (FeedItem item : cachedFeed) {
+            if (item == null || item.isRecommendation || item.messages == null || item.messages.isEmpty()) {
+                continue;
+            }
+
+            int[] mids = new int[item.messages.size()];
+            for (int i = 0; i < item.messages.size(); i++) {
+                mids[i] = item.messages.get(i).getId();
+            }
+
+            result.add(new FeedDiskCache.SnapshotItem(item.channelId, item.sortDate, mids));
+            if (result.size() >= SNAPSHOT_MAX_ITEMS) {
+                break;
+            }
+        }
+        return result;
+    }
+
+    private void scheduleSnapshotSave() {
+        if (saveSnapshotRunnable != null) {
+            AndroidUtilities.cancelRunOnUIThread(saveSnapshotRunnable);
+        }
+
+        saveSnapshotRunnable = () -> {
+            saveSnapshotRunnable = null;
+            diskCache.save(buildSnapshotData());
+        };
+
+        AndroidUtilities.runOnUIThread(saveSnapshotRunnable, 1200);
+    }
+
+    public void loadFeedSnapshot(FeedSnapshotCallback callback) {
+        if (!cachedFeed.isEmpty()) {
+            callback.onLoaded(new ArrayList<>(cachedFeed));
+            return;
+        }
+
+        diskCache.load(snapshotItems -> {
+            if (snapshotItems == null || snapshotItems.isEmpty()) {
+                callback.onLoaded(Collections.emptyList());
+                return;
+            }
+
+            MessagesStorage storage = MessagesStorage.getInstance(currentAccount);
+            storage.getStorageQueue().postRunnable(() -> {
+                ArrayList<FeedItem> restored = new ArrayList<>();
+                long selfId = UserConfig.getInstance(currentAccount).getClientUserId();
+
+                for (FeedDiskCache.SnapshotItem snap : snapshotItems) {
+                    if (snap == null || snap.messageIds == null || snap.messageIds.length == 0) {
+                        continue;
+                    }
+
+                    StringBuilder mids = new StringBuilder();
+                    for (int i = 0; i < snap.messageIds.length; i++) {
+                        if (i > 0) mids.append(",");
+                        mids.append(snap.messageIds[i]);
+                    }
+
+                    SQLiteCursor cursor = null;
+                    try {
+                        cursor = storage.getDatabase().queryFinalized(
+                                "SELECT data, mid, date FROM messages_v2" +
+                                        " WHERE uid = " + snap.channelId +
+                                        " AND mid IN(" + mids + ")" +
+                                        " ORDER BY mid ASC"
+                        );
+
+                        ArrayList<MessageObject> messages = new ArrayList<>();
+
+                        while (cursor.next()) {
+                            NativeByteBuffer data = cursor.byteBufferValue(0);
+                            if (data == null) continue;
+
+                            try {
+                                TLRPC.Message message = TLRPC.Message.TLdeserialize(
+                                        data, data.readInt32(false), false);
+                                if (message == null) continue;
+
+                                message.readAttachPath(data, selfId);
+                                message.id = cursor.intValue(1);
+                                message.date = cursor.intValue(2);
+                                message.dialog_id = snap.channelId;
+
+                                if (message.peer_id == null) {
+                                    TLRPC.TL_peerChannel peer = new TLRPC.TL_peerChannel();
+                                    peer.channel_id = -snap.channelId;
+                                    message.peer_id = peer;
+                                }
+
+                                MessageObject obj = new MessageObject(currentAccount, message, true, true);
+                                messages.add(obj);
+                            } finally {
+                                data.reuse();
+                            }
+                        }
+
+                        if (messages.size() != snap.messageIds.length) {
+                            continue;
+                        }
+
+                        FeedItem item = new FeedItem(snap.channelId, messages, snap.sortDate);
+                        item.isRead = localReadIds.contains(item.getUniqueId());
+                        item.isBookmarked = isBookmarked(item.getUniqueId());
+                        restored.add(item);
+
+                    } catch (Exception ignore) {
+                    } finally {
+                        if (cursor != null) {
+                            cursor.dispose();
+                        }
+                    }
+                }
+
+                Collections.sort(restored, FeedController::compareFeedItemsOrder);
+
+                AndroidUtilities.runOnUIThread(() -> {
+                    if (cachedFeed.isEmpty() && !restored.isEmpty()) {
+                        clearReloadedFeedDataButKeepCursors();
+
+                        for (FeedItem item : restored) {
+                            cachedFeed.add(item);
+                            loadedItemIds.add(item.getUniqueId());
+                            for (MessageObject msg : item.messages) {
+                                loadedItemIds.add(item.channelId + "_" + msg.getId());
+                            }
+                        }
+
+                        rebuildDisplayList();
+                    }
+
+                    callback.onLoaded(new ArrayList<>(restored));
+                });
+            });
+        });
+    }
+
+    private ArrayList<FeedHistoryHydrator.Request> collectHydrationRequests(
+            LinkedHashMap<Long, ChannelCursorState> cursors,
+            int remainingNeeded) {
+
+        ArrayList<FeedHistoryHydrator.Request> result = new ArrayList<>();
+        int batch = Math.max(HYDRATION_BATCH_MESSAGES, Math.min(remainingNeeded * 2, 40));
+
+        for (ChannelCursorState state : cursors.values()) {
+            if (!state.buffer.isEmpty()) continue;
+            if (!state.exhausted) continue;
+            if (state.lastConsumedMid >= state.topMessageId) continue;
+
+            result.add(new FeedHistoryHydrator.Request(
+                    state.dialogId,
+                    state.lastConsumedMid,
+                    state.topMessageId,
+                    batch
+            ));
+
+            if (result.size() >= HYDRATION_CHANNELS_PER_ROUND) {
+                break;
+            }
+        }
+
+        return result;
+    }
+
+    private void reopenHydratedDialogs(LinkedHashMap<Long, ChannelCursorState> cursors,
+                                       Set<Long> dialogIds) {
+        if (dialogIds == null || dialogIds.isEmpty()) return;
+
+        for (Long dialogId : dialogIds) {
+            ChannelCursorState state = cursors.get(dialogId);
+            if (state == null) continue;
+            if (state.lastConsumedMid >= state.topMessageId) continue;
+
+            state.exhausted = false;
+            state.buffer.clear();
+        }
+    }
+
+    private interface PageReadyCallback {
+        void onReady(ArrayList<FeedItem> page,
+                     LinkedHashMap<Long, ChannelCursorState> finalCursors,
+                     boolean hasMore);
+    }
+
+    private void loadMergedPageWithHydration(
+            LinkedHashMap<Long, ChannelCursorState> workingCursors,
+            Set<String> readSnapshot,
+            int targetItems,
+            int roundsLeft,
+            ArrayList<FeedItem> accumulator,
+            PageReadyCallback callback) {
+
+        MessagesStorage storage = MessagesStorage.getInstance(currentAccount);
+        storage.getStorageQueue().postRunnable(() -> {
+            long selfId = UserConfig.getInstance(currentAccount).getClientUserId();
+
+            if (accumulator.size() < targetItems) {
+                accumulator.addAll(buildNextMergedPage(
+                        storage,
+                        targetItems - accumulator.size(),
+                        selfId,
+                        readSnapshot,
+                        workingCursors
+                ));
+            }
+
+            boolean hasMore = hasRemainingChannelsInternal(workingCursors);
+            ArrayList<FeedHistoryHydrator.Request> hydrationRequests = new ArrayList<>();
+
+            if (accumulator.size() < targetItems && roundsLeft > 0) {
+                hydrationRequests = collectHydrationRequests(
+                        workingCursors,
+                        targetItems - accumulator.size()
+                );
+            }
+
+            final ArrayList<FeedHistoryHydrator.Request> finalRequests = hydrationRequests;
+            final boolean finalHasMore = hasMore;
+
+            AndroidUtilities.runOnUIThread(() -> {
+                if (!finalRequests.isEmpty()) {
+                    historyHydrator.hydrate(finalRequests, dialogs -> {
+                        reopenHydratedDialogs(workingCursors, dialogs);
+                        loadMergedPageWithHydration(
+                                workingCursors,
+                                readSnapshot,
+                                targetItems,
+                                roundsLeft - 1,
+                                accumulator,
+                                callback
+                        );
+                    });
+                } else {
+                    callback.onReady(accumulator, workingCursors, finalHasMore);
+                }
+            });
+        });
     }
 }
