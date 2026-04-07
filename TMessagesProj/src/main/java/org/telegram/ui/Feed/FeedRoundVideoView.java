@@ -37,6 +37,7 @@ import org.telegram.messenger.FileLoader;
 import org.telegram.messenger.ImageLocation;
 import org.telegram.messenger.MediaController;
 import org.telegram.messenger.MessageObject;
+import org.telegram.messenger.NotificationCenter;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.Components.BackupImageView;
 import org.telegram.ui.Components.LayoutHelper;
@@ -46,7 +47,8 @@ import java.io.File;
 import java.lang.ref.WeakReference;
 
 @SuppressLint("ViewConstructor")
-public class FeedRoundVideoView extends FrameLayout {
+public class FeedRoundVideoView extends FrameLayout
+        implements NotificationCenter.NotificationCenterDelegate {
 
     private static final int CIRCLE_COLLAPSED = dp(240);
     private static final int CIRCLE_EXPANDED = dp(300);
@@ -97,6 +99,11 @@ public class FeedRoundVideoView extends FrameLayout {
     private static WeakReference<FeedRoundVideoView> activePlayerRef;
     private static RoundVideoStateListener stateListener;
 
+    private boolean fileLoading;
+    private float fileProgress;
+    private boolean pendingPlayAfterDownload;
+    private String currentFileName;
+
     private final Runnable syncRunnable = new Runnable() {
         @Override
         public void run() {
@@ -118,6 +125,38 @@ public class FeedRoundVideoView extends FrameLayout {
             enterSpeedUpMode();
         }
     };
+
+    @Override
+    public void didReceivedNotification(int id, int account, Object... args) {
+        if (account != currentAccount || currentMessage == null) return;
+
+        if (id == NotificationCenter.fileLoaded) {
+            if (isCurrentFileEvent(args)) {
+                onCurrentFileLoaded();
+            }
+        } else if (id == NotificationCenter.fileLoadProgressChanged) {
+            if (isCurrentFileEvent(args)) {
+                fileLoading = true;
+                fileProgress = extractFileProgress(args);
+                if (!isPrepared && !isPlaying && !finished) {
+                    playButton.setState(PlayButtonView.STATE_LOADING);
+                    progressView.setVisibility(VISIBLE);
+                    progressView.setDownloadProgress(fileProgress);
+                }
+            }
+        } else if (id == NotificationCenter.fileLoadFailed) {
+            if (isCurrentFileEvent(args)) {
+                fileLoading = false;
+                fileProgress = 0f;
+                pendingPlayAfterDownload = false;
+                if (!isPrepared && !isPlaying && !finished) {
+                    progressView.clearDownload();
+                    progressView.setVisibility(GONE);
+                    playButton.setState(PlayButtonView.STATE_DOWNLOAD);
+                }
+            }
+        }
+    }
 
     public interface SizeChangeListener {
         void onRoundVideoSizeChanged(int newSizePx);
@@ -258,11 +297,18 @@ public class FeedRoundVideoView extends FrameLayout {
         finished = false;
         speedIndex = 0;
 
+        fileLoading = false;
+        fileProgress = 0f;
+        pendingPlayAfterDownload = false;
+        currentFileName = null;
+
         if (msg == null) { setVisibility(GONE); return; }
 
         TLRPC.Document doc = msg.messageOwner.media != null
                 ? msg.messageOwner.media.document : null;
         if (doc == null) { setVisibility(GONE); return; }
+
+        currentFileName = FileLoader.getAttachFileName(doc);
 
         thumbView.setRoundRadius(CIRCLE_COLLAPSED / 2);
         if (doc.thumbs != null && !doc.thumbs.isEmpty()) {
@@ -275,6 +321,7 @@ public class FeedRoundVideoView extends FrameLayout {
 
         resetToCollapsed();
         setVisibility(VISIBLE);
+        refreshFileStateUi();
         FileLoader.getInstance(currentAccount)
                 .loadFile(doc, msg, FileLoader.PRIORITY_NORMAL, 0);
     }
@@ -313,8 +360,8 @@ public class FeedRoundVideoView extends FrameLayout {
 
         File file = getVideoFile(doc);
         if (file == null || !file.exists()) {
-            FileLoader.getInstance(currentAccount)
-                    .loadFile(doc, currentMessage, FileLoader.PRIORITY_HIGH, 0);
+            pendingPlayAfterDownload = true;
+            requestCurrentDownload(FileLoader.PRIORITY_HIGH);
             return;
         }
 
@@ -358,6 +405,8 @@ public class FeedRoundVideoView extends FrameLayout {
                 progressView.setVisibility(VISIBLE);
                 speedBadge.setVisibility(VISIBLE);
                 timestampLabel.setVisibility(VISIBLE);
+
+                progressView.clearDownload();
 
                 progressView.sync(0, cachedDuration, SPEEDS[speedIndex]);
                 startSmoothProgress();
@@ -716,12 +765,18 @@ public class FeedRoundVideoView extends FrameLayout {
 
         thumbView.setVisibility(VISIBLE);
         textureView.setVisibility(GONE);
-        playButton.setState(PlayButtonView.STATE_PLAY);
         playButton.setVisibility(VISIBLE);
+        progressView.clearDownload();
         progressView.setVisibility(GONE);
         progressView.setDirect(0);
         speedBadge.setVisibility(GONE);
         timestampLabel.setVisibility(GONE);
+
+        if (currentMessage != null && !isPrepared && !finished) {
+            refreshFileStateUi();
+        } else {
+            playButton.setState(PlayButtonView.STATE_PLAY);
+        }
     }
 
     private File getVideoFile(TLRPC.Document doc) {
@@ -734,8 +789,23 @@ public class FeedRoundVideoView extends FrameLayout {
     }
 
     @Override
+    protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        NotificationCenter nc = NotificationCenter.getInstance(currentAccount);
+        nc.addObserver(this, NotificationCenter.fileLoaded);
+        nc.addObserver(this, NotificationCenter.fileLoadProgressChanged);
+        nc.addObserver(this, NotificationCenter.fileLoadFailed);
+
+        refreshFileStateUi();
+    }
+
+    @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
+        NotificationCenter nc = NotificationCenter.getInstance(currentAccount);
+        nc.removeObserver(this, NotificationCenter.fileLoaded);
+        nc.removeObserver(this, NotificationCenter.fileLoadProgressChanged);
+        nc.removeObserver(this, NotificationCenter.fileLoadFailed);
         release();
         resetToCollapsed();
     }
@@ -745,6 +815,8 @@ public class FeedRoundVideoView extends FrameLayout {
         static final int STATE_PLAY = 0;
         static final int STATE_PAUSE = 1;
         static final int STATE_REPLAY = 2;
+        static final int STATE_DOWNLOAD = 3;
+        static final int STATE_LOADING = 4;
 
         private final Paint bgPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint iconPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -767,7 +839,8 @@ public class FeedRoundVideoView extends FrameLayout {
         }
 
         void setState(int s) {
-            boolean animate = (state != STATE_REPLAY && s != STATE_REPLAY);
+            boolean animate = (state == STATE_PLAY || state == STATE_PAUSE)
+                    && (s == STATE_PLAY || s == STATE_PAUSE);
             state = s;
             switch (s) {
                 case STATE_PLAY:
@@ -777,6 +850,8 @@ public class FeedRoundVideoView extends FrameLayout {
                     playPauseDrawable.setPause(true, animate);
                     break;
                 case STATE_REPLAY:
+                case STATE_DOWNLOAD:
+                case STATE_LOADING:
                     playPauseDrawable.setPause(false, false);
                     break;
             }
@@ -791,6 +866,8 @@ public class FeedRoundVideoView extends FrameLayout {
 
             if (state == STATE_REPLAY) {
                 drawReplay(canvas, cx, cy);
+            } else if (state == STATE_DOWNLOAD || state == STATE_LOADING) {
+                drawDownload(canvas, cx, cy);
             } else {
                 int size = playPauseDrawable.getIntrinsicWidth();
                 playPauseDrawable.setBounds(
@@ -798,6 +875,25 @@ public class FeedRoundVideoView extends FrameLayout {
                         (int) (cx + size / 2f), (int) (cy + size / 2f));
                 playPauseDrawable.draw(canvas);
             }
+        }
+
+        private void drawDownload(Canvas c, float cx, float cy) {
+            float s = dp(7f);
+
+            iconPaint.setStyle(Paint.Style.STROKE);
+            iconPaint.setStrokeWidth(dp(2f));
+            iconPaint.setStrokeCap(Paint.Cap.ROUND);
+            iconPaint.setStrokeJoin(Paint.Join.ROUND);
+
+            c.drawLine(cx, cy - s * 0.9f, cx, cy + s * 0.15f, iconPaint);
+
+            path.reset();
+            path.moveTo(cx - s * 0.55f, cy - s * 0.05f);
+            path.lineTo(cx, cy + s * 0.6f);
+            path.lineTo(cx + s * 0.55f, cy - s * 0.05f);
+            c.drawPath(path, iconPaint);
+
+            c.drawLine(cx - s * 0.8f, cy + s * 0.95f, cx + s * 0.8f, cy + s * 0.95f, iconPaint);
         }
 
         private void drawReplay(Canvas c, float cx, float cy) {
@@ -957,5 +1053,104 @@ public class FeedRoundVideoView extends FrameLayout {
     public static boolean isActiveSeeking() {
         FeedRoundVideoView v = getActivePlayer();
         return v != null && v.touchState == TOUCH_SEEKING;
+    }
+
+    private TLRPC.Document getCurrentDocument() {
+        return currentMessage != null
+                && currentMessage.messageOwner != null
+                && currentMessage.messageOwner.media != null
+                ? currentMessage.messageOwner.media.document
+                : null;
+    }
+
+    private void refreshFileStateUi() {
+        TLRPC.Document doc = getCurrentDocument();
+        if (doc == null) {
+            playButton.setState(PlayButtonView.STATE_PLAY);
+            progressView.clearDownload();
+            progressView.setVisibility(GONE);
+            return;
+        }
+
+        File file = getVideoFile(doc);
+        boolean loaded = file != null && file.exists();
+        if (loaded) {
+            fileLoading = false;
+            fileProgress = 1f;
+            progressView.clearDownload();
+            progressView.setVisibility(GONE);
+            if (!isPrepared && !isPlaying && !finished) {
+                playButton.setState(PlayButtonView.STATE_PLAY);
+            }
+            return;
+        }
+
+        fileLoading = currentFileName != null
+                && FileLoader.getInstance(currentAccount).isLoadingFile(currentFileName);
+
+        if (!fileLoading) {
+            fileProgress = 0f;
+            progressView.clearDownload();
+            progressView.setVisibility(GONE);
+            playButton.setState(PlayButtonView.STATE_DOWNLOAD);
+        } else {
+            playButton.setState(PlayButtonView.STATE_LOADING);
+            progressView.setVisibility(VISIBLE);
+            progressView.setDownloadProgress(fileProgress);
+        }
+    }
+
+    private void requestCurrentDownload(int priority) {
+        TLRPC.Document doc = getCurrentDocument();
+        if (doc == null || currentMessage == null) return;
+
+        FileLoader.getInstance(currentAccount)
+                .loadFile(doc, currentMessage, priority, 0);
+
+        fileLoading = true;
+        playButton.setState(PlayButtonView.STATE_LOADING);
+        progressView.setVisibility(VISIBLE);
+        progressView.setDownloadProgress(fileProgress);
+    }
+
+    private boolean isCurrentFileEvent(Object... args) {
+        return currentFileName != null
+                && args != null
+                && args.length > 0
+                && currentFileName.equals(args[0]);
+    }
+
+    private float extractFileProgress(Object... args) {
+        if (args == null || args.length < 2) return 0f;
+
+        if (args[1] instanceof Float) {
+            return Math.max(0f, Math.min(1f, (Float) args[1]));
+        }
+
+        if (args.length >= 3 && args[1] instanceof Long && args[2] instanceof Long) {
+            long loaded = (Long) args[1];
+            long total = (Long) args[2];
+            if (total > 0) {
+                return Math.max(0f, Math.min(1f, (float) loaded / total));
+            }
+        }
+
+        return 0f;
+    }
+
+    private void onCurrentFileLoaded() {
+        fileLoading = false;
+        fileProgress = 1f;
+        progressView.clearDownload();
+        progressView.setVisibility(GONE);
+
+        if (!isPrepared && !isPlaying && !finished) {
+            playButton.setState(PlayButtonView.STATE_PLAY);
+        }
+
+        if (pendingPlayAfterDownload) {
+            pendingPlayAfterDownload = false;
+            play();
+        }
     }
 }

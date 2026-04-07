@@ -203,7 +203,11 @@ public class FeedDocumentView extends LinearLayout implements NotificationCenter
         row.progressBar.setMax(100);
         row.progressBar.setProgress(0);
         row.progressBar.setVisibility(GONE);
+        row.progressBar.setAlpha(0f);
         row.progressBar.setScaleY(0.5f);
+        row.progressBar.setProgressTintList(android.content.res.ColorStateList.valueOf(accentColor));
+        row.progressBar.setProgressBackgroundTintList(
+                android.content.res.ColorStateList.valueOf(0x22000000));
         textCol.addView(row.progressBar,
                 LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 6,
                         0, 2, 0, 0));
@@ -251,26 +255,30 @@ public class FeedDocumentView extends LinearLayout implements NotificationCenter
         FileLoader fl = FileLoader.getInstance(currentAccount);
         boolean isLoading = fl.isLoadingFile(row.fileKey);
         File path = getDocumentPath(fl, row.document);
-        boolean exists = path.exists() && !isLoading;
+        boolean exists = path != null && path.exists() && !isLoading;
 
         int accent = Theme.getColor(Theme.key_windowBackgroundWhiteBlueText2, resourceProvider);
 
         if (exists) {
             row.iconView.setImageResource(R.drawable.msg_round_file_s);
             row.iconView.setColorFilter(new PorterDuffColorFilter(accent, PorterDuff.Mode.SRC_IN));
-            row.progressBar.setVisibility(GONE);
+            setProgressVisible(row, false);
+            row.progressBar.setProgress(0);
             row.sizeView.setText(FeedUtils.formatFileSize(row.document.size));
+
         } else if (isLoading) {
             row.iconView.setImageResource(R.drawable.msg_round_cancel_m);
             row.iconView.setColorFilter(new PorterDuffColorFilter(accent, PorterDuff.Mode.SRC_IN));
-            row.progressBar.setVisibility(VISIBLE);
+            setProgressVisible(row, true);
             row.sizeView.setText(LocaleController.getString("Loading", R.string.Loading)
                     + "… · " + FeedUtils.formatFileSize(row.document.size));
+
         } else {
             row.iconView.setImageResource(R.drawable.msg_round_load_m);
             row.iconView.setColorFilter(new PorterDuffColorFilter(accent, PorterDuff.Mode.SRC_IN));
-            row.progressBar.setVisibility(GONE);
+            setProgressVisible(row, false);
             row.progressBar.setProgress(0);
+            row.sizeView.setText(FeedUtils.formatFileSize(row.document.size));
         }
     }
 
@@ -319,28 +327,80 @@ public class FeedDocumentView extends LinearLayout implements NotificationCenter
     @SuppressLint("SetTextI18n")
     @Override
     public void didReceivedNotification(int id, int account, Object... args) {
-        if (account != currentAccount || rows.isEmpty()) return;
-
-        String fileName = (String) args[0];
+        if (account != currentAccount || rows.isEmpty() || args == null || args.length == 0) {
+            return;
+        }
 
         for (DocumentRow row : rows) {
-            if (row.fileKey == null || !row.fileKey.equals(fileName)) continue;
+            if (!isSameFile(row, args)) continue;
 
-            if (id == NotificationCenter.fileLoaded
-                    || id == NotificationCenter.fileLoadFailed) {
+            if (id == NotificationCenter.fileLoaded || id == NotificationCenter.fileLoadFailed) {
                 updateRowState(row);
 
             } else if (id == NotificationCenter.fileLoadProgressChanged) {
-                long loaded = (Long) args[1];
-                long total = (Long) args[2];
-                if (total > 0) {
-                    int pct = (int) (loaded * 100 / total);
-                    row.progressBar.setProgress(pct);
-                    row.sizeView.setText(pct + "% · "
-                            + FeedUtils.formatFileSize(row.document.size));
-                }
+                int pct = extractProgressPercent(args);
+
+                int accent = Theme.getColor(Theme.key_windowBackgroundWhiteBlueText2, resourceProvider);
+                row.iconView.setImageResource(R.drawable.msg_round_cancel_m);
+                row.iconView.setColorFilter(new PorterDuffColorFilter(accent, PorterDuff.Mode.SRC_IN));
+
+                setProgressVisible(row, true);
+                row.progressBar.setProgress(pct);
+                row.sizeView.setText(LocaleController.getString("Loading", R.string.Loading)
+                        + "… · " + pct + "% · " + FeedUtils.formatFileSize(row.document.size));
             }
             break;
         }
+    }
+
+    private void setProgressVisible(DocumentRow row, boolean visible) {
+        row.progressBar.animate().cancel();
+
+        if (visible) {
+            if (row.progressBar.getVisibility() != VISIBLE) {
+                row.progressBar.setVisibility(VISIBLE);
+                row.progressBar.setAlpha(0f);
+            }
+            row.progressBar.animate().alpha(1f).setDuration(180).start();
+        } else {
+            if (row.progressBar.getVisibility() == VISIBLE) {
+                row.progressBar.animate()
+                        .alpha(0f)
+                        .setDuration(140)
+                        .withEndAction(() -> {
+                            if (row.progressBar.getAlpha() == 0f) {
+                                row.progressBar.setVisibility(GONE);
+                            }
+                        })
+                        .start();
+            }
+        }
+    }
+
+    private int extractProgressPercent(Object... args) {
+        if (args == null || args.length < 2) return 0;
+
+        if (args[1] instanceof Float) {
+            float p = (Float) args[1];
+            return Math.max(0, Math.min(100, Math.round(p * 100f)));
+        }
+
+        if (args.length >= 3 && args[1] instanceof Long && args[2] instanceof Long) {
+            long loaded = (Long) args[1];
+            long total = (Long) args[2];
+            if (total > 0) {
+                return Math.max(0, Math.min(100, (int) (loaded * 100 / total)));
+            }
+        }
+
+        return 0;
+    }
+
+    private boolean isSameFile(DocumentRow row, Object... args) {
+        return row != null
+                && row.fileKey != null
+                && args != null
+                && args.length > 0
+                && row.fileKey.equals(args[0]);
     }
 }

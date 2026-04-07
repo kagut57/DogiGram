@@ -162,8 +162,8 @@ public class FeedPollView extends LinearLayout {
 
         voted = false;
         if (pollMedia.results != null && pollMedia.results.results != null) {
-            for (TLRPC.TL_pollAnswerVoters voters : pollMedia.results.results) {
-                if (voters.chosen) {
+            for (TLRPC.PollAnswerVoters answerResult : pollMedia.results.results) {
+                if (answerResult.chosen) {
                     voted = true;
                     break;
                 }
@@ -348,8 +348,8 @@ public class FeedPollView extends LinearLayout {
                     voted = false;
                     selectedOptions.clear();
                     if (pollMedia.results != null && pollMedia.results.results != null) {
-                        for (TLRPC.TL_pollAnswerVoters v : pollMedia.results.results) {
-                            v.chosen = false;
+                        for (TLRPC.PollAnswerVoters answerResult : pollMedia.results.results) {
+                            answerResult.chosen = false;
                         }
                     }
                 } else {
@@ -357,19 +357,23 @@ public class FeedPollView extends LinearLayout {
                     ensureResults();
                     for (byte[] chosen : options) {
                         boolean found = false;
-                        for (TLRPC.TL_pollAnswerVoters v : pollMedia.results.results) {
-                            if (Arrays.equals(v.option, chosen)) {
-                                v.chosen = true;
+                        for (TLRPC.PollAnswerVoters answerResult : pollMedia.results.results) {
+                            if (Arrays.equals(answerResult.option, chosen)) {
+                                answerResult.chosen = true;
                                 found = true;
                                 break;
                             }
                         }
                         if (!found) {
-                            TLRPC.TL_pollAnswerVoters v = new TLRPC.TL_pollAnswerVoters();
-                            v.option = chosen;
-                            v.chosen = true;
-                            v.voters = 1;
-                            pollMedia.results.results.add(v);
+                            TLRPC.TL_pollAnswerVoters newResult = new TLRPC.TL_pollAnswerVoters();
+                            newResult.option = chosen;
+                            newResult.chosen = true;
+                            newResult.voters = 1;
+
+                            newResult.flags |= 1;
+                            newResult.flags |= 4;
+
+                            pollMedia.results.results.add(newResult);
                         }
                     }
                 }
@@ -434,11 +438,11 @@ public class FeedPollView extends LinearLayout {
                 boolean correct = false;
 
                 if (pollMedia.results != null && pollMedia.results.results != null) {
-                    for (TLRPC.TL_pollAnswerVoters v : pollMedia.results.results) {
-                        if (Arrays.equals(v.option, row.option)) {
-                            voters = v.voters;
-                            chosen = v.chosen;
-                            correct = v.correct;
+                    for (TLRPC.PollAnswerVoters answerResult : pollMedia.results.results) {
+                        if (Arrays.equals(answerResult.option, row.option)) {
+                            voters = (answerResult.flags & 4) != 0 ? answerResult.voters : 0;
+                            chosen = answerResult.chosen;
+                            correct = answerResult.correct;
                             break;
                         }
                     }

@@ -21,6 +21,7 @@ import android.widget.TextView;
 import androidx.core.graphics.ColorUtils;
 
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.FileLoader;
 import org.telegram.messenger.ImageLocation;
 import org.telegram.messenger.MediaController;
 import org.telegram.messenger.MessageObject;
@@ -35,6 +36,8 @@ import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.BackupImageView;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.TranscribeButton;
+
+import java.io.File;
 
 @SuppressLint("ViewConstructor")
 public class FeedVoiceView extends LinearLayout implements NotificationCenter.NotificationCenterDelegate {
@@ -64,6 +67,14 @@ public class FeedVoiceView extends LinearLayout implements NotificationCenter.No
     private boolean isVoiceMessage = false;
     private boolean isSeeking = false;
     private boolean transcriptionLoading = false;
+
+    private TLRPC.Document currentDocument;
+    private String currentFileName;
+    private boolean fileLoaded;
+    private boolean fileLoading;
+    private float fileProgress;
+    private boolean pendingPlayAfterDownload;
+    private Float pendingSeekProgress;
 
     @SuppressLint("SetTextI18n")
     public FeedVoiceView(Context context, int account, Theme.ResourcesProvider resourceProvider) {
@@ -162,15 +173,8 @@ public class FeedVoiceView extends LinearLayout implements NotificationCenter.No
             @Override
             public void onSeekEnd(float progress) {
                 if (currentMessage == null) return;
-                MediaController mc = MediaController.getInstance();
-                if (mc.isPlayingMessage(currentMessage)) {
-                    mc.seekToProgress(currentMessage, progress);
-                } else {
-                    mc.playMessage(currentMessage);
-                    AndroidUtilities.runOnUIThread(
-                            () -> mc.seekToProgress(currentMessage, progress), 300);
-                }
-                updatePlayButton();
+                if (!ensureFileReadyForPlayback(progress)) return;
+                startPlaybackFromProgress(progress);
             }
         });
 
@@ -275,15 +279,8 @@ public class FeedVoiceView extends LinearLayout implements NotificationCenter.No
                 isSeeking = false;
                 float progress = (float) sb.getProgress() / 1000f;
                 if (currentMessage == null) return;
-                MediaController mc = MediaController.getInstance();
-                if (mc.isPlayingMessage(currentMessage)) {
-                    mc.seekToProgress(currentMessage, progress);
-                } else {
-                    mc.playMessage(currentMessage);
-                    AndroidUtilities.runOnUIThread(
-                            () -> mc.seekToProgress(currentMessage, progress), 300);
-                }
-                updatePlayButton();
+                if (!ensureFileReadyForPlayback(progress)) return;
+                startPlaybackFromProgress(progress);
             }
         });
         seekRow.addView(musicSeekBar,
@@ -311,6 +308,14 @@ public class FeedVoiceView extends LinearLayout implements NotificationCenter.No
         isVoiceMessage = false;
         isSeeking = false;
         transcriptionLoading = false;
+
+        currentDocument = null;
+        currentFileName = null;
+        fileLoaded = false;
+        fileLoading = false;
+        fileProgress = 0f;
+        pendingPlayAfterDownload = false;
+        pendingSeekProgress = null;
 
         if (item == null) {
             setVisibility(GONE);
@@ -358,6 +363,10 @@ public class FeedVoiceView extends LinearLayout implements NotificationCenter.No
         currentMessage  = voiceMsg;
         totalDuration   = duration;
         isVoiceMessage  = isVoice;
+
+        currentDocument = audioDoc;
+        currentFileName = audioDoc != null ? FileLoader.getAttachFileName(audioDoc) : null;
+        refreshFileState();
 
         if (isVoice) {
             setupVoiceLayout(waveform, duration);
@@ -442,6 +451,18 @@ public class FeedVoiceView extends LinearLayout implements NotificationCenter.No
         isVoiceMessage = false;
         isSeeking = false;
         transcriptionLoading = false;
+        currentDocument = null;
+        currentFileName = null;
+        fileLoaded = false;
+        fileLoading = false;
+        fileProgress = 0f;
+        pendingPlayAfterDownload = false;
+        pendingSeekProgress = null;
+
+        voicePlayButton.setState(FeedPlayPauseButton.STATE_PLAY);
+        voicePlayButton.setLoadingProgress(0f);
+        musicPlayButton.setState(FeedPlayPauseButton.STATE_PLAY);
+        musicPlayButton.setLoadingProgress(0f);
         voiceLayout.setVisibility(GONE);
         musicLayout.setVisibility(GONE);
         transcribeBtn.setVisibility(GONE);
@@ -455,10 +476,18 @@ public class FeedVoiceView extends LinearLayout implements NotificationCenter.No
 
     private void togglePlayback() {
         if (currentMessage == null) return;
+
+        if (!ensureFileReadyForPlayback(null)) {
+            return;
+        }
+
         MediaController mc = MediaController.getInstance();
         if (mc.isPlayingMessage(currentMessage)) {
-            if (mc.isMessagePaused()) mc.playMessage(currentMessage);
-            else mc.pauseMessage(currentMessage);
+            if (mc.isMessagePaused()) {
+                mc.playMessage(currentMessage);
+            } else {
+                mc.pauseMessage(currentMessage);
+            }
         } else {
             mc.playMessage(currentMessage);
         }
@@ -467,8 +496,25 @@ public class FeedVoiceView extends LinearLayout implements NotificationCenter.No
 
     private void updatePlayButton() {
         if (currentMessage == null) return;
+
+        if (!fileLoaded) {
+            int state = fileLoading
+                    ? FeedPlayPauseButton.STATE_LOADING
+                    : FeedPlayPauseButton.STATE_DOWNLOAD;
+
+            if (isVoiceMessage) {
+                voicePlayButton.setState(state);
+                voicePlayButton.setLoadingProgress(fileProgress);
+            } else {
+                musicPlayButton.setState(state);
+                musicPlayButton.setLoadingProgress(fileProgress);
+            }
+            return;
+        }
+
         MediaController mc = MediaController.getInstance();
         boolean playing = mc.isPlayingMessage(currentMessage) && !mc.isMessagePaused();
+
         if (isVoiceMessage) {
             voicePlayButton.setPlaying(playing);
         } else {
@@ -669,6 +715,9 @@ public class FeedVoiceView extends LinearLayout implements NotificationCenter.No
         nc.addObserver(this, NotificationCenter.messagePlayingPlayStateChanged);
         nc.addObserver(this, NotificationCenter.messagePlayingProgressDidChanged);
         nc.addObserver(this, NotificationCenter.voiceTranscriptionUpdate);
+        nc.addObserver(this, NotificationCenter.fileLoaded);
+        nc.addObserver(this, NotificationCenter.fileLoadProgressChanged);
+        nc.addObserver(this, NotificationCenter.fileLoadFailed);
     }
 
     @Override
@@ -679,11 +728,43 @@ public class FeedVoiceView extends LinearLayout implements NotificationCenter.No
         nc.removeObserver(this, NotificationCenter.messagePlayingPlayStateChanged);
         nc.removeObserver(this, NotificationCenter.messagePlayingProgressDidChanged);
         nc.removeObserver(this, NotificationCenter.voiceTranscriptionUpdate);
+        nc.removeObserver(this, NotificationCenter.fileLoaded);
+        nc.removeObserver(this, NotificationCenter.fileLoadProgressChanged);
+        nc.removeObserver(this, NotificationCenter.fileLoadFailed);
     }
 
     @Override
     public void didReceivedNotification(int id, int account, Object... args) {
         if (account != currentAccount || currentMessage == null) return;
+
+        if (id == NotificationCenter.fileLoaded) {
+            if (isCurrentFileEvent(args)) {
+                fileLoaded = true;
+                fileLoading = false;
+                fileProgress = 1f;
+                updatePlayButton();
+                maybeStartPendingPlayback();
+            }
+            return;
+        } else if (id == NotificationCenter.fileLoadProgressChanged) {
+            if (isCurrentFileEvent(args)) {
+                fileLoaded = false;
+                fileLoading = true;
+                fileProgress = extractFileProgress(args);
+                updatePlayButton();
+            }
+            return;
+        } else if (id == NotificationCenter.fileLoadFailed) {
+            if (isCurrentFileEvent(args)) {
+                fileLoaded = false;
+                fileLoading = false;
+                fileProgress = 0f;
+                pendingPlayAfterDownload = false;
+                pendingSeekProgress = null;
+                updatePlayButton();
+            }
+            return;
+        }
 
         if (id == NotificationCenter.messagePlayingDidReset) {
             updatePlayButton();
@@ -741,5 +822,110 @@ public class FeedVoiceView extends LinearLayout implements NotificationCenter.No
         if (a == b) return true;
         if (a == null || b == null) return false;
         return a.getId() == b.getId() && a.getDialogId() == b.getDialogId();
+    }
+
+    private void refreshFileState() {
+        if (currentDocument == null) {
+            fileLoaded = true;
+            fileLoading = false;
+            fileProgress = 0f;
+            return;
+        }
+
+        File file = getDocumentFile(currentDocument);
+        if (file != null && file.exists()) {
+            fileLoaded = true;
+            fileLoading = false;
+            fileProgress = 1f;
+        } else {
+            fileLoaded = false;
+            fileLoading = currentFileName != null
+                    && FileLoader.getInstance(currentAccount).isLoadingFile(currentFileName);
+            if (!fileLoading) {
+                fileProgress = 0f;
+            }
+        }
+    }
+
+    private File getDocumentFile(TLRPC.Document doc) {
+        if (doc == null) return null;
+        FileLoader fl = FileLoader.getInstance(currentAccount);
+        File f = fl.getPathToAttach(doc, false);
+        if (f != null && f.exists()) return f;
+        f = fl.getPathToAttach(doc, true);
+        if (f != null && f.exists()) return f;
+        return f;
+    }
+
+    private void requestCurrentFileDownload(int priority) {
+        if (currentDocument == null || currentMessage == null) return;
+        FileLoader.getInstance(currentAccount)
+                .loadFile(currentDocument, currentMessage, priority, 0);
+        fileLoading = true;
+        updatePlayButton();
+    }
+
+    private boolean ensureFileReadyForPlayback(Float seekProgress) {
+        refreshFileState();
+        if (fileLoaded) {
+            return true;
+        }
+
+        pendingPlayAfterDownload = true;
+        pendingSeekProgress = seekProgress;
+        requestCurrentFileDownload(FileLoader.PRIORITY_HIGH);
+        updatePlayButton();
+        return false;
+    }
+
+    private void startPlaybackFromProgress(Float progress) {
+        if (currentMessage == null) return;
+
+        MediaController mc = MediaController.getInstance();
+        if (progress == null) {
+            mc.playMessage(currentMessage);
+        } else if (mc.isPlayingMessage(currentMessage)) {
+            mc.seekToProgress(currentMessage, progress);
+        } else {
+            mc.playMessage(currentMessage);
+            AndroidUtilities.runOnUIThread(
+                    () -> mc.seekToProgress(currentMessage, progress), 300);
+        }
+        updatePlayButton();
+    }
+
+    private void maybeStartPendingPlayback() {
+        if (!pendingPlayAfterDownload || currentMessage == null || !fileLoaded) return;
+
+        Float progress = pendingSeekProgress;
+        pendingPlayAfterDownload = false;
+        pendingSeekProgress = null;
+
+        startPlaybackFromProgress(progress);
+    }
+
+    private boolean isCurrentFileEvent(Object... args) {
+        return currentFileName != null
+                && args != null
+                && args.length > 0
+                && currentFileName.equals(args[0]);
+    }
+
+    private float extractFileProgress(Object... args) {
+        if (args == null || args.length < 2) return 0f;
+
+        if (args[1] instanceof Float) {
+            return Math.max(0f, Math.min(1f, (Float) args[1]));
+        }
+
+        if (args.length >= 3 && args[1] instanceof Long && args[2] instanceof Long) {
+            long loaded = (Long) args[1];
+            long total = (Long) args[2];
+            if (total > 0) {
+                return Math.max(0f, Math.min(1f, (float) loaded / total));
+            }
+        }
+
+        return 0f;
     }
 }

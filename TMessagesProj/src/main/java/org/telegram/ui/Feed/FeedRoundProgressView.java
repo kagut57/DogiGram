@@ -27,6 +27,10 @@ class FeedRoundProgressView extends View {
     private boolean running;
     private boolean seeking;
 
+    private boolean downloadMode;
+    private float downloadProgress;
+    private float spinnerAngle;
+
     private static final float STROKE = dp(3);
     private static final float THUMB_R = dp(5f);
     private static final float THUMB_R_BIG = dp(8f);
@@ -57,6 +61,7 @@ class FeedRoundProgressView extends View {
     }
 
     void sync(int positionMs, int dur, float speed) {
+        downloadMode = false;
         if (seeking) return;
 
         this.durationMs = dur;
@@ -78,6 +83,7 @@ class FeedRoundProgressView extends View {
     }
 
     void startSmooth() {
+        downloadMode = false;
         if (running) return;
         running = true;
         invalidate();
@@ -88,18 +94,21 @@ class FeedRoundProgressView extends View {
     }
 
     void setSeekProgress(float p) {
+        downloadMode = false;
         seeking = true;
         displayProgress = clamp(p);
         invalidate();
     }
 
     void endSeek() {
+        downloadMode = false;
         seeking = false;
         syncRealtime = SystemClock.elapsedRealtime();
         syncProgress = displayProgress;
     }
 
     void setDirect(float p) {
+        downloadMode = false;
         displayProgress = clamp(p);
         syncProgress = displayProgress;
         syncRealtime = SystemClock.elapsedRealtime();
@@ -119,6 +128,22 @@ class FeedRoundProgressView extends View {
         float w = getWidth();
         float h = getHeight();
         if (w <= 0 || h <= 0) return;
+
+        if (downloadMode) {
+            arcRect.set(INSET, INSET, w - INSET, h - INSET);
+
+            canvas.drawArc(arcRect, 0, 360, false, trackPaint);
+
+            if (downloadProgress > 0f) {
+                float sweep = Math.max(10f, downloadProgress * 360f);
+                canvas.drawArc(arcRect, -90, sweep, false, arcPaint);
+            } else {
+                spinnerAngle += 6f;
+                canvas.drawArc(arcRect, spinnerAngle - 90, 80f, false, arcPaint);
+                postInvalidateOnAnimation();
+            }
+            return;
+        }
 
         arcRect.set(INSET, INSET, w - INSET, h - INSET);
 
@@ -148,5 +173,19 @@ class FeedRoundProgressView extends View {
 
     private static float clamp(float v) {
         return Math.max(0, Math.min(1, v));
+    }
+
+    void setDownloadProgress(float p) {
+        downloadMode = true;
+        running = false;
+        seeking = false;
+        downloadProgress = clamp(p);
+        invalidate();
+    }
+
+    void clearDownload() {
+        downloadMode = false;
+        downloadProgress = 0f;
+        invalidate();
     }
 }

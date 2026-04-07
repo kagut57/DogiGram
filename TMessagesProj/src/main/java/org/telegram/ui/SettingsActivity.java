@@ -576,8 +576,8 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         } else if (listView.getChildCount() > 0) {
             final View firstChild = listView.getChildAt(0);
             visible = (
-                listView.getChildAdapterPosition(firstChild) > 0 ||
-                firstChild.getY() + firstChild.getHeight() < actionBar.getHeight()
+                    listView.getChildAdapterPosition(firstChild) > 0 ||
+                            firstChild.getY() + firstChild.getHeight() < actionBar.getHeight()
             );
         } else {
             visible = false;
@@ -635,39 +635,39 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         final Set<String> suggestions = getMessagesController().pendingSuggestions;
         if (suggestions.contains("PREMIUM_GRACE")) {
             items.add(SuggestionCell.Factory.of(
-                getString(R.string.GraceSuggestionTitle),
-                getString(R.string.GraceSuggestionMessage),
-                null, null,
-                getString(R.string.GraceSuggestionButton), v -> {
-                    Browser.openUrl(getContext(), getMessagesController().premiumManageSubscriptionUrl);
-                    getMessagesController().removeSuggestion(0, "PREMIUM_GRACE");
-                }
+                    getString(R.string.GraceSuggestionTitle),
+                    getString(R.string.GraceSuggestionMessage),
+                    null, null,
+                    getString(R.string.GraceSuggestionButton), v -> {
+                        Browser.openUrl(getContext(), getMessagesController().premiumManageSubscriptionUrl);
+                        getMessagesController().removeSuggestion(0, "PREMIUM_GRACE");
+                    }
             ));
             items.add(UItem.asShadow(null));
         } else if (suggestions.contains("VALIDATE_PHONE_NUMBER") && getUserConfig().getCurrentUser() != null) {
             items.add(SuggestionCell.Factory.of(
-                formatString(R.string.CheckPhoneNumber, PhoneFormat.getInstance().format("+" + getUserConfig().getCurrentUser().phone)),
-                replaceSingleTag(getString(R.string.CheckPhoneNumberInfo), () -> {
-                    Browser.openUrl(getContext(), getString(R.string.CheckPhoneNumberLearnMoreUrl));
-                }),
-                getString(R.string.CheckPhoneNumberNo), v -> {
-                    presentFragment(new ActionIntroActivity(ActionIntroActivity.ACTION_TYPE_CHANGE_PHONE_NUMBER));
-                },
-                replaceUnderstood(getString(R.string.CheckPhoneNumberYes2)), v -> {
-                    getMessagesController().removeSuggestion(0, "VALIDATE_PHONE_NUMBER");
-                }
+                    formatString(R.string.CheckPhoneNumber, PhoneFormat.getInstance().format("+" + getUserConfig().getCurrentUser().phone)),
+                    replaceSingleTag(getString(R.string.CheckPhoneNumberInfo), () -> {
+                        Browser.openUrl(getContext(), getString(R.string.CheckPhoneNumberLearnMoreUrl));
+                    }),
+                    getString(R.string.CheckPhoneNumberNo), v -> {
+                        presentFragment(new ActionIntroActivity(ActionIntroActivity.ACTION_TYPE_CHANGE_PHONE_NUMBER));
+                    },
+                    replaceUnderstood(getString(R.string.CheckPhoneNumberYes2)), v -> {
+                        getMessagesController().removeSuggestion(0, "VALIDATE_PHONE_NUMBER");
+                    }
             ));
             items.add(UItem.asShadow(null));
         } else if (suggestions.contains("VALIDATE_PASSWORD")) {
             items.add(SuggestionCell.Factory.of(
-                getString(R.string.YourPasswordHeader),
-                getString(R.string.YourPasswordRemember),
-                getString(R.string.YourPasswordRememberNo), v -> {
-                    presentFragment(new TwoStepVerificationSetupActivity(TwoStepVerificationSetupActivity.TYPE_VERIFY, null));
-                },
-                getString(R.string.YourPasswordRememberYes), v -> {
-                    getMessagesController().removeSuggestion(0, "VALIDATE_PASSWORD");
-                }
+                    getString(R.string.YourPasswordHeader),
+                    getString(R.string.YourPasswordRemember),
+                    getString(R.string.YourPasswordRememberNo), v -> {
+                        presentFragment(new TwoStepVerificationSetupActivity(TwoStepVerificationSetupActivity.TYPE_VERIFY, null));
+                    },
+                    getString(R.string.YourPasswordRememberYes), v -> {
+                        getMessagesController().removeSuggestion(0, "VALIDATE_PASSWORD");
+                    }
             ));
             items.add(UItem.asShadow(null));
         }
@@ -890,12 +890,12 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
             if (!TextUtils.isEmpty(link)) {
                 final String finalLink = link;
                 ItemOptions.makeOptions(this, view)
-                    .add(R.drawable.msg_link2, getString(R.string.CopyLink), () -> {
-                        AndroidUtilities.addToClipboard(finalLink);
-                        BulletinFactory.of(this).createCopyLinkBulletin().show();
-                    })
-                    .setScrimViewBackground(listView.getClipBackground(view))
-                    .show();
+                        .add(R.drawable.msg_link2, getString(R.string.CopyLink), () -> {
+                            AndroidUtilities.addToClipboard(finalLink);
+                            BulletinFactory.of(this).createCopyLinkBulletin().show();
+                        })
+                        .setScrimViewBackground(listView.getClipBackground(view))
+                        .show();
                 return true;
             }
         }
@@ -1067,8 +1067,8 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         @Override
         protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
             super.onMeasure(
-                MeasureSpec.makeMeasureSpec(MeasureSpec.getSize(widthMeasureSpec), MeasureSpec.EXACTLY),
-                MeasureSpec.makeMeasureSpec(dp(48), MeasureSpec.EXACTLY)
+                    MeasureSpec.makeMeasureSpec(MeasureSpec.getSize(widthMeasureSpec), MeasureSpec.EXACTLY),
+                    MeasureSpec.makeMeasureSpec(dp(48), MeasureSpec.EXACTLY)
             );
         }
 
@@ -1169,10 +1169,10 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         private boolean twoLines;
 
         public void set(
-            int iconColorTop, int iconColorBottom, int icon,
-            CharSequence title,
-            CharSequence subtitle,
-            CharSequence value
+                int iconColorTop, int iconColorBottom, int icon,
+                CharSequence title,
+                CharSequence subtitle,
+                CharSequence value
         ) {
             iconView.setVisibility(icon != 0 ? View.VISIBLE : View.GONE);
             titleView.setTranslationX(icon == 0 ? dp(2) : 0);
@@ -1190,8 +1190,8 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         @Override
         protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
             super.onMeasure(
-                MeasureSpec.makeMeasureSpec(MeasureSpec.getSize(widthMeasureSpec), MeasureSpec.EXACTLY),
-                MeasureSpec.makeMeasureSpec(dp(twoLines ? 60 : 50), MeasureSpec.EXACTLY)
+                    MeasureSpec.makeMeasureSpec(MeasureSpec.getSize(widthMeasureSpec), MeasureSpec.EXACTLY),
+                    MeasureSpec.makeMeasureSpec(dp(twoLines ? 60 : 50), MeasureSpec.EXACTLY)
             );
         }
 
@@ -1258,10 +1258,10 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                 int iconColorTop    = (int) item.longValue;
                 int iconColorBottom = (int) (item.longValue >>> 32);
                 ((SettingCell) view).set(
-                    iconColorTop, iconColorBottom, item.iconResId,
-                    item.text,
-                    item.subtext,
-                    item.textValue
+                        iconColorTop, iconColorBottom, item.iconResId,
+                        item.text,
+                        item.subtext,
+                        item.textValue
                 );
             }
 
@@ -1332,10 +1332,10 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         }
 
         public void set(
-            CharSequence title,
-            CharSequence text,
-            CharSequence noText, View.OnClickListener noListener,
-            CharSequence yesText, View.OnClickListener yesListener
+                CharSequence title,
+                CharSequence text,
+                CharSequence noText, View.OnClickListener noListener,
+                CharSequence yesText, View.OnClickListener yesListener
         ) {
             titleView.setText(Emoji.replaceEmoji(title, titleView.getPaint().getFontMetricsInt(), false));
             textView.setText(Emoji.replaceEmoji(text, textView.getPaint().getFontMetricsInt(), false));
@@ -1362,17 +1362,17 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
             @Override
             public void bindView(View view, UItem item, boolean divider, UniversalAdapter adapter, UniversalRecyclerView listView) {
                 ((SuggestionCell) view).set(
-                    item.text, item.subtext,
-                    item.textValue, item.clickCallback,
-                    item.animatedText, item.clickCallback2
+                        item.text, item.subtext,
+                        item.textValue, item.clickCallback,
+                        item.animatedText, item.clickCallback2
                 );
             }
 
             public static UItem of(
-                CharSequence title,
-                CharSequence text,
-                CharSequence noText, View.OnClickListener noListener,
-                CharSequence yesText, View.OnClickListener yesListener
+                    CharSequence title,
+                    CharSequence text,
+                    CharSequence noText, View.OnClickListener noListener,
+                    CharSequence yesText, View.OnClickListener yesListener
             ) {
                 final UItem item = UItem.ofFactory(Factory.class);
                 item.text = title;
@@ -1433,7 +1433,6 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                 (SharedConfig.frameMetricsEnabled ? "hide frame metrics" : "show frame metrics"),
                 BuildVars.DEBUG_PRIVATE_VERSION ? (SharedConfig.shadowsInSections ? "disable shadows in settings" : "enable shadows in settings") : null,
                 BuildVars.DEBUG_PRIVATE_VERSION ? (SharedConfig.debugViewMetrics ? "disable debug view metrics" : "enable debug view metrics") : null,
-                BuildVars.DEBUG_VERSION ? (SharedConfig.useEightPatch ? "use nine patch" : "use eight patch") : null,
         };
 
         builder.setItems(items, (dialog, which) -> {
@@ -1741,9 +1740,6 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
             } else if (which == 41) {
                 final SharedPreferences prefs = ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Activity.MODE_PRIVATE);
                 prefs.edit().putBoolean("debugViewMetrics", SharedConfig.debugViewMetrics = !SharedConfig.debugViewMetrics).apply();
-            } else if (which == 42) {
-                final SharedPreferences prefs = ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Activity.MODE_PRIVATE);
-                prefs.edit().putBoolean("useEightPatch", SharedConfig.useEightPatch = !SharedConfig.useEightPatch).apply();
             }
         });
         builder.setNegativeButton(getString(R.string.Cancel), null);
