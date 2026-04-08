@@ -1114,6 +1114,17 @@ public class AnimatedEmojiSpan extends ReplacementSpan {
                 canvas.restore();
             }
         }
+
+        public void invalidateEmojis() {
+            stack = AnimatedEmojiSpan.update(cacheType, this, stack, getLayout());
+            invalidate();
+        }
+
+        @Override
+        protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
+            super.onLayout(changed, left, top, right, bottom);
+            stack = AnimatedEmojiSpan.update(cacheType, this, stack, getLayout());
+        }
     }
 
     public interface InvalidateHolder {

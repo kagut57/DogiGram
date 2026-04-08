@@ -859,14 +859,12 @@ public class FeedPostCell extends LinearLayout {
 
         if (text != null && text.length() > 0) {
             fullText = text;
-
             int rightPad = computeTextRightPad(text);
             messageTextView.setPadding(0, 0, rightPad, 0);
             messageTextView.setMaxLines(Integer.MAX_VALUE);
             messageTextView.setText(fullText);
             messageTextView.setVisibility(VISIBLE);
-            messageTextView.post(messageTextView::invalidate);
-
+            messageTextView.post(messageTextView::invalidateEmojis);
             scheduleMeasureAndTruncate();
         } else {
             fullText = null;
@@ -941,6 +939,7 @@ public class FeedPostCell extends LinearLayout {
             truncated.delete(truncated.length() - 1, truncated.length());
         truncated.append("…");
         messageTextView.setText(truncated);
+        messageTextView.post(messageTextView::invalidateEmojis);
     }
 
     private void toggleExpanded() {
@@ -949,11 +948,11 @@ public class FeedPostCell extends LinearLayout {
 
         if (textExpanded) {
             messageTextView.setText(fullText);
+            messageTextView.post(messageTextView::invalidateEmojis);
             readMoreView.setText(LocaleController.getString("FeedShowLess", R.string.FeedShowLess));
         } else {
             setCollapsedText();
             readMoreView.setText(LocaleController.getString("FeedReadMore", R.string.FeedReadMore));
-
             scrollToTopOfPost();
         }
         scheduleQuoteWidthUpdate();
@@ -999,6 +998,7 @@ public class FeedPostCell extends LinearLayout {
         messageTextView.setPadding(0, 0, rightPad, 0);
         messageTextView.setMaxLines(Integer.MAX_VALUE);
         messageTextView.setText(fullText);
+        messageTextView.post(messageTextView::invalidateEmojis);
         messageTextView.setVisibility(VISIBLE);
 
         cancelPendingTruncate();
@@ -1067,6 +1067,7 @@ public class FeedPostCell extends LinearLayout {
         messageTextView.setPadding(0, 0, rightPad, 0);
         messageTextView.setMaxLines(Integer.MAX_VALUE);
         messageTextView.setText(fullText);
+        messageTextView.post(messageTextView::invalidateEmojis);
         messageTextView.setVisibility(VISIBLE);
 
         collapsedEndOffset = -1;
@@ -1302,8 +1303,9 @@ public class FeedPostCell extends LinearLayout {
         super.onAttachedToWindow();
 
         if (messageTextView != null && messageTextView.getVisibility() == VISIBLE
-                && fullText != null && fullText.length() > 0)
-            messageTextView.invalidate();
+                && fullText != null && fullText.length() > 0) {
+            messageTextView.post(messageTextView::invalidateEmojis);
+        }
 
         if (mediaImageView1 != null && mediaContainer.getVisibility() == VISIBLE) {
             mediaImageView1.invalidate();
