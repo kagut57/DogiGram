@@ -121,11 +121,13 @@ public class FeedPostCell extends LinearLayout {
     private float longPressDownX, longPressDownY;
 
     private boolean downAllowsDoubleTap;
-    private int touchSlop;
-    private int longPressTimeout;
+    private final int touchSlop;
+    private final int longPressTimeout;
 
     final FeedPostSummaryHelper summaryHelper;
     final FeedPostTranslationHelper translationHelper;
+
+    final FeedLinkPreviewView linkPreviewView;
 
     Callback callback;
 
@@ -325,6 +327,12 @@ public class FeedPostCell extends LinearLayout {
         addView(messageTextView,
                 LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT,
                         0, 8, 0, 0));
+
+        linkPreviewView = new FeedLinkPreviewView(context, resourceProvider);
+        linkPreviewView.setVisibility(GONE);
+        addView(linkPreviewView,
+                LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT,
+                        0, 6, 0, 0));
 
         readMoreView = new TextView(context);
         readMoreView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
@@ -736,6 +744,7 @@ public class FeedPostCell extends LinearLayout {
         buttonsView.clear();
         readMoreView.setVisibility(GONE);
         stickerView.clear();
+        linkPreviewView.clear();
 
         summaryHelper.reset();
         translationHelper.reset();
@@ -791,6 +800,7 @@ public class FeedPostCell extends LinearLayout {
         reactionsView.setData(item);
 
         bindMessageText(item);
+        bindLinkPreview(item);
         bindEngagement(raw, item);
         summaryHelper.bind(item);
         translationHelper.bind(item);
@@ -1420,5 +1430,31 @@ public class FeedPostCell extends LinearLayout {
             }
         };
         AndroidUtilities.runOnUIThread(longPressRunnable, longPressTimeout);
+    }
+
+    private void bindLinkPreview(FeedController.FeedItem item) {
+        TLRPC.WebPage page = FeedLinkPreviewView.extractWebPage(item);
+        if (page == null) {
+            linkPreviewView.clear();
+            return;
+        }
+
+        MessageObject primary = item.getPrimaryMessage();
+        if (primary != null && primary.messageOwner != null) {
+            TLRPC.MessageMedia media = primary.messageOwner.media;
+            if (media instanceof TLRPC.TL_messageMediaPhoto
+                    || (media instanceof TLRPC.TL_messageMediaDocument
+                    && media.document != null)) {
+                linkPreviewView.clear();
+                return;
+            }
+        }
+
+        String url = page.url;
+        linkPreviewView.setWebPage(page, () -> {
+            if (callback != null && url != null) {
+                callback.onLinkClick(url);
+            }
+        });
     }
 }

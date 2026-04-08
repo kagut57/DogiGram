@@ -638,7 +638,6 @@ public class FeedRecommendationEngine {
         validMessages.sort(Comparator.comparingInt(m -> m.id));
 
         int firstFetchedId = validMessages.get(0).id;
-        int lastFetchedId = validMessages.get(validMessages.size() - 1).id;
 
         Map<Long, List<TLRPC.Message>> albums = new HashMap<>();
         List<TLRPC.Message> singles = new ArrayList<>();
@@ -654,21 +653,20 @@ public class FeedRecommendationEngine {
         Set<Long> incompleteAlbumIds = new HashSet<>();
         for (Map.Entry<Long, List<TLRPC.Message>> entry : albums.entrySet()) {
             List<TLRPC.Message> group = entry.getValue();
-            for (TLRPC.Message msg : group) {
-                if (msg.id == firstFetchedId || msg.id == lastFetchedId) {
-                    incompleteAlbumIds.add(entry.getKey());
-                    break;
-                }
+            int groupMinId = group.get(0).id;
+            if (groupMinId == firstFetchedId) {
+                incompleteAlbumIds.add(entry.getKey());
             }
         }
 
+        int currentTime = ConnectionsManager.getInstance(currentAccount).getCurrentTime();
         List<CandidatePost> candidates = new ArrayList<>();
 
         for (TLRPC.Message msg : singles) {
             String postUid = rec.channelId + "_" + msg.id;
             if (seenRecPostIds.contains(postUid)) continue;
 
-            int age = ConnectionsManager.getInstance(currentAccount).getCurrentTime() - msg.date;
+            int age = currentTime - msg.date;
             if (age > 3 * 24 * 3600) continue;
 
             int score = scoreMessage(msg, age);
@@ -684,17 +682,15 @@ public class FeedRecommendationEngine {
 
         for (Map.Entry<Long, List<TLRPC.Message>> entry : albums.entrySet()) {
             long groupedId = entry.getKey();
-
             if (incompleteAlbumIds.contains(groupedId)) continue;
 
             List<TLRPC.Message> group = entry.getValue();
-            group.sort(Comparator.comparingInt(a -> a.id));
 
             TLRPC.Message first = group.get(0);
             String postUid = rec.channelId + "_" + first.id;
             if (seenRecPostIds.contains(postUid)) continue;
 
-            int age = ConnectionsManager.getInstance(currentAccount).getCurrentTime() - first.date;
+            int age = currentTime - first.date;
             if (age > 3 * 24 * 3600) continue;
 
             String albumCaption = findAlbumCaption(group);
@@ -702,7 +698,7 @@ public class FeedRecommendationEngine {
             int score = 0;
             if (first.media instanceof TLRPC.TL_messageMediaPhoto) score += 2;
             if (first.media instanceof TLRPC.TL_messageMediaDocument) score += 2;
-            if (first.views > 0) score += Math.min(3, (int) Math.log10(first.views));
+            if (first.views > 0) score += Math.min(3, (int) Math.log10(Math.max(1, first.views)));
             if (age < 24 * 3600) score += 2;
             if (albumCaption != null && albumCaption.length() > 50) score += 3;
             else if (albumCaption != null && !albumCaption.isEmpty()) score += 1;
@@ -733,13 +729,12 @@ public class FeedRecommendationEngine {
             if (obj.isOut() || obj.messageOwner.action != null) continue;
             msgList.add(obj);
         }
-
         if (msgList.isEmpty()) return null;
 
         msgList.sort(Comparator.comparingInt(MessageObject::getId));
 
         if (msgList.size() > 1) {
-            ensureAlbumCaption(msgList);
+            fixAlbumCaption(msgList);
         }
 
         MessageObject primary = msgList.get(0);
@@ -1052,33 +1047,20 @@ public class FeedRecommendationEngine {
         return null;
     }
 
-    private void ensureAlbumCaption(List<MessageObject> msgList) {
-        MessageObject captionMsg = null;
+    private void fixAlbumCaption(List<MessageObject> msgList) {
+        boolean hasCaption = false;
         for (MessageObject msg : msgList) {
-            CharSequence caption = msg.caption;
-            if (caption != null && caption.length() > 0) {
-                captionMsg = msg;
-                break;
-            }
             if (msg.messageOwner.message != null
                     && !msg.messageOwner.message.isEmpty()) {
-                captionMsg = msg;
+                hasCaption = true;
+                break;
+            }
+            if (msg.caption != null && msg.caption.length() > 0) {
+                hasCaption = true;
                 break;
             }
         }
-
-        if (captionMsg == null) return;
-
-        MessageObject first = msgList.get(0);
-        if (captionMsg != first) {
-            if (first.caption == null || first.caption.length() == 0) {
-                first.caption = captionMsg.caption;
-                if (first.messageOwner.message == null
-                        || first.messageOwner.message.isEmpty()) {
-                    first.messageOwner.message = captionMsg.messageOwner.message;
-                }
-            }
-        }
+        if (hasCaption) return;
     }
 
     private void saveDiscoveredChannels() {
