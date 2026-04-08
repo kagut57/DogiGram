@@ -390,7 +390,28 @@ class FeedActionHandler {
 
         if (cell instanceof FeedPostCell) {
             TextView tv = ((FeedPostCell) cell).getMessageTextView();
-            scrimDialog.setScrimForTextView(tv, span);
+
+            String formattedUrl = url;
+            try {
+                android.net.Uri uri = android.net.Uri.parse(url);
+                formattedUrl = org.telegram.messenger.browser.Browser.replaceHostname(
+                        uri,
+                        org.telegram.messenger.browser.Browser.IDN_toUnicode(uri.getHost()),
+                        null);
+                formattedUrl = java.net.URLDecoder.decode(
+                        formattedUrl.replaceAll("\\+", "%2b"), "UTF-8");
+            } catch (Exception ignored) {}
+
+            if (formattedUrl.length() > 204) {
+                formattedUrl = formattedUrl.substring(0, 204) + "…";
+            }
+
+            android.text.SpannableString urlSpannable =
+                    new android.text.SpannableString(formattedUrl);
+            urlSpannable.setSpan(span, 0, urlSpannable.length(),
+                    android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+
+            scrimDialog.setScrimForTextView(tv, span, urlSpannable);
         }
         scrimDialog.show();
     }

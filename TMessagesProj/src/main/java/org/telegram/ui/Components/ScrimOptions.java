@@ -815,4 +815,154 @@ public class ScrimOptions extends Dialog {
                 top + (int) pathBounds.height()
         );
     }
+
+    public void setScrimForTextView(TextView textView, CharacterStyle link, CharSequence replaceText) {
+        if (textView == null) return;
+
+        scrimDrawableBackground = null;
+
+        Layout layout = textView.getLayout();
+        if (layout == null) return;
+        if (!(layout.getText() instanceof Spanned)) return;
+
+        Spanned spanned = (Spanned) layout.getText();
+        int start = spanned.getSpanStart(link);
+        int end = spanned.getSpanEnd(link);
+        if (start < 0 || end <= start) return;
+
+        float textX = textView.getPaddingLeft();
+        float textY = textView.getPaddingTop();
+
+        final Paint backgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        backgroundPaint.setColor(Theme.getColor(
+                Theme.key_windowBackgroundWhite, resourcesProvider));
+        backgroundPaint.setPathEffect(new CornerPathEffect(dp(5)));
+
+        RectF realPathBounds = null;
+
+        if (replaceText != null) {
+            final LinkPath originalPath = new LinkPath(true);
+            originalPath.setCurrentLayout(layout, start, 0);
+            layout.getSelectionPath(start, end, originalPath);
+            realPathBounds = new RectF();
+            originalPath.computeBounds(realPathBounds, true);
+
+            int line = layout.getLineForOffset(start);
+            float xoffset = layout.getPrimaryHorizontal(start);
+            float xwidth = layout.getLineWidth(line);
+
+            StaticLayout replaceLayout;
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                replaceLayout = StaticLayout.Builder
+                        .obtain(replaceText, 0, replaceText.length(),
+                                layout.getPaint(), layout.getWidth())
+                        .setAlignment(Layout.Alignment.ALIGN_NORMAL)
+                        .setLineSpacing(0f, 1f)
+                        .setIncludePad(false)
+                        .build();
+            } else {
+                replaceLayout = new StaticLayout(
+                        replaceText, layout.getPaint(),
+                        layout.getWidth(),
+                        Layout.Alignment.ALIGN_NORMAL,
+                        1f, 0f, false);
+            }
+
+            float l = replaceLayout.getWidth(), r = 0;
+            for (int i = 0; i < replaceLayout.getLineCount(); ++i) {
+                l = Math.min(l, replaceLayout.getLineLeft(i));
+                r = Math.max(r, replaceLayout.getLineRight(i));
+            }
+            textX += Math.max(0, Math.min(xoffset, xwidth - Math.max(0, r - l)));
+            textY += layout.getLineTop(line);
+
+            layout = replaceLayout;
+            start = 0;
+            end = replaceText.length();
+        }
+
+        final Layout finalLayout = layout;
+        final int finalStart = start;
+        final int finalEnd = end;
+
+        final LinkPath path = new LinkPath(true);
+        path.setUseCornerPathImplementation(true);
+        path.setCurrentLayout(finalLayout, finalStart, 0);
+        finalLayout.getSelectionPath(finalStart, finalEnd, path);
+        path.closeRects();
+
+        final RectF pathBounds = new RectF();
+        path.computeBounds(pathBounds, true);
+
+        final int[] pos = new int[2];
+        textView.getLocationOnScreen(pos);
+        final int posX = (int) (pos[0] + textX);
+        final int posY = (int) (pos[1] + textY);
+
+        scrimDrawable = new Drawable() {
+            private int alpha = 0xFF;
+
+            @Override
+            public void draw(@NonNull Canvas canvas) {
+                if (alpha <= 0) return;
+
+                canvas.save();
+                canvas.saveLayerAlpha(
+                        posX + pathBounds.left - dp(4),
+                        posY + pathBounds.top - dp(4),
+                        posX + pathBounds.right + dp(4),
+                        posY + pathBounds.bottom + dp(4),
+                        alpha,
+                        Canvas.ALL_SAVE_FLAG
+                );
+
+                canvas.save();
+                canvas.translate(posX, posY);
+                canvas.drawPath(path, backgroundPaint);
+                canvas.restore();
+
+                canvas.save();
+                canvas.translate(posX, posY);
+                canvas.clipPath(path);
+                finalLayout.draw(canvas);
+                canvas.restore();
+
+                canvas.restore();
+            }
+
+            @Override
+            public void setAlpha(int a) { this.alpha = a; }
+
+            @Override
+            public void setColorFilter(@Nullable ColorFilter cf) {}
+
+            @Override
+            public int getOpacity() { return PixelFormat.TRANSPARENT; }
+        };
+
+        int left = (int) (posX + pathBounds.left);
+        int top  = (int) (posY + pathBounds.top);
+        scrimDrawable.setBounds(
+                left, top,
+                left + (int) pathBounds.width(),
+                top  + (int) pathBounds.height()
+        );
+
+        if (replaceText != null && realPathBounds != null) {
+            if (left + pathBounds.width() > AndroidUtilities.displaySize.x - dp(8)) {
+                scrimDrawableTx2 -= (left + pathBounds.width())
+                        - (AndroidUtilities.displaySize.x - dp(8));
+            }
+            if (top + pathBounds.height() > AndroidUtilities.displaySize.y
+                    - AndroidUtilities.statusBarHeight
+                    - AndroidUtilities.navigationBarHeight - dp(8)) {
+                scrimDrawableTy2 -= (top + pathBounds.height())
+                        - (AndroidUtilities.displaySize.y
+                        - AndroidUtilities.statusBarHeight
+                        - AndroidUtilities.navigationBarHeight - dp(8));
+            }
+            scrimDrawableSw = realPathBounds.width() / pathBounds.width();
+            scrimDrawableSh = realPathBounds.height() / pathBounds.height();
+        }
+    }
 }
