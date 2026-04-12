@@ -2,12 +2,14 @@ package org.telegram.ui.Feed;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
 
+import android.animation.ValueAnimator;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
+import android.graphics.RectF;
 import android.graphics.drawable.GradientDrawable;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
@@ -41,6 +43,7 @@ import org.telegram.ui.Components.AvatarDrawable;
 import org.telegram.ui.Components.BackupImageView;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.LinkSpanDrawable;
+import org.telegram.ui.Components.spoilers.SpoilerEffect2;
 
 import java.util.HashMap;
 
@@ -128,6 +131,15 @@ public class FeedPostCell extends LinearLayout {
     final FeedPostTranslationHelper translationHelper;
 
     final FeedLinkPreviewView linkPreviewView;
+
+    private boolean mediaSpoilerRevealed = false;
+    private float mediaSpoilerRevealProgress = 0f;
+    private ValueAnimator mediaSpoilerAnimator;
+    private SpoilerEffect2 mediaSpoilerEffect;
+    private final Paint mediaSpoilerOverlayPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+    private static android.text.TextPaint spoilerLabelPaint;
+    private static android.text.TextPaint spoilerIconPaint;
 
     Callback callback;
 
@@ -398,13 +410,46 @@ public class FeedPostCell extends LinearLayout {
         addView(voiceView,
                 LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
-        mediaContainer = new android.widget.FrameLayout(context);
+        mediaContainer = new android.widget.FrameLayout(context) {
+            @Override
+            protected void dispatchDraw(Canvas canvas) {
+                super.dispatchDraw(canvas);
+
+                if (!hasMediaSpoiler()) return;
+                if (mediaSpoilerRevealProgress >= 1f) return;
+
+                float alpha = 1f - mediaSpoilerRevealProgress;
+
+                if (mediaSpoilerEffect != null && !mediaSpoilerEffect.destroyed) {
+                    mediaSpoilerEffect.draw(canvas, mediaImageView1,
+                            getWidth(), getHeight(), alpha);
+                }
+
+                mediaSpoilerOverlayPaint.setColor(0xFF000000);
+                mediaSpoilerOverlayPaint.setAlpha((int) (180 * alpha));
+                canvas.drawRoundRect(
+                        new RectF(0, 0, getWidth(), getHeight()),
+                        dp(12), dp(12),
+                        mediaSpoilerOverlayPaint);
+
+                if (mediaSpoilerRevealProgress < 0.1f) {
+                    drawSpoilerLabel(canvas, alpha);
+                }
+            }
+        };
         mediaContainer.setVisibility(GONE);
+        mediaContainer.setWillNotDraw(false);
 
         mediaImageView1 = new BackupImageView(context);
         mediaImageView1.setRoundRadius(dp(12));
         mediaImageView1.setOnClickListener(v -> {
-            if (callback != null && currentItem != null) callback.onMediaClick(currentItem, 0);
+            if (currentItem != null && callback != null) {
+                if (hasMediaSpoiler() && !mediaSpoilerRevealed) {
+                    revealMediaSpoiler();
+                } else {
+                    callback.onMediaClick(currentItem, 0);
+                }
+            }
         });
         mediaContainer.addView(mediaImageView1,
                 LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
@@ -752,6 +797,17 @@ public class FeedPostCell extends LinearLayout {
         recommendationHeader.setVisibility(GONE);
         subscribeBtn.setVisibility(GONE);
 
+        mediaSpoilerRevealed = false;
+        mediaSpoilerRevealProgress = 0f;
+        if (mediaSpoilerAnimator != null) {
+            mediaSpoilerAnimator.cancel();
+            mediaSpoilerAnimator = null;
+        }
+        if (mediaSpoilerEffect != null) {
+            mediaSpoilerEffect.detach(mediaImageView1);
+            mediaSpoilerEffect = null;
+        }
+
         if (item == null) return;
 
         textExpanded = item.textExpanded;
@@ -808,6 +864,13 @@ public class FeedPostCell extends LinearLayout {
     }
 
     private void bindMedia(FeedController.FeedItem item) {
+        mediaSpoilerRevealed = false;
+        mediaSpoilerRevealProgress = 0f;
+        if (mediaSpoilerAnimator != null) {
+            mediaSpoilerAnimator.cancel();
+            mediaSpoilerAnimator = null;
+        }
+
         mediaShimmer.start();
         final FeedController.FeedItem capturedItem = item;
 
@@ -820,6 +883,13 @@ public class FeedPostCell extends LinearLayout {
                 (fromCache) -> {
                     if (currentItem != capturedItem) return;
                     mediaShimmer.hide(!fromCache);
+
+                    if (hasMediaSpoiler()) {
+                        if (SpoilerEffect2.supports()) {
+                            mediaSpoilerEffect = SpoilerEffect2.getInstance(mediaImageView1);
+                        }
+                        mediaContainer.invalidate();
+                    }
                 });
 
         if (mediaContainer.getVisibility() == GONE) {
@@ -1458,5 +1528,68 @@ public class FeedPostCell extends LinearLayout {
                 callback.onLinkClick(url);
             }
         });
+    }
+
+    private boolean hasMediaSpoiler() {
+        if (currentItem == null) return false;
+        for (MessageObject msg : currentItem.messages) {
+            if (msg.messageOwner == null) continue;
+            TLRPC.MessageMedia media = msg.messageOwner.media;
+            if (media != null && media.spoiler) return true;
+        }
+        return false;
+    }
+
+    private void revealMediaSpoiler() {
+        if (mediaSpoilerRevealed) return;
+        mediaSpoilerRevealed = true;
+
+        mediaSpoilerAnimator = ValueAnimator.ofFloat(0f, 1f);
+        mediaSpoilerAnimator.setDuration(500);
+        mediaSpoilerAnimator.setInterpolator(new android.view.animation.DecelerateInterpolator());
+        mediaSpoilerAnimator.addUpdateListener(anim -> {
+            mediaSpoilerRevealProgress = (float) anim.getAnimatedValue();
+            mediaContainer.invalidate();
+        });
+        mediaSpoilerAnimator.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(android.animation.Animator animation) {
+                mediaSpoilerRevealProgress = 1f;
+                if (mediaSpoilerEffect != null) {
+                    mediaSpoilerEffect.detach(mediaImageView1);
+                    mediaSpoilerEffect = null;
+                }
+                mediaContainer.invalidate();
+            }
+        });
+        mediaSpoilerAnimator.start();
+    }
+
+    private void drawSpoilerLabel(Canvas canvas, float alpha) {
+        if (spoilerLabelPaint == null) {
+            spoilerLabelPaint = new android.text.TextPaint(Paint.ANTI_ALIAS_FLAG);
+            spoilerLabelPaint.setColor(0xFFFFFFFF);
+            spoilerLabelPaint.setTextSize(dp(14));
+            spoilerLabelPaint.setTypeface(AndroidUtilities.bold());
+            spoilerLabelPaint.setTextAlign(Paint.Align.CENTER);
+        }
+
+        float cx = mediaContainer.getWidth() / 2f;
+        float cy = mediaContainer.getHeight() / 2f;
+
+        String label = "Tap to view";
+        float textW = spoilerLabelPaint.measureText(label) + dp(26);
+        float textH = dp(32);
+        float r = textH / 2f;
+
+        RectF bgRect = new RectF(cx - textW / 2f, cy - textH / 2f,
+                cx + textW / 2f, cy + textH / 2f);
+
+        mediaSpoilerOverlayPaint.setColor(0x55000000);
+        mediaSpoilerOverlayPaint.setAlpha((int) (0x55 * alpha));
+        canvas.drawRoundRect(bgRect, r, r, mediaSpoilerOverlayPaint);
+
+        spoilerLabelPaint.setAlpha((int) (255 * alpha));
+        canvas.drawText(label, cx, cy + dp(5), spoilerLabelPaint);
     }
 }
