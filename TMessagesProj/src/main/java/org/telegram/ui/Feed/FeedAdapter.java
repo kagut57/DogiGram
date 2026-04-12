@@ -68,7 +68,19 @@ public class FeedAdapter extends RecyclerView.Adapter<FeedViewHolder> {
 
     public int findItemPosition(FeedController.FeedItem item) {
         for (int i = 0; i < displayItems.size(); i++) {
-            if (displayItems.get(i) == item) return i;
+            Object obj = displayItems.get(i);
+            if (obj == item) return i;
+            if (obj instanceof FeedController.FeedItem) {
+                FeedController.FeedItem fi = (FeedController.FeedItem) obj;
+                if (fi.isRecommendation && item.isRecommendation
+                        && fi.recommendedChannelId == item.recommendedChannelId) {
+                    return i;
+                }
+                if (!fi.isRecommendation && !item.isRecommendation
+                        && fi.getUniqueId().equals(item.getUniqueId())) {
+                    return i;
+                }
+            }
         }
         return -1;
     }

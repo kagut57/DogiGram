@@ -527,17 +527,25 @@ class FeedActionHandler {
                 AndroidUtilities.runOnUIThread(() -> {
                     if (err == null) {
                         String name = item.recommendedChat.title;
+
+                        int pos = activity.adapter.findItemPosition(item);
+
                         item.isRecommendation = false;
                         item.recommendationReason = null;
+                        item.recommendedChat = null;
+
                         activity.feedController.getRecommendationEngine()
-                                .dismiss(item.recommendedChannelId);
-                        activity.refreshDisplayList();
+                                .onChannelSubscribed(item.recommendedChannelId);
+
+                        if (pos >= 0) {
+                            activity.adapter.notifyItemChanged(pos);
+                        }
 
                         BulletinFactory.of(activity)
                                 .createSimpleBulletin(R.drawable.msg_channel,
                                         "Subscribed to " + name)
                                 .show();
-                        AndroidUtilities.runOnUIThread(() -> activity.loadFeed(true), 2000);
+
                     } else {
                         String errText = "Failed to subscribe";
                         if (err.text != null && err.text.contains("CHANNELS_TOO_MUCH"))

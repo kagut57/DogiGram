@@ -27,6 +27,7 @@ public class FeedRecommendationEngine {
 
     private static final long SCAN_INTERVAL_MS = 6 * 60 * 60 * 1000L;
     private static final int MAX_CHANNELS_TO_SCAN = 8;
+
     public static int getRecommendationInterval() {
         return CustomSettings.feedRecommendationFrequency();
     }
@@ -35,11 +36,10 @@ public class FeedRecommendationEngine {
     private static final float FORWARD_WEIGHT = 2.0f;
     private static final float MENTION_WEIGHT = 1.5f;
 
-    private static final int MAX_DISCOVERED = 30;
+    private static final int MAX_DISCOVERED = 50;
     private static final int POSTS_PER_BATCH = 5;
 
     private final List<RecommendedChannel> allDiscovered = new ArrayList<>();
-    private int loadedBatchIndex = 0;
     private boolean isLoadingMore = false;
     private boolean noMoreRecommendations = false;
     private final Map<Long, Set<Long>> dismissedSourceMap = new HashMap<>();
@@ -64,6 +64,7 @@ public class FeedRecommendationEngine {
     private Runnable onScanComplete;
 
     private final List<FeedController.FeedItem> recommendedPosts = new ArrayList<>();
+
     public static class RecommendedChannel {
         public long channelId;
         public long accessHash;
@@ -111,6 +112,9 @@ public class FeedRecommendationEngine {
 
     public void requestScan() {
         lastScanTime = 0;
+        synchronized (recommendedPosts) {
+            recommendedPosts.clear();
+        }
         scanIfNeeded(null);
     }
 
@@ -151,8 +155,16 @@ public class FeedRecommendationEngine {
 
         allDiscovered.removeIf(r -> r.channelId == channelId);
         recommendations.removeIf(r -> r.channelId == channelId);
-        recommendedPosts.removeIf(p -> p.recommendedChannelId == channelId);
+        synchronized (recommendedPosts) {
+            recommendedPosts.removeIf(p -> p.recommendedChannelId == channelId);
+        }
         saveDismissed();
+        saveDiscoveredChannels();
+    }
+
+    public void onChannelSubscribed(long channelId) {
+        allDiscovered.removeIf(r -> r.channelId == channelId);
+        recommendations.removeIf(r -> r.channelId == channelId);
         saveDiscoveredChannels();
     }
 
@@ -190,6 +202,7 @@ public class FeedRecommendationEngine {
             int dateB = db != null ? db.last_message_date : 0;
             return Integer.compare(dateB, dateA);
         });
+
         if (channelsToScan.size() > MAX_CHANNELS_TO_SCAN) {
             channelsToScan = channelsToScan.subList(0, MAX_CHANNELS_TO_SCAN);
         }
@@ -392,23 +405,52 @@ public class FeedRecommendationEngine {
             result.add(rec);
         }
 
-        result.sort((a, b) -> Float.compare(b.score, a.score));
+        mergeDiscovered(result);
 
-        if (result.size() > MAX_DISCOVERED) {
-            result = new ArrayList<>(result.subList(0, MAX_DISCOVERED));
-        }
-
-        allDiscovered.clear();
-        allDiscovered.addAll(result);
         recommendations.clear();
-        recommendations.addAll(result);
-        loadedBatchIndex = 0;
-        noMoreRecommendations = false;
+        recommendations.addAll(allDiscovered);
         lastScanTime = System.currentTimeMillis();
 
         saveDiscoveredChannels();
-
         finishScan();
+    }
+
+    private void mergeDiscovered(List<RecommendedChannel> newResults) {
+        Map<Long, RecommendedChannel> merged = new HashMap<>();
+        for (RecommendedChannel rec : allDiscovered) {
+            merged.put(rec.channelId, rec);
+        }
+
+        for (RecommendedChannel newRec : newResults) {
+            RecommendedChannel existing = merged.get(newRec.channelId);
+            if (existing != null) {
+                existing.similarSourceIds.addAll(newRec.similarSourceIds);
+                existing.forwardSourceIds.addAll(newRec.forwardSourceIds);
+                existing.mentionSourceIds.addAll(newRec.mentionSourceIds);
+
+                existing.score = existing.similarSourceIds.size() * SIMILAR_WEIGHT
+                        + existing.forwardSourceIds.size() * FORWARD_WEIGHT
+                        + existing.mentionSourceIds.size() * MENTION_WEIGHT;
+
+                existing.similarSources = existing.similarSourceIds.size();
+                existing.forwardSources = existing.forwardSourceIds.size();
+                existing.mentionSources = existing.mentionSourceIds.size();
+
+                if (newRec.chat != null) existing.chat = newRec.chat;
+                if (newRec.reason != null) existing.reason = newRec.reason;
+                if (newRec.accessHash != 0) existing.accessHash = newRec.accessHash;
+            } else {
+                merged.put(newRec.channelId, newRec);
+            }
+        }
+
+        allDiscovered.clear();
+        allDiscovered.addAll(merged.values());
+        allDiscovered.sort((a, b) -> Float.compare(b.score, a.score));
+
+        if (allDiscovered.size() > MAX_DISCOVERED) {
+            allDiscovered.subList(MAX_DISCOVERED, allDiscovered.size()).clear();
+        }
     }
 
     private float calculateDismissPenalty(ChannelScore cs) {
@@ -475,25 +517,40 @@ public class FeedRecommendationEngine {
 
     private void finishScan() {
         isScanning = false;
-        recommendedPosts.clear();
 
-        if (!allDiscovered.isEmpty()) {
+        Set<Long> channelsWithPosts = new HashSet<>();
+        synchronized (recommendedPosts) {
+            for (FeedController.FeedItem p : recommendedPosts) {
+                channelsWithPosts.add(p.recommendedChannelId);
+            }
+        }
+
+        List<RecommendedChannel> needPosts = new ArrayList<>();
+        for (RecommendedChannel rec : allDiscovered) {
+            if (!channelsWithPosts.contains(rec.channelId) && !allPostsSeen(rec.channelId)) {
+                needPosts.add(rec);
+            }
+        }
+
+        if (!needPosts.isEmpty()) {
             isLoadingMore = true;
-            loadPostsBatch(0, this::notifyComplete);
+            loadPostsForChannels(needPosts, this::notifyComplete);
         } else {
             notifyComplete();
         }
     }
 
-    private void loadPostsBatch(int fromIndex, Runnable onDone) {
-        int toIndex = Math.min(fromIndex + POSTS_PER_BATCH, allDiscovered.size());
-        if (fromIndex >= allDiscovered.size() || fromIndex >= toIndex) {
+    private void loadPostsForChannels(List<RecommendedChannel> channels, Runnable onDone) {
+        if (channels.isEmpty()) {
             isLoadingMore = false;
             if (onDone != null) onDone.run();
             return;
         }
 
-        List<RecommendedChannel> batch = allDiscovered.subList(fromIndex, toIndex);
+        int batchSize = Math.min(channels.size(), POSTS_PER_BATCH);
+        List<RecommendedChannel> batch = channels.subList(0, batchSize);
+        List<RecommendedChannel> remaining = channels.subList(batchSize, channels.size());
+
         MessagesController controller = MessagesController.getInstance(currentAccount);
         AtomicInteger pending = new AtomicInteger(batch.size());
         AtomicInteger foundCount = new AtomicInteger(0);
@@ -503,18 +560,11 @@ public class FeedRecommendationEngine {
             long delay = i * 150L;
 
             AndroidUtilities.runOnUIThread(() -> {
-                if (allPostsSeen(rec.channelId)) {
-                    if (pending.decrementAndGet() <= 0) {
-                        finishBatch(toIndex, foundCount.get(), onDone);
-                    }
-                    return;
-                }
-
                 TLRPC.InputPeer peer = controller.getInputPeer(-rec.channelId);
 
                 if (peer == null || peer instanceof TLRPC.TL_inputPeerEmpty) {
                     if (pending.decrementAndGet() <= 0) {
-                        finishBatch(toIndex, foundCount.get(), onDone);
+                        handleBatchResult(remaining, foundCount.get(), onDone);
                     }
                     return;
                 }
@@ -533,8 +583,7 @@ public class FeedRecommendationEngine {
                                 controller.putUsers(msgs.users, false);
                                 controller.putChats(msgs.chats, false);
 
-                                FeedController.FeedItem bestPost = pickBestPost(
-                                        msgs.messages, rec);
+                                FeedController.FeedItem bestPost = pickBestPost(msgs.messages, rec);
 
                                 if (bestPost != null) {
                                     foundCount.incrementAndGet();
@@ -547,7 +596,7 @@ public class FeedRecommendationEngine {
                             }
 
                             if (pending.decrementAndGet() <= 0) {
-                                finishBatch(toIndex, foundCount.get(), onDone);
+                                handleBatchResult(remaining, foundCount.get(), onDone);
                             }
                         })
                 );
@@ -555,17 +604,14 @@ public class FeedRecommendationEngine {
         }
     }
 
-    private void finishBatch(int toIndex, int foundCount, Runnable onDone) {
-        loadedBatchIndex = toIndex;
-
-        if (foundCount == 0 && loadedBatchIndex < allDiscovered.size()) {
-            loadPostsBatch(loadedBatchIndex, onDone);
+    private void handleBatchResult(List<RecommendedChannel> remaining, int foundCount, Runnable onDone) {
+        if (foundCount == 0 && !remaining.isEmpty()) {
+            loadPostsForChannels(remaining, onDone);
         } else {
             isLoadingMore = false;
             if (onDone != null) onDone.run();
         }
     }
-
 
     private boolean allPostsSeen(long channelId) {
         Long exhaustedAt = channelExhaustedTime.get(channelId);
@@ -595,7 +641,21 @@ public class FeedRecommendationEngine {
             return;
         }
 
-        if (loadedBatchIndex >= allDiscovered.size()) {
+        Set<Long> channelsWithPosts = new HashSet<>();
+        synchronized (recommendedPosts) {
+            for (FeedController.FeedItem p : recommendedPosts) {
+                channelsWithPosts.add(p.recommendedChannelId);
+            }
+        }
+
+        List<RecommendedChannel> needPosts = new ArrayList<>();
+        for (RecommendedChannel rec : allDiscovered) {
+            if (!channelsWithPosts.contains(rec.channelId) && !allPostsSeen(rec.channelId)) {
+                needPosts.add(rec);
+            }
+        }
+
+        if (needPosts.isEmpty()) {
             if (noMoreRecommendations) {
                 if (onDone != null) onDone.run();
                 return;
@@ -606,7 +666,7 @@ public class FeedRecommendationEngine {
         }
 
         isLoadingMore = true;
-        loadPostsBatch(loadedBatchIndex, onDone);
+        loadPostsForChannels(needPosts, onDone);
     }
 
     public boolean canLoadMore() {
@@ -721,6 +781,13 @@ public class FeedRecommendationEngine {
         for (TLRPC.Message msg : best.messages) {
             seenRecPostIds.add(rec.channelId + "_" + msg.id);
         }
+
+        if (seenRecPostIds.size() > 2000) {
+            List<String> list = new ArrayList<>(seenRecPostIds);
+            seenRecPostIds.clear();
+            seenRecPostIds.addAll(list.subList(list.size() - 2000, list.size()));
+        }
+
         saveDismissed();
 
         List<MessageObject> msgList = new ArrayList<>();
@@ -795,8 +862,10 @@ public class FeedRecommendationEngine {
             } catch (Exception ignored) {}
         }
 
-        Set<String> seenSet = prefs.getStringSet("seen_rec_posts", new HashSet<>());
-        seenRecPostIds.addAll(seenSet);
+        Set<String> seenSet = prefs.getStringSet("seen_rec_posts", null);
+        if (seenSet != null) {
+            seenRecPostIds.addAll(seenSet);
+        }
     }
 
     private void saveDismissed() {
@@ -814,9 +883,9 @@ public class FeedRecommendationEngine {
         }
 
         Set<String> seenToSave = new HashSet<>(seenRecPostIds);
-        if (seenToSave.size() > 500) {
+        if (seenToSave.size() > 2000) {
             List<String> list = new ArrayList<>(seenToSave);
-            seenToSave = new HashSet<>(list.subList(list.size() - 500, list.size()));
+            seenToSave = new HashSet<>(list.subList(list.size() - 2000, list.size()));
         }
 
         getPrefs().edit()
@@ -834,7 +903,9 @@ public class FeedRecommendationEngine {
     }
 
     public List<FeedController.FeedItem> getRecommendedPosts() {
-        return recommendedPosts;
+        synchronized (recommendedPosts) {
+            return new ArrayList<>(recommendedPosts);
+        }
     }
 
     public boolean hasRecommendedPosts() {
@@ -842,7 +913,7 @@ public class FeedRecommendationEngine {
     }
 
     public void dismissPost(FeedController.FeedItem item) {
-        if (item == null) return;
+        if (item == null || !item.isRecommendation) return;
         dismiss(item.recommendedChannelId);
     }
 
@@ -957,9 +1028,6 @@ public class FeedRecommendationEngine {
         for (RecommendedChannel rec : allDiscovered) {
             existingIds.add(rec.channelId);
         }
-        for (FeedController.FeedItem post : recommendedPosts) {
-            existingIds.add(post.recommendedChannelId);
-        }
 
         List<RecommendedChannel> newChannels = new ArrayList<>();
 
@@ -1010,12 +1078,12 @@ public class FeedRecommendationEngine {
             return;
         }
 
-        allDiscovered.addAll(newChannels);
-        recommendations.addAll(newChannels);
-
+        mergeDiscovered(newChannels);
+        recommendations.clear();
+        recommendations.addAll(allDiscovered);
         saveDiscoveredChannels();
 
-        loadPostsBatch(loadedBatchIndex, onDone);
+        finishScan();
     }
 
     public void refreshPosts(Runnable onComplete) {
@@ -1024,18 +1092,34 @@ public class FeedRecommendationEngine {
             return;
         }
 
+        this.onScanComplete = onComplete;
+
         if (allDiscovered.isEmpty()
                 || System.currentTimeMillis() - lastScanTime >= SCAN_INTERVAL_MS) {
             scanIfNeeded(onComplete);
             return;
         }
 
-        this.onScanComplete = onComplete;
-        recommendedPosts.clear();
-        loadedBatchIndex = 0;
-        noMoreRecommendations = false;
-        isLoadingMore = false;
-        loadPostsBatch(0, this::notifyComplete);
+        List<RecommendedChannel> needPosts = new ArrayList<>();
+        for (RecommendedChannel rec : allDiscovered) {
+            Set<Long> channelsWithPosts = new HashSet<>();
+            synchronized (recommendedPosts) {
+                for (FeedController.FeedItem p : recommendedPosts) {
+                    channelsWithPosts.add(p.recommendedChannelId);
+                }
+            }
+            if (!channelsWithPosts.contains(rec.channelId) && !allPostsSeen(rec.channelId)) {
+                needPosts.add(rec);
+            }
+        }
+
+        if (needPosts.isEmpty()) {
+            if (onComplete != null) onComplete.run();
+            return;
+        }
+
+        isLoadingMore = true;
+        loadPostsForChannels(needPosts, this::notifyComplete);
     }
 
     private String findAlbumCaption(List<TLRPC.Message> group) {
@@ -1095,7 +1179,6 @@ public class FeedRecommendationEngine {
             editor.putStringSet("discovered_channels", channelSet);
             editor.putLong("last_scan_time", lastScanTime);
             editor.putInt("scanned_offset", scannedChannelOffset);
-            editor.putInt("loaded_batch_index", loadedBatchIndex);
             editor.apply();
         } catch (Exception e) {
             // ignore
@@ -1106,7 +1189,6 @@ public class FeedRecommendationEngine {
         SharedPreferences prefs = getPrefs();
         lastScanTime = prefs.getLong("last_scan_time", 0);
         scannedChannelOffset = prefs.getInt("scanned_offset", 0);
-        loadedBatchIndex = prefs.getInt("loaded_batch_index", 0);
 
         Set<String> channelSet = prefs.getStringSet("discovered_channels", new HashSet<>());
         if (channelSet.isEmpty()) return;
@@ -1201,19 +1283,29 @@ public class FeedRecommendationEngine {
             return;
         }
 
-        if (!recommendedPosts.isEmpty()) {
-            if (onComplete != null) onComplete.run();
-            return;
+        synchronized (recommendedPosts) {
+            if (!recommendedPosts.isEmpty()) {
+                if (onComplete != null) onComplete.run();
+                return;
+            }
         }
 
         if (!allDiscovered.isEmpty()) {
             resolveChats(() -> {
                 this.onScanComplete = onComplete;
-                recommendedPosts.clear();
-                loadedBatchIndex = 0;
-                noMoreRecommendations = false;
+                synchronized (recommendedPosts) {
+                    recommendedPosts.clear();
+                }
+
+                List<RecommendedChannel> needPosts = new ArrayList<>();
+                for (RecommendedChannel rec : allDiscovered) {
+                    if (!allPostsSeen(rec.channelId)) {
+                        needPosts.add(rec);
+                    }
+                }
+
                 isLoadingMore = true;
-                loadPostsBatch(0, this::notifyComplete);
+                loadPostsForChannels(needPosts, this::notifyComplete);
             });
             return;
         }
@@ -1283,7 +1375,7 @@ public class FeedRecommendationEngine {
                         if (pending.decrementAndGet() <= 0) {
                             allDiscovered.removeIf(r -> r.chat == null);
                             recommendations.removeIf(r -> r.chat == null);
-                            saveDiscoveredChannels(); // пересохраняем с обновлёнными данными
+                            saveDiscoveredChannels();
                             if (onDone != null) onDone.run();
                         }
                     })

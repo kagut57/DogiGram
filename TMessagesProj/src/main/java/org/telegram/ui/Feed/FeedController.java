@@ -470,7 +470,7 @@ public class FeedController implements NotificationCenter.NotificationCenterDele
                             AndroidUtilities.runOnUIThread(this::notifyNewPostListeners)
                     );
 
-                    recommendationEngine.refreshPosts(() ->
+                    recommendationEngine.ensureReady(() ->
                             AndroidUtilities.runOnUIThread(() -> {
                                 rebuildDisplayList();
                                 scheduleSnapshotSave();
