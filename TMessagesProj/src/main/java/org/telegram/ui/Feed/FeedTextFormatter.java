@@ -302,6 +302,12 @@ public class FeedTextFormatter {
                                         String language,
                                         int codeBgColor) {
         String codeText = ssb.subSequence(start, end).toString();
+        String wrappedCode = wrapLongCodeLines(codeText);
+
+        if (!wrappedCode.equals(codeText)) {
+            ssb.replace(start, end, wrappedCode);
+            end = start + wrappedCode.length();
+        }
 
         if (end < ssb.length() && ssb.charAt(end) != '\n') {
             ssb.insert(end, "\n");
@@ -324,10 +330,76 @@ public class FeedTextFormatter {
                 new FeedCodeSpan.Block(codeBgColor, language, codeText);
         ssb.setSpan(blockSpan, start, end,
                 Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        ssb.setSpan(new FeedCodeSpan.Block.LineSpacing(),
+                start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         ssb.setSpan(new FeedCodeSpan.BlockLineHeight(
                         FeedCodeSpan.BLOCK_TOP_PAD,
                         FeedCodeSpan.BLOCK_BOTTOM_PAD),
                 start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+    }
+
+    private String wrapLongCodeLines(String code) {
+        final int MAX_LINE_LENGTH = 42;
+
+        if (!code.contains("\n") && code.length() <= MAX_LINE_LENGTH) {
+            return code;
+        }
+
+        String[] lines = code.split("\n", -1);
+        StringBuilder result = new StringBuilder();
+
+        for (int i = 0; i < lines.length; i++) {
+            String line = lines[i];
+
+            if (line.length() <= MAX_LINE_LENGTH) {
+                result.append(line);
+            } else {
+                int indent = 0;
+                while (indent < line.length()
+                        && (line.charAt(indent) == ' '
+                        || line.charAt(indent) == '\t')) {
+                    indent++;
+                }
+                String indentStr = line.substring(0, indent);
+
+                int pos = 0;
+                boolean firstChunk = true;
+                while (pos < line.length()) {
+                    int chunkLen = firstChunk
+                            ? MAX_LINE_LENGTH
+                            : MAX_LINE_LENGTH - indent;
+
+                    if (!firstChunk) {
+                        result.append("\n").append(indentStr);
+                    }
+
+                    int end = Math.min(pos + chunkLen, line.length());
+
+                    if (end < line.length()) {
+                        int breakAt = end;
+                        for (int j = end; j > pos + chunkLen / 2; j--) {
+                            char c = line.charAt(j);
+                            if (c == ' ' || c == ',' || c == '('
+                                    || c == ')' || c == '{' || c == '}') {
+                                breakAt = j + 1;
+                                break;
+                            }
+                        }
+                        end = breakAt;
+                    }
+
+                    result.append(line, pos, end);
+                    pos = end;
+                    firstChunk = false;
+                }
+            }
+
+            if (i < lines.length - 1) {
+                result.append("\n");
+            }
+        }
+
+        return result.toString();
     }
 
     private static class ExtractResult {

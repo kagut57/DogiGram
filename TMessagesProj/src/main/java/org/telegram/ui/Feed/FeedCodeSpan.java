@@ -49,6 +49,18 @@ public class FeedCodeSpan {
         public final String language;
         public final String codeText;
 
+        public static class LineSpacing implements android.text.style.LineHeightSpan {
+            @Override
+            public void chooseHeight(CharSequence text, int start, int end,
+                                     int spanstartv, int lineHeight,
+                                     Paint.FontMetricsInt fm) {
+                fm.descent  = (int) (fm.descent  * 0.85f);
+                fm.ascent   = (int) (fm.ascent   * 0.85f);
+                fm.bottom   = (int) (fm.bottom   * 0.85f);
+                fm.top      = (int) (fm.top      * 0.85f);
+            }
+        }
+
         public Block(int bgColor, String language, String codeText) {
             bgPaint.setColor(bgColor);
             this.language = (language != null && !language.trim().isEmpty())
@@ -115,15 +127,15 @@ public class FeedCodeSpan {
         public void chooseHeight(CharSequence text, int start, int end,
                                  int spanstartv, int lineHeight,
                                  Paint.FontMetricsInt fm) {
-            Spanned sp    = (Spanned) text;
+            Spanned sp = (Spanned) text;
             int spanStart = sp.getSpanStart(this);
             int spanEnd   = sp.getSpanEnd(this);
 
-            if (start <= spanStart) {
-                fm.ascent -= topPad;
-                fm.top    -= topPad;
+            if (start <= spanStart && end > spanStart) {
+                fm.ascent  -= topPad;
+                fm.top     -= topPad;
             }
-            if (end >= spanEnd) {
+            if (end >= spanEnd && start < spanEnd) {
                 fm.descent += bottomPad;
                 fm.bottom  += bottomPad;
             }
