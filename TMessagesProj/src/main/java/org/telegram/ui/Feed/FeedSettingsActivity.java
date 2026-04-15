@@ -11,8 +11,6 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
-import android.widget.LinearLayout;
-import android.widget.RadioGroup;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
@@ -446,15 +444,6 @@ public class FeedSettingsActivity extends BaseFragment {
 
         layout.addView(radioGroup);
 
-        AlertDialog.Builder builder = getBuilder(layout, radioGroup);
-        builder.setNegativeButton(
-                org.telegram.messenger.LocaleController.getString(
-                        "Cancel", org.telegram.messenger.R.string.Cancel),
-                null);
-        showDialog(builder.create());
-    }
-
-    private AlertDialog.@NonNull Builder getBuilder(LinearLayout layout, RadioGroup radioGroup) {
         AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
         builder.setTitle("Album display mode");
         builder.setView(layout);
@@ -466,6 +455,10 @@ public class FeedSettingsActivity extends BaseFragment {
             CustomSettings.setFeedAlbumMode(newMode);
             if (adapter != null) adapter.notifyDataSetChanged();
         });
-        return builder;
+        builder.setNegativeButton(
+                org.telegram.messenger.LocaleController.getString(
+                        "Cancel", org.telegram.messenger.R.string.Cancel),
+                null);
+        showDialog(builder.create());
     }
 }

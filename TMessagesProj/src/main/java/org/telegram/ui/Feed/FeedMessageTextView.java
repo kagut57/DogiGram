@@ -23,6 +23,7 @@ import androidx.core.graphics.ColorUtils;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.browser.Browser;
+import org.telegram.ui.Components.AnimatedEmojiDrawable;
 import org.telegram.ui.Components.AnimatedEmojiSpan;
 import org.telegram.ui.Components.LinkPath;
 import org.telegram.ui.Components.LinkSpanDrawable;
@@ -67,6 +68,8 @@ class FeedMessageTextView extends AnimatedEmojiSpan.TextViewEmojis {
         super(context);
         this.cell = cell;
 
+        setCacheType(AnimatedEmojiDrawable.CACHE_TYPE_MESSAGES_LARGE);
+
         extArrowPaint.setStyle(Paint.Style.STROKE);
         extArrowPaint.setStrokeWidth(dp(1.6f));
         extArrowPaint.setStrokeCap(Paint.Cap.ROUND);
@@ -83,7 +86,8 @@ class FeedMessageTextView extends AnimatedEmojiSpan.TextViewEmojis {
 
     @Override
     public void setText(CharSequence text, BufferType type) {
-        super.setText(text, type);
+        super.setText(text, BufferType.SPANNABLE);
+
         if (spoilerEffects != null) {
             spoilersRevealed = false;
             invalidateSpoilers();

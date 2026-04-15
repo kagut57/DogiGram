@@ -951,7 +951,6 @@ public class FeedPostCell extends LinearLayout {
             messageTextView.setMaxLines(Integer.MAX_VALUE);
             messageTextView.setText(fullText);
             messageTextView.setVisibility(VISIBLE);
-            messageTextView.post(messageTextView::invalidateEmojis);
             scheduleMeasureAndTruncate();
         } else {
             fullText = null;
