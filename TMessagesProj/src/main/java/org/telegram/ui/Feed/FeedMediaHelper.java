@@ -59,6 +59,7 @@ public class FeedMediaHelper {
 
         if (mediaMessages.isEmpty()) {
             clearAll(mainImage, mediaContainer, mediaOverlay, mediaRow, albumLabel);
+            removeAlbumViews(mediaContainer);
             if (loadCallback != null) loadCallback.onMainImageLoaded(true);
             return;
         }
@@ -68,6 +69,7 @@ public class FeedMediaHelper {
         MessageObject firstMsg = mediaMessages.get(0);
         if (mediaMessages.size() == 1 && firstMsg.isRoundVideo()) {
             clearAll(mainImage, mediaContainer, mediaOverlay, mediaRow, albumLabel);
+            removeAlbumViews(mediaContainer);
             if (roundVideoView != null) roundVideoView.setMessage(firstMsg);
             if (loadCallback != null) loadCallback.onMainImageLoaded(true);
             return;
@@ -89,6 +91,8 @@ public class FeedMediaHelper {
         mainImage.post(mainImage::invalidate);
 
         if (mediaMessages.size() >= 2) {
+            if (loadCallback != null) loadCallback.onMainImageLoaded(true);
+
             FeedAlbumMode mode = CustomSettings.feedAlbumMode();
             if (mode == FeedAlbumMode.GRID) {
                 setupAlbumGrid(mediaMessages, context, item,
@@ -101,11 +105,22 @@ public class FeedMediaHelper {
             }
             mediaRow.setVisibility(View.GONE);
             albumLabel.setVisibility(View.GONE);
-
             mediaOverlay.setVisibility(View.GONE);
         } else {
+            removeAlbumViews(mediaContainer);
+            mainImage.setVisibility(View.VISIBLE);
             mediaRow.setVisibility(View.GONE);
             albumLabel.setVisibility(View.GONE);
+        }
+    }
+
+    private static void removeAlbumViews(FrameLayout mediaContainer) {
+        for (int i = mediaContainer.getChildCount() - 1; i >= 0; i--) {
+            android.view.View child = mediaContainer.getChildAt(i);
+            if (child instanceof FeedAlbumCarouselView
+                    || child instanceof FeedAlbumGridView) {
+                mediaContainer.removeViewAt(i);
+            }
         }
     }
 

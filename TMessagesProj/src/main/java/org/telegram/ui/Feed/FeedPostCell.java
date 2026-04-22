@@ -815,14 +815,6 @@ public class FeedPostCell extends LinearLayout {
     }
 
     private void bindMedia(FeedController.FeedItem item) {
-        for (int i = mediaContainer.getChildCount() - 1; i >= 0; i--) {
-            android.view.View child = mediaContainer.getChildAt(i);
-            if (child instanceof FeedAlbumCarouselView) {
-                ((FeedAlbumCarouselView) child).setMessages(null, dp(200));
-            } else if (child instanceof FeedAlbumGridView) {
-                mediaContainer.removeViewAt(i);
-            }
-        }
         mediaImageView1.setVisibility(android.view.View.VISIBLE);
 
         mediaShimmer.start();
