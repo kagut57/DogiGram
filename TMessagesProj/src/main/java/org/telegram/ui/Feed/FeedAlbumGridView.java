@@ -5,7 +5,9 @@ import static org.telegram.messenger.AndroidUtilities.dp;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.graphics.Canvas;
+import android.graphics.Paint;
 import android.graphics.Path;
+import android.graphics.RectF;
 import android.view.ViewGroup;
 
 import org.telegram.messenger.AndroidUtilities;
@@ -13,6 +15,7 @@ import org.telegram.messenger.MessageObject;
 import org.telegram.ui.Components.BackupImageView;
 
 import java.util.List;
+import java.util.Locale;
 
 @SuppressLint("ViewConstructor")
 public class FeedAlbumGridView extends ViewGroup {
@@ -21,16 +24,21 @@ public class FeedAlbumGridView extends ViewGroup {
         void onItemClick(int index);
     }
 
-    private static final int GAP       = 2;
-    private static final int MAX_SHOW  = 6;
+    private static final int GAP      = 2;
+    private static final int MAX_SHOW = 6;
 
     private List<MessageObject> messages;
-    private BackupImageView[]   cells;
+    private BackupImageView[]        cells;
+    private FeedSpoilerOverlayView[] spoilerOverlays;
     private final android.widget.TextView moreOverlay;
 
     private OnItemClickListener clickListener;
 
     private int[] cellL, cellT, cellR, cellB;
+
+    private final Paint overlayBgPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint overlayTxtPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final RectF overlayRect = new RectF();
 
     public FeedAlbumGridView(Context context) {
         super(context);
@@ -44,6 +52,12 @@ public class FeedAlbumGridView extends ViewGroup {
         moreOverlay.setBackgroundColor(0x99000000);
         moreOverlay.setVisibility(GONE);
         addView(moreOverlay);
+
+        overlayBgPaint.setColor(0x99000000);
+        overlayTxtPaint.setColor(0xFFFFFFFF);
+        overlayTxtPaint.setTextSize(dp(11));
+        overlayTxtPaint.setTypeface(AndroidUtilities.bold());
+        overlayTxtPaint.setTextAlign(Paint.Align.CENTER);
     }
 
     public void setMessages(List<MessageObject> msgs) {
@@ -65,23 +79,51 @@ public class FeedAlbumGridView extends ViewGroup {
 
         if (messages == null || messages.isEmpty()) {
             cells = new BackupImageView[0];
+            spoilerOverlays = new FeedSpoilerOverlayView[0];
             return;
         }
 
-        int n      = messages.size();
-        int show   = Math.min(n, MAX_SHOW);
-        cells      = new BackupImageView[show];
+        int n    = messages.size();
+        int show = Math.min(n, MAX_SHOW);
+        cells           = new BackupImageView[show];
+        spoilerOverlays = new FeedSpoilerOverlayView[show];
 
         for (int i = 0; i < show; i++) {
             final int idx = i;
+
             BackupImageView iv = new BackupImageView(getContext());
             iv.setRoundRadius(0);
-            iv.setOnClickListener(v -> {
-                if (clickListener != null) clickListener.onItemClick(idx);
-            });
             FeedMediaHelper.setupMediaThumb(messages.get(i), iv);
             cells[i] = iv;
             addView(iv, getChildCount() - 1);
+
+            FeedSpoilerOverlayView spoilerOverlay = new FeedSpoilerOverlayView(getContext());
+            spoilerOverlay.setSourceImageView(iv);
+
+            MessageObject msg = messages.get(i);
+            boolean hasSpoiler = msg.messageOwner != null
+                    && msg.messageOwner.media != null
+                    && msg.messageOwner.media.spoiler;
+            spoilerOverlay.setSpoiler(hasSpoiler);
+
+            spoilerOverlays[i] = spoilerOverlay;
+            addView(spoilerOverlay, getChildCount() - 1);
+
+            iv.setOnClickListener(v -> {
+                if (spoilerOverlay.isSpoilerVisible()) {
+                    spoilerOverlay.reveal();
+                } else if (clickListener != null) {
+                    clickListener.onItemClick(idx);
+                }
+            });
+
+            spoilerOverlay.setOnClickListener(v -> {
+                if (spoilerOverlay.isSpoilerVisible()) {
+                    spoilerOverlay.reveal();
+                } else if (clickListener != null) {
+                    clickListener.onItemClick(idx);
+                }
+            });
         }
 
         if (n > MAX_SHOW) {
@@ -105,7 +147,12 @@ public class FeedAlbumGridView extends ViewGroup {
         for (int i = 0; i < n; i++) {
             int cw = cellR[i] - cellL[i];
             int ch = cellB[i] - cellT[i];
+
             cells[i].measure(
+                    MeasureSpec.makeMeasureSpec(cw, MeasureSpec.EXACTLY),
+                    MeasureSpec.makeMeasureSpec(ch, MeasureSpec.EXACTLY));
+
+            spoilerOverlays[i].measure(
                     MeasureSpec.makeMeasureSpec(cw, MeasureSpec.EXACTLY),
                     MeasureSpec.makeMeasureSpec(ch, MeasureSpec.EXACTLY));
         }
@@ -125,6 +172,7 @@ public class FeedAlbumGridView extends ViewGroup {
         int n = cells == null ? 0 : cells.length;
         for (int i = 0; i < n; i++) {
             cells[i].layout(cellL[i], cellT[i], cellR[i], cellB[i]);
+            spoilerOverlays[i].layout(cellL[i], cellT[i], cellR[i], cellB[i]);
         }
         if (moreOverlay.getVisibility() == VISIBLE && n > 0) {
             int last = n - 1;
@@ -203,17 +251,65 @@ public class FeedAlbumGridView extends ViewGroup {
         cellL[i] = l; cellT[i] = t; cellR[i] = r; cellB[i] = b;
     }
 
-    private final android.graphics.Path clipPath = new android.graphics.Path();
-    private final android.graphics.RectF clipRect = new android.graphics.RectF();
+    private final Path clipPath = new Path();
+    private final RectF clipRect = new RectF();
 
     @Override
-    public void draw(Canvas canvas) {
+    protected void dispatchDraw(Canvas canvas) {
+        canvas.save();
         clipRect.set(0, 0, getWidth(), getHeight());
         clipPath.reset();
         clipPath.addRoundRect(clipRect, dp(12), dp(12), Path.Direction.CW);
-        canvas.save();
         canvas.clipPath(clipPath);
-        super.draw(canvas);
+
+        super.dispatchDraw(canvas);
+
+        drawVideoOverlays(canvas);
+
         canvas.restore();
+    }
+
+    private void drawVideoOverlays(Canvas canvas) {
+        if (cells == null || messages == null) return;
+        int n = cells.length;
+
+        float padW = dp(6);
+        float padH = dp(3);
+        float boxH = dp(18);
+        float margin = dp(6);
+
+        for (int i = 0; i < n; i++) {
+            if (i >= messages.size()) break;
+
+            if (spoilerOverlays[i] != null && spoilerOverlays[i].isSpoilerVisible()) continue;
+
+            String text = getMediaOverlayText(messages.get(i));
+            if (text == null) continue;
+
+            float textW = overlayTxtPaint.measureText(text);
+            float boxW = textW + padW * 2;
+
+            float l = cellL[i] + margin;
+            float b = cellB[i] - margin;
+            float t = b - boxH;
+            float r = l + boxW;
+
+            overlayRect.set(l, t, r, b);
+            canvas.drawRoundRect(overlayRect, boxH / 2f, boxH / 2f, overlayBgPaint);
+            canvas.drawText(text, overlayRect.centerX(), overlayRect.centerY() + dp(4), overlayTxtPaint);
+        }
+    }
+
+    private String getMediaOverlayText(MessageObject msg) {
+        if (msg == null) return null;
+
+        if (msg.isGif()) {
+            return "GIF";
+        } else if (msg.isVideo() || msg.isRoundVideo()) {
+            int d = (int) msg.getDuration();
+            return String.format(Locale.US, "▶ %d:%02d", d / 60, d % 60);
+        }
+
+        return null;
     }
 }

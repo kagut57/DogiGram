@@ -42,6 +42,11 @@ public class FeedAlbumCarouselView extends FrameLayout {
     private OnPageClickListener clickListener;
     private int fixedHeight = dp(220);
 
+    private String currentOverlayText = null;
+
+    private final android.widget.FrameLayout[] wrappers = new android.widget.FrameLayout[3];
+    private final FeedSpoilerOverlayView[] spoilerOverlays = new FeedSpoilerOverlayView[3];
+
     private static final int ROLE_PREV = 0;
     private static final int ROLE_CUR  = 1;
     private static final int ROLE_NEXT = 2;
@@ -80,10 +85,21 @@ public class FeedAlbumCarouselView extends FrameLayout {
         txtPaint.setTypeface(AndroidUtilities.bold());
 
         for (int i = 0; i < 3; i++) {
+            wrappers[i] = new android.widget.FrameLayout(context);
+            wrappers[i].setClipChildren(true);
+
             iv[i] = new BackupImageView(context);
             iv[i].setRoundRadius(dp(12));
             iv[i].setClickable(false);
-            addView(iv[i], new LayoutParams(
+            wrappers[i].addView(iv[i], new LayoutParams(
+                    LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+
+            spoilerOverlays[i] = new FeedSpoilerOverlayView(context);
+            spoilerOverlays[i].setSourceImageView(iv[i]);
+            wrappers[i].addView(spoilerOverlays[i], new LayoutParams(
+                    LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+
+            addView(wrappers[i], new LayoutParams(
                     LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
         }
     }
@@ -105,6 +121,7 @@ public class FeedAlbumCarouselView extends FrameLayout {
             clearPhysical(0);
         }
 
+        updateCurrentOverlayText();
         requestLayout();
         invalidate();
     }
@@ -208,7 +225,10 @@ public class FeedAlbumCarouselView extends FrameLayout {
                     float totalDx = Math.abs(ev.getX() - touchStartX);
                     float totalDy = Math.abs(ev.getY() - touchStartY);
                     if (totalDx < dp(8) && totalDy < dp(8)) {
-                        if (clickListener != null) {
+                        int physCur = physOf(ROLE_CUR);
+                        if (physCur >= 0 && spoilerOverlays[physCur].isSpoilerVisible()) {
+                            spoilerOverlays[physCur].reveal();
+                        } else if (clickListener != null) {
                             clickListener.onPageClick(currentIndex);
                         }
                     }
@@ -247,7 +267,7 @@ public class FeedAlbumCarouselView extends FrameLayout {
                 case ROLE_NEXT: tx =  w + offset; break;
                 default:        tx =      offset; break;
             }
-            iv[i].setTranslationX(tx);
+            wrappers[i].setTranslationX(tx);
         }
     }
 
@@ -259,11 +279,19 @@ public class FeedAlbumCarouselView extends FrameLayout {
         if (ivMsg[physIdx] == msgIndex) return;
         ivMsg[physIdx] = msgIndex;
         loadImage(iv[physIdx], messages.get(msgIndex));
+
+        MessageObject msg = messages.get(msgIndex);
+        boolean hasSpoiler = msg.messageOwner != null
+                && msg.messageOwner.media != null
+                && msg.messageOwner.media.spoiler;
+
+        spoilerOverlays[physIdx].setSpoiler(hasSpoiler);
     }
 
     private void clearPhysical(int physIdx) {
         ivMsg[physIdx] = -1;
         iv[physIdx].getImageReceiver().clearImage();
+        spoilerOverlays[physIdx].setSpoiler(false);
     }
 
     private int physOf(int role) {
@@ -317,6 +345,7 @@ public class FeedAlbumCarouselView extends FrameLayout {
 
             placeViews(0f);
             invalidate();
+            updateCurrentOverlayText();
         });
     }
 
@@ -355,9 +384,11 @@ public class FeedAlbumCarouselView extends FrameLayout {
     @Override
     protected void dispatchDraw(@NonNull Canvas canvas) {
         super.dispatchDraw(canvas);
+
         if (size() <= 1) return;
         drawCounter(canvas);
         if (size() <= MAX_DOTS) drawDots(canvas);
+        drawMediaOverlay(canvas);
     }
 
     private void drawCounter(Canvas canvas) {
@@ -495,5 +526,55 @@ public class FeedAlbumCarouselView extends FrameLayout {
         super.onDetachedFromWindow();
         if (animator != null) { animator.cancel(); animator = null; }
         for (BackupImageView v : iv) v.getImageReceiver().clearImage();
+    }
+
+    private void updateCurrentOverlayText() {
+        if (currentIndex >= 0 && currentIndex < size()) {
+            MessageObject msg = messages.get(currentIndex);
+            TLRPC.Message raw = msg.messageOwner;
+
+            if (raw.media instanceof TLRPC.TL_messageMediaDocument && raw.media.document != null) {
+                boolean isGif = false;
+                boolean isVideo = false;
+                double duration = 0;
+
+                for (TLRPC.DocumentAttribute attr : raw.media.document.attributes) {
+                    if (attr instanceof TLRPC.TL_documentAttributeAnimated) isGif = true;
+                    if (attr instanceof TLRPC.TL_documentAttributeVideo) {
+                        isVideo = true;
+                        duration = attr.duration;
+                    }
+                }
+
+                if (isGif) {
+                    currentOverlayText = "GIF";
+                } else if (isVideo) {
+                    int d = (int) duration;
+                    currentOverlayText = String.format(java.util.Locale.US, "▶ %d:%02d", d / 60, d % 60);
+                } else {
+                    currentOverlayText = null;
+                }
+            } else {
+                currentOverlayText = null;
+            }
+        } else {
+            currentOverlayText = null;
+        }
+        invalidate();
+    }
+
+    private void drawMediaOverlay(Canvas canvas) {
+        if (currentOverlayText == null) return;
+
+        float padW = dp(8), padH = dp(4);
+        float boxH = dp(20);
+        float textW = txtPaint.measureText(currentOverlayText);
+        float boxW = textW + padW * 2;
+        float left = dp(10);
+        float top = dp(10);
+
+        tmpRect.set(left, top, left + boxW, top + boxH);
+        canvas.drawRoundRect(tmpRect, boxH / 2f, boxH / 2f, bgPaint);
+        canvas.drawText(currentOverlayText, tmpRect.centerX(), tmpRect.centerY() + dp(4.5f), txtPaint);
     }
 }

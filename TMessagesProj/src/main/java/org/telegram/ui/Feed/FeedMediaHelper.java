@@ -101,6 +101,8 @@ public class FeedMediaHelper {
             }
             mediaRow.setVisibility(View.GONE);
             albumLabel.setVisibility(View.GONE);
+
+            mediaOverlay.setVisibility(View.GONE);
         } else {
             mediaRow.setVisibility(View.GONE);
             albumLabel.setVisibility(View.GONE);
@@ -594,5 +596,31 @@ public class FeedMediaHelper {
                 mediaContainer.setLayoutParams(lp);
             }
         });
+    }
+
+    public static boolean hasVisualMediaSpoiler(FeedController.FeedItem item) {
+        if (item == null) return false;
+        for (MessageObject msg : item.messages) {
+            if (msg.messageOwner == null) continue;
+            TLRPC.MessageMedia media = msg.messageOwner.media;
+            if (media == null) continue;
+
+            boolean isVisual = false;
+            if (media instanceof TLRPC.TL_messageMediaPhoto) {
+                isVisual = true;
+            } else if (media instanceof TLRPC.TL_messageMediaDocument && media.document != null) {
+                for (TLRPC.DocumentAttribute attr : media.document.attributes) {
+                    if (attr instanceof TLRPC.TL_documentAttributeVideo
+                            || attr instanceof TLRPC.TL_documentAttributeAnimated) {
+                        isVisual = true;
+                        break;
+                    }
+                }
+            }
+            if (isVisual) {
+                return media.spoiler;
+            }
+        }
+        return false;
     }
 }

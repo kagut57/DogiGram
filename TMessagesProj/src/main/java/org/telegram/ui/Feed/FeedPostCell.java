@@ -8,7 +8,6 @@ import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
-import android.graphics.RectF;
 import android.graphics.drawable.GradientDrawable;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
@@ -42,8 +41,6 @@ import org.telegram.ui.Components.AvatarDrawable;
 import org.telegram.ui.Components.BackupImageView;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.LinkSpanDrawable;
-import org.telegram.ui.Components.spoilers.SpoilerEffect;
-import org.telegram.ui.Components.spoilers.SpoilerEffect2;
 
 import java.util.HashMap;
 
@@ -131,26 +128,7 @@ public class FeedPostCell extends LinearLayout {
     final FeedPostTranslationHelper translationHelper;
 
     final FeedLinkPreviewView linkPreviewView;
-
-    private boolean mediaSpoilerRevealed = false;
-    private float mediaSpoilerRevealProgress = 0f;
-    private android.animation.ValueAnimator mediaSpoilerAnimator;
-    private SpoilerEffect2 mediaSpoilerEffect;
-    private final Paint mediaSpoilerOverlayPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-
-    private static android.text.TextPaint spoilerLabelPaint;
-    private static android.text.TextPaint spoilerIconPaint;
-
-    private final java.util.ArrayList<SpoilerEffect> mediaSpoilerEffects
-            = new java.util.ArrayList<>();
-    private final java.util.Stack<SpoilerEffect> mediaSpoilerPool
-            = new java.util.Stack<>();
-    private android.graphics.Bitmap mediaSpoilerBlurBitmap;
-    private final Paint mediaSpoilerBitmapPaint = new Paint(
-            Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
-    private final Paint mediaSpoilerDimPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final RectF mediaSpoilerRect = new RectF();
-    private static android.text.TextPaint mediaSpoilerLabelPaint;
+    final FeedSpoilerOverlayView mediaSpoilerOverlay;
 
     Callback callback;
 
@@ -420,27 +398,14 @@ public class FeedPostCell extends LinearLayout {
         voiceView.setVisibility(GONE);
         addView(voiceView,
                 LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
-
-        mediaContainer = new android.widget.FrameLayout(context) {
-            @Override
-            protected void dispatchDraw(Canvas canvas) {
-                super.dispatchDraw(canvas);
-                drawMediaSpoilerOverlay(canvas, this);
-            }
-        };
+        mediaContainer = new android.widget.FrameLayout(context);
         mediaContainer.setVisibility(GONE);
         mediaContainer.setWillNotDraw(false);
 
         mediaImageView1 = new BackupImageView(context);
         mediaImageView1.setRoundRadius(dp(12));
         mediaImageView1.setOnClickListener(v -> {
-            if (currentItem != null && callback != null) {
-                if (hasMediaSpoiler() && !mediaSpoilerRevealed) {
-                    revealMediaSpoiler();
-                } else {
-                    callback.onMediaClick(currentItem, 0);
-                }
-            }
+            if (callback != null) callback.onMediaClick(currentItem, 0);
         });
         mediaContainer.addView(mediaImageView1,
                 LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
@@ -458,6 +423,11 @@ public class FeedPostCell extends LinearLayout {
         mediaContainer.addView(mediaOverlayLabel, LayoutHelper.createFrame(
                 LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT,
                 Gravity.BOTTOM | Gravity.LEFT, 8, 0, 0, 8));
+
+        mediaSpoilerOverlay = new FeedSpoilerOverlayView(context);
+        mediaSpoilerOverlay.setSourceImageView(mediaImageView1);
+        mediaContainer.addView(mediaSpoilerOverlay, LayoutHelper.createFrame(
+                LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
 
         addView(mediaContainer,
                 LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 200, 0, 8, 0, 0));
@@ -787,17 +757,7 @@ public class FeedPostCell extends LinearLayout {
 
         recommendationHeader.setVisibility(GONE);
         subscribeBtn.setVisibility(GONE);
-
-        mediaSpoilerRevealed = false;
-        mediaSpoilerRevealProgress = 0f;
-        if (mediaSpoilerAnimator != null) {
-            mediaSpoilerAnimator.cancel();
-            mediaSpoilerAnimator = null;
-        }
-        if (mediaSpoilerEffect != null) {
-            mediaSpoilerEffect.detach(mediaImageView1);
-            mediaSpoilerEffect = null;
-        }
+        mediaSpoilerOverlay.setSpoiler(false);
 
         if (item == null) return;
 
@@ -855,18 +815,6 @@ public class FeedPostCell extends LinearLayout {
     }
 
     private void bindMedia(FeedController.FeedItem item) {
-        mediaSpoilerRevealed = false;
-        mediaSpoilerRevealProgress = 0f;
-        mediaSpoilerEffects.clear();
-        if (mediaSpoilerBlurBitmap != null) {
-            mediaSpoilerBlurBitmap.recycle();
-            mediaSpoilerBlurBitmap = null;
-        }
-        if (mediaSpoilerAnimator != null) {
-            mediaSpoilerAnimator.cancel();
-            mediaSpoilerAnimator = null;
-        }
-
         for (int i = mediaContainer.getChildCount() - 1; i >= 0; i--) {
             android.view.View child = mediaContainer.getChildAt(i);
             if (child instanceof FeedAlbumCarouselView) {
@@ -880,34 +828,26 @@ public class FeedPostCell extends LinearLayout {
         mediaShimmer.start();
         final FeedController.FeedItem capturedItem = item;
 
+        mediaSpoilerOverlay.setVisibility(View.GONE);
+
         FeedMediaHelper.setupMedia(item, getContext(), mediaContainer, mediaImageView1,
                 mediaOverlayLabel, mediaRow, albumLabel,
                 (feedItem, index) -> {
                     if (callback != null) {
-                        if (hasMediaSpoiler() && !mediaSpoilerRevealed) {
-                            revealMediaSpoiler();
-                        } else {
-                            callback.onMediaClick(feedItem, index);
-                        }
+                        callback.onMediaClick(feedItem, index);
                     }
                 },
                 resourceProvider, roundVideoView,
                 (fromCache) -> {
                     if (currentItem != capturedItem) return;
                     mediaShimmer.hide(!fromCache);
-
-                    if (hasMediaSpoiler() && !mediaSpoilerRevealed) {
-                        mediaContainer.post(() -> {
-                            int w = mediaContainer.getWidth();
-                            int h = mediaContainer.getHeight();
-                            if (w > 0 && h > 0) {
-                                buildSpoilerBlur(w, h);
-                                initMediaSpoilerEffect(w, h);
-                                mediaContainer.invalidate();
-                            }
-                        });
-                    }
                 });
+
+        if (mediaImageView1.getVisibility() == View.VISIBLE) {
+            mediaSpoilerOverlay.setVisibility(View.VISIBLE);
+            mediaSpoilerOverlay.setSourceImageView(mediaImageView1);
+            mediaSpoilerOverlay.setSpoiler(FeedMediaHelper.hasVisualMediaSpoiler(item));
+        }
 
         if (mediaContainer.getVisibility() == GONE) {
             mediaShimmer.hide(false);
@@ -1457,16 +1397,6 @@ public class FeedPostCell extends LinearLayout {
         if (mediaShimmer != null) mediaShimmer.hide(false);
         if (mediaImageView1 != null)
             mediaImageView1.getImageReceiver().setDelegate(null);
-
-        mediaSpoilerEffects.clear();
-        if (mediaSpoilerBlurBitmap != null) {
-            mediaSpoilerBlurBitmap.recycle();
-            mediaSpoilerBlurBitmap = null;
-        }
-        if (mediaSpoilerAnimator != null) {
-            mediaSpoilerAnimator.cancel();
-            mediaSpoilerAnimator = null;
-        }
     }
 
     private TextView smallText(Context ctx, int color) {
@@ -1590,204 +1520,4 @@ public class FeedPostCell extends LinearLayout {
         });
     }
 
-    private boolean hasMediaSpoiler() {
-        if (currentItem == null) return false;
-
-        for (MessageObject msg : currentItem.messages) {
-            if (msg.messageOwner == null) continue;
-            TLRPC.MessageMedia media = msg.messageOwner.media;
-            if (media == null) continue;
-
-            boolean isVisualMedia = false;
-            if (media instanceof TLRPC.TL_messageMediaPhoto) {
-                isVisualMedia = true;
-            } else if (media instanceof TLRPC.TL_messageMediaDocument
-                    && media.document != null) {
-                for (TLRPC.DocumentAttribute attr : media.document.attributes) {
-                    if (attr instanceof TLRPC.TL_documentAttributeVideo
-                            || attr instanceof TLRPC.TL_documentAttributeAnimated) {
-                        isVisualMedia = true;
-                        break;
-                    }
-                }
-            }
-
-            if (isVisualMedia) {
-                return media.spoiler;
-            }
-        }
-        return false;
-    }
-
-    private void revealMediaSpoiler() {
-        if (mediaSpoilerRevealed) return;
-        mediaSpoilerRevealed = true;
-
-        if (!mediaSpoilerEffects.isEmpty()) {
-            SpoilerEffect eff = mediaSpoilerEffects.get(0);
-            float cx = mediaContainer.getWidth() / 2f;
-            float cy = mediaContainer.getHeight() / 2f;
-            float maxR = (float) Math.sqrt(cx * cx + cy * cy);
-            eff.startRipple(cx, cy, maxR);
-        }
-
-        mediaSpoilerAnimator = android.animation.ValueAnimator.ofFloat(0f, 1f);
-        mediaSpoilerAnimator.setDuration(400);
-        mediaSpoilerAnimator.setInterpolator(
-                new android.view.animation.DecelerateInterpolator());
-        mediaSpoilerAnimator.addUpdateListener(anim -> {
-            mediaSpoilerRevealProgress = (float) anim.getAnimatedValue();
-            mediaContainer.invalidate();
-        });
-        mediaSpoilerAnimator.addListener(
-                new android.animation.AnimatorListenerAdapter() {
-                    @Override
-                    public void onAnimationEnd(android.animation.Animator animation) {
-                        mediaSpoilerRevealProgress = 1f;
-                        mediaSpoilerEffects.clear();
-                        if (mediaSpoilerBlurBitmap != null) {
-                            mediaSpoilerBlurBitmap.recycle();
-                            mediaSpoilerBlurBitmap = null;
-                        }
-                        mediaContainer.invalidate();
-                        if (callback != null && currentItem != null) {
-                            callback.onMediaClick(currentItem, 0);
-                        }
-                    }
-                });
-        mediaSpoilerAnimator.start();
-    }
-
-    private void drawSpoilerLabel(Canvas canvas, float alpha) {
-        if (spoilerLabelPaint == null) {
-            spoilerLabelPaint = new android.text.TextPaint(Paint.ANTI_ALIAS_FLAG);
-            spoilerLabelPaint.setColor(0xFFFFFFFF);
-            spoilerLabelPaint.setTextSize(dp(14));
-            spoilerLabelPaint.setTypeface(AndroidUtilities.bold());
-            spoilerLabelPaint.setTextAlign(Paint.Align.CENTER);
-        }
-
-        float cx = mediaContainer.getWidth() / 2f;
-        float cy = mediaContainer.getHeight() / 2f;
-
-        String label = "Tap to view";
-        float textW = spoilerLabelPaint.measureText(label) + dp(26);
-        float textH = dp(32);
-        float r = textH / 2f;
-
-        RectF bgRect = new RectF(cx - textW / 2f, cy - textH / 2f,
-                cx + textW / 2f, cy + textH / 2f);
-
-        mediaSpoilerOverlayPaint.setColor(0x55000000);
-        mediaSpoilerOverlayPaint.setAlpha((int) (0x55 * alpha));
-        canvas.drawRoundRect(bgRect, r, r, mediaSpoilerOverlayPaint);
-
-        spoilerLabelPaint.setAlpha((int) (255 * alpha));
-        canvas.drawText(label, cx, cy + dp(5), spoilerLabelPaint);
-    }
-
-    private void drawMediaSpoilerOverlay(Canvas canvas, android.view.View container) {
-        if (!hasMediaSpoiler()) return;
-        if (mediaSpoilerRevealProgress >= 1f) return;
-
-        float alpha = 1f - mediaSpoilerRevealProgress;
-        int w = container.getWidth();
-        int h = container.getHeight();
-
-        if (w <= 0 || h <= 0) return;
-
-        if (mediaSpoilerBlurBitmap == null && mediaImageView1.getImageReceiver() != null) {
-            buildSpoilerBlur(w, h);
-        }
-
-        canvas.save();
-        mediaSpoilerRect.set(0, 0, w, h);
-
-        if (mediaSpoilerBlurBitmap != null && !mediaSpoilerBlurBitmap.isRecycled()) {
-            mediaSpoilerBitmapPaint.setAlpha((int) (255 * alpha));
-            canvas.drawBitmap(mediaSpoilerBlurBitmap, null, mediaSpoilerRect,
-                    mediaSpoilerBitmapPaint);
-        } else {
-            // Fallback — тёмный фон пока блюр не готов
-            mediaSpoilerDimPaint.setColor(0xFF1A1A2E);
-            mediaSpoilerDimPaint.setAlpha((int) (220 * alpha));
-            canvas.drawRoundRect(mediaSpoilerRect, dp(12), dp(12), mediaSpoilerDimPaint);
-        }
-
-        // 2. Рисуем частицы спойлера
-        if (!mediaSpoilerEffects.isEmpty()) {
-            for (SpoilerEffect eff : mediaSpoilerEffects) {
-                eff.setAlpha((int) (255 * alpha));
-                eff.draw(canvas);
-            }
-            container.invalidate();
-        }
-
-        // 3. Лейбл "Tap to view"
-        drawSpoilerLabel(canvas, w, h, alpha);
-
-        canvas.restore();
-    }
-
-    private void buildSpoilerBlur(int w, int h) {
-        try {
-            // Берём текущий bitmap из ImageReceiver
-            android.graphics.Bitmap src = mediaImageView1.getImageReceiver().getBitmap();
-            if (src == null || src.isRecycled()) return;
-
-            // Создаём уменьшенную копию для блюра
-            int blurW = Math.max(1, w / 8);
-            int blurH = Math.max(1, h / 8);
-
-            mediaSpoilerBlurBitmap = android.graphics.Bitmap.createScaledBitmap(
-                    src, blurW, blurH, true);
-
-            // Применяем stackBlur
-            org.telegram.messenger.Utilities.stackBlurBitmap(
-                    mediaSpoilerBlurBitmap, 8);
-
-        } catch (Exception e) {
-            mediaSpoilerBlurBitmap = null;
-        }
-    }
-
-    private void initMediaSpoilerEffect(int w, int h) {
-        mediaSpoilerEffects.clear();
-
-        SpoilerEffect eff = mediaSpoilerPool.isEmpty()
-                ? new SpoilerEffect() : mediaSpoilerPool.pop();
-        eff.setBounds(0, 0, w, h);
-        eff.setColor(0xFFFFFFFF);
-        eff.setParentView(mediaContainer);
-        eff.setMaxParticlesCount(SpoilerEffect.MAX_PARTICLES_PER_ENTITY);
-        eff.updateMaxParticles();
-        mediaSpoilerEffects.add(eff);
-    }
-
-    private void drawSpoilerLabel(Canvas canvas, int w, int h, float alpha) {
-        if (mediaSpoilerLabelPaint == null) {
-            mediaSpoilerLabelPaint = new android.text.TextPaint(Paint.ANTI_ALIAS_FLAG);
-            mediaSpoilerLabelPaint.setColor(0xFFFFFFFF);
-            mediaSpoilerLabelPaint.setTextSize(dp(14));
-            mediaSpoilerLabelPaint.setTypeface(AndroidUtilities.bold());
-            mediaSpoilerLabelPaint.setTextAlign(Paint.Align.CENTER);
-        }
-
-        String label = "Tap to view";
-        float cx = w / 2f;
-        float cy = h / 2f;
-        float textW = mediaSpoilerLabelPaint.measureText(label) + dp(24);
-        float textH = dp(32);
-        float r = textH / 2f;
-
-        mediaSpoilerRect.set(cx - textW / 2f, cy - textH / 2f,
-                cx + textW / 2f, cy + textH / 2f);
-
-        mediaSpoilerDimPaint.setColor(0x55000000);
-        mediaSpoilerDimPaint.setAlpha((int) (0x88 * alpha));
-        canvas.drawRoundRect(mediaSpoilerRect, r, r, mediaSpoilerDimPaint);
-
-        mediaSpoilerLabelPaint.setAlpha((int) (255 * alpha));
-        canvas.drawText(label, cx, cy + dp(5), mediaSpoilerLabelPaint);
-    }
 }
