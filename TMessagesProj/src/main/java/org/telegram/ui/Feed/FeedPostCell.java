@@ -320,20 +320,14 @@ public class FeedPostCell extends LinearLayout {
         messageTextView.setTextColor(
                 Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourceProvider));
         messageTextView.setLinkTextColor(accentColor);
-        messageTextView.setLineSpacing(dp(2), 1f);   // ★ множитель вместо абсолютного dp
-        messageTextView.setIncludeFontPadding(false); // ★ убирает лишний padding сверху/снизу
-        messageTextView.setTextIsSelectable(false);   // ★ конфликтует с AnimatedEmojiSpan
+        messageTextView.setLineSpacing(dp(2), 1f);
+        messageTextView.setIncludeFontPadding(false);
+        messageTextView.setTextIsSelectable(false);
         messageTextView.setCursorVisible(false);
         messageTextView.setVisibility(GONE);
         addView(messageTextView,
                 LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT,
                         0, 8, 0, 0));
-
-        linkPreviewView = new FeedLinkPreviewView(context, resourceProvider);
-        linkPreviewView.setVisibility(GONE);
-        addView(linkPreviewView,
-                LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT,
-                        0, 6, 0, 0));
 
         readMoreView = new TextView(context);
         readMoreView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
@@ -381,6 +375,12 @@ public class FeedPostCell extends LinearLayout {
                 LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
         addView(summaryCard,
+                LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT,
+                        0, 6, 0, 0));
+
+        linkPreviewView = new FeedLinkPreviewView(context, resourceProvider);
+        linkPreviewView.setVisibility(GONE);
+        addView(linkPreviewView,
                 LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT,
                         0, 6, 0, 0));
 
