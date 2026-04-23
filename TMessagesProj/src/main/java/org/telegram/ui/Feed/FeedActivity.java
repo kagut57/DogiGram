@@ -73,6 +73,8 @@ public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFr
 
     private boolean snapshotRequested;
 
+    FeedAutoplayManager autoplayManager;
+
     int getAccount() {
         return currentAccount;
     }
@@ -115,6 +117,9 @@ public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFr
         super.onFragmentDestroy();
         feedController.removeNewPostListener(onNewPostRunnable);
         feedController.stopObserving();
+        if (autoplayManager != null) {
+            autoplayManager.onDestroy();
+        }
     }
 
     @Override
@@ -148,6 +153,9 @@ public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFr
         }
 
         loadFeed(false);
+        if (autoplayManager != null) {
+            listView.post(() -> autoplayManager.checkAutoplay());
+        }
     }
 
     @Override
@@ -163,6 +171,9 @@ public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFr
         }
         if (adapter != null) {
             adapter.syncFeedItems(feedController.getCachedFeed());
+        }
+        if (autoplayManager != null) {
+            autoplayManager.pauseCurrent();
         }
     }
 
@@ -225,6 +236,9 @@ public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFr
                 }
             }
         });
+
+        autoplayManager = new FeedAutoplayManager(listView, layoutManager);
+        listView.addOnScrollListener(autoplayManager);
 
         buildLoadingFooter(context, rootView);
 

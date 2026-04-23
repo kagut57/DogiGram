@@ -19,9 +19,11 @@ import android.util.TypedValue;
 import android.view.GestureDetector;
 import android.view.Gravity;
 import android.view.MotionEvent;
+import android.view.TextureView;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
+import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -131,6 +133,11 @@ public class FeedPostCell extends LinearLayout {
 
     final FeedLinkPreviewView linkPreviewView;
     final FeedSpoilerOverlayView mediaSpoilerOverlay;
+
+    private final android.view.TextureView videoTextureView;
+    private final FeedVideoTimelineView videoTimelineView;
+    private final FeedInlineVideoPlayer inlineVideoPlayer;
+    private boolean isAutoplaying = false;
 
     Callback callback;
 
@@ -400,7 +407,19 @@ public class FeedPostCell extends LinearLayout {
         voiceView.setVisibility(GONE);
         addView(voiceView,
                 LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
-        mediaContainer = new android.widget.FrameLayout(context);
+        mediaContainer = new android.widget.FrameLayout(context) {
+            @Override
+            protected boolean drawChild(@NonNull Canvas canvas, View child, long drawingTime) {
+                if (child == videoTextureView) {
+                    canvas.save();
+                    canvas.clipRect(0, 0, getWidth(), getHeight());
+                    boolean result = super.drawChild(canvas, child, drawingTime);
+                    canvas.restore();
+                    return result;
+                }
+                return super.drawChild(canvas, child, drawingTime);
+            }
+        };
         mediaContainer.setVisibility(GONE);
         mediaContainer.setWillNotDraw(false);
 
@@ -433,6 +452,20 @@ public class FeedPostCell extends LinearLayout {
 
         addView(mediaContainer,
                 LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 200, 0, 8, 0, 0));
+
+        videoTextureView = new TextureView(context);
+        mediaContainer.addView(videoTextureView, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT));
+        videoTextureView.setVisibility(GONE);
+
+        videoTimelineView = new FeedVideoTimelineView(context);
+        videoTimelineView.setVisibility(android.view.View.GONE);
+        mediaContainer.addView(videoTimelineView,
+                LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT,
+                        Gravity.BOTTOM, 0, 0, 0, 0));
+
+        inlineVideoPlayer = new FeedInlineVideoPlayer(videoTextureView, videoTimelineView);
 
         roundVideoView = new FeedRoundVideoView(context, currentAccount);
         roundVideoView.setVisibility(GONE);
@@ -760,6 +793,8 @@ public class FeedPostCell extends LinearLayout {
         recommendationHeader.setVisibility(GONE);
         subscribeBtn.setVisibility(GONE);
         mediaSpoilerOverlay.setSpoiler(false);
+
+        stopAutoplay();
 
         if (item == null) return;
 
@@ -1411,6 +1446,10 @@ public class FeedPostCell extends LinearLayout {
         super.onDetachedFromWindow();
         cancelPendingTruncate();
         roundVideoView.release();
+        releaseAutoplay();
+
+        stopAutoplay();
+
         if (mediaShimmer != null) mediaShimmer.hide(false);
         if (mediaImageView1 != null)
             mediaImageView1.getImageReceiver().setDelegate(null);
@@ -1570,5 +1609,136 @@ public class FeedPostCell extends LinearLayout {
             b.draw(canvas);
             canvas.restore();
         }
+    }
+
+    public boolean canAutoplayVideo() {
+        if (currentItem == null || currentItem.messages == null) return false;
+        if (FeedMediaHelper.hasVisualMediaSpoiler(currentItem)) return false;
+
+        int mediaCount = 0;
+        boolean hasVideo = false;
+
+        for (MessageObject msg : currentItem.messages) {
+            TLRPC.MessageMedia media = msg.messageOwner.media;
+            if (media == null || media instanceof TLRPC.TL_messageMediaEmpty) continue;
+
+            boolean isVisual = false;
+            boolean isVideo = false;
+            boolean isGif = false;
+
+            if (media instanceof TLRPC.TL_messageMediaPhoto) {
+                isVisual = true;
+            } else if (media instanceof TLRPC.TL_messageMediaDocument && media.document != null) {
+                for (TLRPC.DocumentAttribute attr : media.document.attributes) {
+                    if (attr instanceof TLRPC.TL_documentAttributeVideo) {
+                        isVisual = true;
+                        isVideo = true;
+                        if (attr.round_message) return false;
+                    }
+                    if (attr instanceof TLRPC.TL_documentAttributeAnimated) isGif = true;
+                }
+            }
+
+            if (isVisual) {
+                mediaCount++;
+                if (isVideo && !isGif) hasVideo = true;
+            }
+        }
+
+        if (!hasVideo) return false;
+
+        return mediaCount < 2 || org.telegram.ui.Custom.CustomSettings.feedAlbumMode() != FeedAlbumMode.GRID;
+    }
+
+    public void startAutoplay() {
+        if (isAutoplaying) return;
+
+        FeedAlbumCarouselView carousel = findCarousel();
+        if (carousel != null) {
+            isAutoplaying = true;
+            carousel.startAutoplay();
+            return;
+        }
+
+        if (!canAutoplayVideo()) return;
+        MessageObject videoMsg = getActiveVideoMessage();
+        if (videoMsg == null) return;
+
+        isAutoplaying = true;
+        videoTextureView.setAlpha(0f);
+        inlineVideoPlayer.play(videoMsg, videoTextureView, videoTimelineView);
+
+        inlineVideoPlayer.setOnFirstFrameListener(() -> {
+            videoTextureView.animate().alpha(1f).setDuration(150).start();
+            mediaImageView1.animate().alpha(0f).setDuration(150).start();
+            mediaOverlayLabel.animate().alpha(0f).setDuration(150).start();
+        });
+
+        inlineVideoPlayer.setOnErrorListener(() -> {
+            videoTextureView.setAlpha(0f);
+            mediaImageView1.setAlpha(1f);
+            mediaOverlayLabel.setAlpha(1f);
+        });
+
+        mediaImageView1.animate().alpha(0f).setDuration(250).start();
+        mediaOverlayLabel.animate().alpha(0f).setDuration(250).start();
+    }
+
+    public void stopAutoplay() {
+        if (!isAutoplaying) return;
+        isAutoplaying = false;
+
+        FeedAlbumCarouselView carousel = findCarousel();
+        if (carousel != null) {
+            carousel.stopAutoplay();
+            return;
+        }
+
+        inlineVideoPlayer.pause();
+
+        mediaImageView1.animate().cancel();
+        mediaImageView1.setAlpha(1f);
+        mediaOverlayLabel.animate().cancel();
+        mediaOverlayLabel.setAlpha(1f);
+    }
+
+    private MessageObject getActiveVideoMessage() {
+        FeedAlbumCarouselView carousel = findCarousel();
+        if (carousel != null) {
+            return carousel.getCurrentMessage();
+        }
+
+        for (MessageObject msg : currentItem.messages) {
+            TLRPC.MessageMedia media = msg.messageOwner.media;
+            if (media instanceof TLRPC.TL_messageMediaDocument && media.document != null) {
+                boolean isVideo = false;
+                boolean isGif = false;
+                for (TLRPC.DocumentAttribute attr : media.document.attributes) {
+                    if (attr instanceof TLRPC.TL_documentAttributeVideo) isVideo = true;
+                    if (attr instanceof TLRPC.TL_documentAttributeAnimated) isGif = true;
+                }
+                if (isVideo && !isGif) return msg;
+            }
+        }
+        return null;
+    }
+
+    private FeedAlbumCarouselView findCarousel() {
+        if (mediaContainer == null) return null;
+        for (int i = 0; i < mediaContainer.getChildCount(); i++) {
+            if (mediaContainer.getChildAt(i) instanceof FeedAlbumCarouselView) {
+                return (FeedAlbumCarouselView) mediaContainer.getChildAt(i);
+            }
+        }
+        return null;
+    }
+
+    public void releaseAutoplay() {
+        isAutoplaying = false;
+        inlineVideoPlayer.release();
+        mediaImageView1.animate().cancel();
+        mediaImageView1.setAlpha(1f);
+        mediaOverlayLabel.animate().cancel();
+        mediaOverlayLabel.setAlpha(1f);
     }
 }

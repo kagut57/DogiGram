@@ -358,11 +358,11 @@ public class FeedMediaHelper {
                     iv.setImage(
                             ImageLocation.getForDocument(thumb, doc), vFilter,
                             docThumbLoc, docThumbFilter,
-                            0, doc);
+                            0, msg);
                 } else if (docThumbLoc != null) {
                     iv.setImage(docThumbLoc,
                             displayWidth + "_" + height + "_b",
-                            null, null, 0, doc);
+                            null, null, 0, msg);
                 }
 
                 if (isVideo) {
@@ -491,10 +491,10 @@ public class FeedMediaHelper {
                 if (thumb != null) {
                     v.setImage(
                             ImageLocation.getForDocument(thumb, doc), "80_80",
-                            docThumbLoc, "b", 0, doc);
+                            docThumbLoc, "b", 0, msg);
                 } else if (docThumbLoc != null) {
                     v.setImage(docThumbLoc, "80_80_b",
-                            null, null, 0, doc);
+                            null, null, 0, msg);
                 }
             }
         }

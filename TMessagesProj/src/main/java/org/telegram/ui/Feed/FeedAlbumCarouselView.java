@@ -8,7 +8,9 @@ import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.RectF;
+import android.view.Gravity;
 import android.view.MotionEvent;
+import android.view.TextureView;
 import android.view.ViewParent;
 import android.view.animation.DecelerateInterpolator;
 import android.widget.FrameLayout;
@@ -21,6 +23,7 @@ import org.telegram.messenger.MessageObject;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.BackupImageView;
+import org.telegram.ui.Components.LayoutHelper;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -72,6 +75,11 @@ public class FeedAlbumCarouselView extends FrameLayout {
     private final Paint txtPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF tmpRect  = new RectF();
 
+    private final android.view.TextureView[] textureViews = new android.view.TextureView[3];
+    private final FeedVideoTimelineView[] timelineViews = new FeedVideoTimelineView[3];
+    private final FeedInlineVideoPlayer videoPlayer;
+    private boolean autoplayEnabled = false;
+
     public FeedAlbumCarouselView(Context context, Theme.ResourcesProvider rp) {
         super(context);
         setWillNotDraw(false);
@@ -99,13 +107,26 @@ public class FeedAlbumCarouselView extends FrameLayout {
             wrappers[i].addView(spoilerOverlays[i], new LayoutParams(
                     LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
 
+            textureViews[i] = new TextureView(context);
+            textureViews[i].setVisibility(GONE);
+            wrappers[i].addView(textureViews[i], new FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT));
+
+            timelineViews[i] = new FeedVideoTimelineView(context);
+            timelineViews[i].setVisibility(GONE);
+            wrappers[i].addView(timelineViews[i],
+                    LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.BOTTOM, 0, 0, 0, 0));
+
             addView(wrappers[i], new LayoutParams(
                     LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
         }
+        videoPlayer = new FeedInlineVideoPlayer(null, null);
     }
 
     public void setMessages(List<MessageObject> msgs, int heightPx) {
         if (animator != null) { animator.cancel(); animator = null; }
+        stopAutoplay();
 
         messages    = msgs != null ? msgs : new ArrayList<>();
         fixedHeight = heightPx;
@@ -346,6 +367,15 @@ public class FeedAlbumCarouselView extends FrameLayout {
             placeViews(0f);
             invalidate();
             updateCurrentOverlayText();
+
+            if (autoplayEnabled) {
+                for (int i = 0; i < 3; i++) {
+                    textureViews[i].setVisibility(GONE);
+                    timelineViews[i].setVisibility(GONE);
+                    iv[i].setAlpha(1f);
+                }
+                tryPlayCurrent();
+            }
         });
     }
 
@@ -496,7 +526,7 @@ public class FeedAlbumCarouselView extends FrameLayout {
                 view.setImage(
                         ImageLocation.getForDocument(thumb, doc), dispW + "_" + h,
                         thumbLoc, "80_80_b",
-                        0, doc);
+                        0, msg);
             }
         }
     }
@@ -526,6 +556,7 @@ public class FeedAlbumCarouselView extends FrameLayout {
         super.onDetachedFromWindow();
         if (animator != null) { animator.cancel(); animator = null; }
         for (BackupImageView v : iv) v.getImageReceiver().clearImage();
+        stopAutoplay();
     }
 
     private void updateCurrentOverlayText() {
@@ -576,5 +607,88 @@ public class FeedAlbumCarouselView extends FrameLayout {
         tmpRect.set(left, top, left + boxW, top + boxH);
         canvas.drawRoundRect(tmpRect, boxH / 2f, boxH / 2f, bgPaint);
         canvas.drawText(currentOverlayText, tmpRect.centerX(), tmpRect.centerY() + dp(4.5f), txtPaint);
+    }
+
+    public int getCurrentIndex() { return currentIndex; }
+
+    public MessageObject getCurrentMessage() {
+        if (currentIndex >= 0 && currentIndex < messages.size()) return messages.get(currentIndex);
+        return null;
+    }
+
+    public void startAutoplay() {
+        autoplayEnabled = true;
+        tryPlayCurrent();
+    }
+
+    public void stopAutoplay() {
+        autoplayEnabled = false;
+        videoPlayer.release();
+        resetCurrentVisuals();
+    }
+
+    private void tryPlayCurrent() {
+        if (!autoplayEnabled) return;
+        MessageObject msg = getCurrentMessage();
+
+        if (msg == null || !isPlainVideo(msg)) {
+            videoPlayer.release();
+            resetCurrentVisuals();
+            return;
+        }
+
+        int physCur = physOf(ROLE_CUR);
+        if (physCur < 0) return;
+
+        textureViews[physCur].setVisibility(VISIBLE);
+        timelineViews[physCur].setVisibility(VISIBLE);
+        iv[physCur].animate().cancel();
+        textureViews[physCur].setAlpha(0f);
+        videoPlayer.play(msg, textureViews[physCur], timelineViews[physCur]);
+
+        videoPlayer.setOnFirstFrameListener(() -> {
+            textureViews[physCur].animate().alpha(1f).setDuration(150).start();
+            iv[physCur].animate().alpha(0f).setDuration(150).start();
+            currentOverlayText = null;
+            invalidate();
+        });
+
+        videoPlayer.setOnErrorListener(() -> {
+            textureViews[physCur].setAlpha(0f);
+            iv[physCur].setAlpha(1f);
+            updateCurrentOverlayText();
+        });
+
+        iv[physCur].animate().alpha(0f).setDuration(250).start();
+        currentOverlayText = null;
+        invalidate();
+    }
+
+    private void resetCurrentVisuals() {
+        int physCur = physOf(ROLE_CUR);
+        if (physCur >= 0) {
+            iv[physCur].animate().cancel();
+            iv[physCur].setAlpha(1f);
+            textureViews[physCur].setVisibility(GONE);
+            timelineViews[physCur].setVisibility(GONE);
+        }
+        updateCurrentOverlayText();
+    }
+
+    private boolean isPlainVideo(MessageObject msg) {
+        TLRPC.MessageMedia media = msg.messageOwner.media;
+        if (media instanceof TLRPC.TL_messageMediaDocument && media.document != null) {
+            boolean isVideo = false;
+            boolean isGif = false;
+            for (TLRPC.DocumentAttribute attr : media.document.attributes) {
+                if (attr instanceof TLRPC.TL_documentAttributeVideo) {
+                    isVideo = true;
+                    if (attr.round_message) return false;
+                }
+                if (attr instanceof TLRPC.TL_documentAttributeAnimated) isGif = true;
+            }
+            return isVideo && !isGif;
+        }
+        return false;
     }
 }
