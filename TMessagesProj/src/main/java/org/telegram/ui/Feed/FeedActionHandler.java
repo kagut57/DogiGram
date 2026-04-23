@@ -66,6 +66,26 @@ class FeedActionHandler {
             activity.openChannel(item);
         });
 
+        int account = activity.getAccount();
+        boolean isMuted = MessagesController.getInstance(account)
+                .isDialogMuted(item.channelId, 0);
+        options.add(
+                isMuted ? R.drawable.msg_mute : R.drawable.msg_unmute,
+                isMuted ? LocaleController.getString(R.string.ChatsUnmute)
+                        : LocaleController.getString(R.string.ChatsMute),
+                () -> {
+                    if (!isMuted) {
+                        NotificationsController.getInstance(account)
+                                .setDialogNotificationsSettings(item.channelId, 0,
+                                        NotificationsController.SETTING_MUTE_FOREVER);
+                    } else {
+                        NotificationsController.getInstance(account)
+                                .setDialogNotificationsSettings(item.channelId, 0,
+                                        NotificationsController.SETTING_MUTE_UNMUTE);
+                    }
+                    BulletinFactory.createMuteBulletin(activity, !isMuted, null).show();
+                });
+
         options.add(R.drawable.msg_markread, "Mark as read", () -> {
             activity.feedController.markAsRead(item);
             int pos = activity.adapter.findItemPosition(item);

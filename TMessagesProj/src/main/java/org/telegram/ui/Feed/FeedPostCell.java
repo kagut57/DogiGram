@@ -853,25 +853,31 @@ public class FeedPostCell extends LinearLayout {
         }
     }
 
+    @SuppressLint("UseCompatLoadingForDrawables")
     private void bindHeader(FeedController.FeedItem item, TLRPC.Message raw,
                             MessagesController controller) {
         TLRPC.Chat chat = controller.getChat(-item.channelId);
         if (chat != null) {
             channelNameView.setText(chat.title);
 
+            boolean isMuted = controller.isDialogMuted(item.channelId, 0);
+            Drawable icon = null;
+            int iconSize = dp(14);
+
             if (chat.verified) {
-                @SuppressLint("UseCompatLoadingForDrawables") Drawable verifiedDrawable = getResources()
-                        .getDrawable(R.drawable.verified_profile).mutate();
-                int iconSize = dp(18);
-                verifiedDrawable.setBounds(0, 0, iconSize, iconSize);
-                verifiedDrawable.setColorFilter(new PorterDuffColorFilter(
+                icon = getResources().getDrawable(R.drawable.verified_profile).mutate();
+                icon.setBounds(0, 0, iconSize, iconSize);
+                icon.setColorFilter(new PorterDuffColorFilter(
                         Theme.getColor(Theme.key_featuredStickers_addButton, resourceProvider),
                         PorterDuff.Mode.SRC_IN));
-                channelNameView.setCompoundDrawables(null, null, verifiedDrawable, null);
-                channelNameView.setCompoundDrawablePadding(dp(4));
-            } else {
-                channelNameView.setCompoundDrawables(null, null, null, null);
+            } else if (isMuted) {
+                icon = getResources().getDrawable(R.drawable.list_mute).mutate();
+                icon.setBounds(0, 0, iconSize, iconSize);
+                icon.setColorFilter(grayFilter);
             }
+
+            channelNameView.setCompoundDrawables(null, null, icon, null);
+            channelNameView.setCompoundDrawablePadding(dp(4));
 
             avatarDrawable.setInfo(chat);
             if (chat.photo != null && chat.photo.photo_small != null) {
@@ -881,6 +887,8 @@ public class FeedPostCell extends LinearLayout {
             } else {
                 avatarView.setImageDrawable(avatarDrawable);
             }
+        } else {
+            channelNameView.setCompoundDrawables(null, null, null, null);
         }
 
         String timeStr = LocaleController.formatDateAudio(raw.date, true);
