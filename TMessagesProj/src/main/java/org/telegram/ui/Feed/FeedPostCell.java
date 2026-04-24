@@ -423,9 +423,25 @@ public class FeedPostCell extends LinearLayout {
         mediaContainer.setVisibility(GONE);
         mediaContainer.setWillNotDraw(false);
 
+        mediaSpoilerOverlay = new FeedSpoilerOverlayView(context);
+
         mediaImageView1 = new BackupImageView(context);
         mediaImageView1.setRoundRadius(dp(12));
         mediaImageView1.setOnClickListener(v -> {
+            if (mediaSpoilerOverlay.isSpoilerVisible()) {
+                mediaSpoilerOverlay.reveal();
+
+                if (currentItem != null) {
+                    for (MessageObject msg : currentItem.messages) {
+                        if (msg.messageOwner != null && msg.messageOwner.media != null) {
+                            msg.messageOwner.media.spoiler = false;
+                        }
+                    }
+                    startAutoplay();
+                }
+                return;
+            }
+
             if (callback != null) callback.onMediaClick(currentItem, 0);
         });
         mediaContainer.addView(mediaImageView1,
@@ -445,7 +461,6 @@ public class FeedPostCell extends LinearLayout {
                 LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT,
                 Gravity.BOTTOM | Gravity.LEFT, 8, 0, 0, 8));
 
-        mediaSpoilerOverlay = new FeedSpoilerOverlayView(context);
         mediaSpoilerOverlay.setSourceImageView(mediaImageView1);
         mediaContainer.addView(mediaSpoilerOverlay, LayoutHelper.createFrame(
                 LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
