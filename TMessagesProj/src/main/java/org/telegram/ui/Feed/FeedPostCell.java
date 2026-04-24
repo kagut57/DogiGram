@@ -139,6 +139,8 @@ public class FeedPostCell extends LinearLayout {
     private final FeedInlineVideoPlayer inlineVideoPlayer;
     private boolean isAutoplaying = false;
 
+    private boolean wasAutoplaying = false;
+
     Callback callback;
 
     public void setPressedLink(LinkSpanDrawable<ClickableSpan> link) {
@@ -810,6 +812,7 @@ public class FeedPostCell extends LinearLayout {
         mediaSpoilerOverlay.setSpoiler(false);
 
         stopAutoplay();
+        releaseAutoplay();
 
         if (item == null) return;
 
@@ -1452,17 +1455,20 @@ public class FeedPostCell extends LinearLayout {
                 if (child instanceof BackupImageView) child.invalidate();
             }
         }
+
+        if (wasAutoplaying && canAutoplayVideo()) {
+            wasAutoplaying = false;
+            post(() -> startAutoplay());
+        }
     }
 
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
+        wasAutoplaying = isAutoplaying;
         cancelPendingTruncate();
         roundVideoView.release();
-        releaseAutoplay();
-
         stopAutoplay();
-
         if (mediaShimmer != null) mediaShimmer.hide(false);
         if (mediaImageView1 != null)
             mediaImageView1.getImageReceiver().setDelegate(null);
@@ -1678,15 +1684,27 @@ public class FeedPostCell extends LinearLayout {
         if (videoMsg == null) return;
 
         isAutoplaying = true;
-        videoTextureView.setAlpha(0f);
+
+        boolean isResuming = inlineVideoPlayer.isPlayingMessage(videoMsg);
+
+        if (!isResuming) {
+            videoTextureView.setAlpha(0f);
+        } else {
+            videoTextureView.setAlpha(1f);
+        }
 
         inlineVideoPlayer.play(videoMsg, videoTextureView, videoTimelineView);
 
-        inlineVideoPlayer.setOnFirstFrameListener(() -> {
-            videoTextureView.animate().alpha(1f).setDuration(150).start();
-            mediaImageView1.animate().alpha(0f).setDuration(150).start();
-            mediaOverlayLabel.animate().alpha(0f).setDuration(150).start();
-        });
+        if (!isResuming) {
+            inlineVideoPlayer.setOnFirstFrameListener(() -> {
+                videoTextureView.animate().alpha(1f).setDuration(150).start();
+                mediaImageView1.animate().alpha(0f).setDuration(150).start();
+                mediaOverlayLabel.animate().alpha(0f).setDuration(150).start();
+            });
+        } else {
+            mediaImageView1.setAlpha(0f);
+            mediaOverlayLabel.setAlpha(0f);
+        }
 
         inlineVideoPlayer.setOnErrorListener(() -> {
             videoTextureView.setAlpha(0f);
@@ -1694,8 +1712,10 @@ public class FeedPostCell extends LinearLayout {
             mediaOverlayLabel.setAlpha(1f);
         });
 
-        mediaImageView1.animate().alpha(0f).setDuration(250).start();
-        mediaOverlayLabel.animate().alpha(0f).setDuration(250).start();
+        if (!isResuming) {
+            mediaImageView1.animate().alpha(0f).setDuration(250).start();
+            mediaOverlayLabel.animate().alpha(0f).setDuration(250).start();
+        }
     }
 
     public void stopAutoplay() {

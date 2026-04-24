@@ -55,14 +55,55 @@ public class FeedInlineVideoPlayer implements VideoPlayer.VideoPlayerDelegate {
     public FeedInlineVideoPlayer(TextureView textureView, FeedVideoTimelineView timelineView) {
         this.textureView = textureView;
         this.timelineView = timelineView;
+
+        applySurfaceTextureListener(textureView);
+    }
+
+    private void applySurfaceTextureListener(TextureView tv) {
+        if (tv == null) return;
+        tv.setSurfaceTextureListener(new TextureView.SurfaceTextureListener() {
+            @Override
+            public void onSurfaceTextureAvailable(SurfaceTexture surface, int width, int height) {
+                if (videoPlayer != null && textureView != null) {
+                    videoPlayer.setTextureView(textureView);
+                    if (!isPlaying && currentMessage != null) {
+                        try {
+                            videoPlayer.seekTo(videoPlayer.getCurrentPosition());
+                        } catch (Exception ignored) {}
+                    }
+                }
+            }
+            @Override
+            public void onSurfaceTextureSizeChanged(SurfaceTexture surface, int width, int height) {}
+            @Override
+            public boolean onSurfaceTextureDestroyed(SurfaceTexture surface) {
+                pause();
+                return true;
+            }
+            @Override
+            public void onSurfaceTextureUpdated(SurfaceTexture surface) {}
+        });
     }
 
     public void play(MessageObject msg, android.view.TextureView textureView, FeedVideoTimelineView timelineView) {
-        if (currentMessage != null && currentMessage.getId() == msg.getId()) {
+        if (this.textureView != textureView) {
             this.textureView = textureView;
-            this.timelineView = timelineView;
+            applySurfaceTextureListener(textureView);
+        }
+        this.timelineView = timelineView;
+
+        if (currentMessage != null && currentMessage.getId() == msg.getId()) {
             if (videoPlayer != null) {
                 videoPlayer.setTextureView(textureView);
+                try {
+                    long pos = videoPlayer.getCurrentPosition();
+                    if (pos > 0) {
+                        videoPlayer.seekTo(pos);
+                    }
+                } catch (Exception ignored) {}
+            }
+            if (textureView != null) {
+                textureView.setVisibility(android.view.View.VISIBLE);
             }
             if (!isPlaying) {
                 resume();
@@ -162,6 +203,9 @@ public class FeedInlineVideoPlayer implements VideoPlayer.VideoPlayerDelegate {
 
     @Override
     public void onRenderedFirstFrame() {
+        if (textureView != null) {
+            textureView.setAlpha(1f);
+        }
         if (onFirstFrameListener != null) {
             onFirstFrameListener.run();
         }
