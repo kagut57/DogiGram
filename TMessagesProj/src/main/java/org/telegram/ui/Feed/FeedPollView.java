@@ -18,15 +18,22 @@ import android.widget.Toast;
 import androidx.annotation.NonNull;
 
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.FileLoader;
+import org.telegram.messenger.ImageLocation;
 import org.telegram.messenger.MessagesController;
+import org.telegram.messenger.Utilities;
+import org.telegram.messenger.WebFile;
 import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.Components.BackupImageView;
 import org.telegram.ui.Components.LayoutHelper;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 
 @SuppressLint("ViewConstructor")
 public class FeedPollView extends LinearLayout {
@@ -34,12 +41,19 @@ public class FeedPollView extends LinearLayout {
     private final int currentAccount;
     private final Theme.ResourcesProvider resourceProvider;
 
-    private final TextView typeLabel;
+    private final FrameLayout coverContainer;
+    private final BackupImageView coverImageView;
+    private final TextView coverVideoOverlay;
+
     private final TextView questionView;
+    private final TextView typeLabel;
     private final LinearLayout answersContainer;
+    private final LinearLayout bottomLayout;
+    private final TextView totalVotersView;
+    private final TextView timerView;
+
     private final TextView voteButton;
     private final TextView retractButton;
-    private final TextView totalVotersView;
     private final LinearLayout explanationContainer;
     private final TextView explanationText;
 
@@ -49,17 +63,20 @@ public class FeedPollView extends LinearLayout {
     private boolean closed;
     private boolean quiz;
     private boolean multipleChoice;
+    private boolean hideResults;
+    private boolean revotingDisabled;
     private final List<byte[]> selectedOptions = new ArrayList<>();
     private boolean voteSending = false;
 
     private final List<AnswerRow> answerRows = new ArrayList<>();
 
     private static class AnswerRow {
-        FrameLayout container;
+        LinearLayout container;
         PollProgressBar progressBar;
         IndicatorView indicator;
         TextView textView;
         TextView percentView;
+        BackupImageView answerImage;
         byte[] option;
     }
 
@@ -76,17 +93,36 @@ public class FeedPollView extends LinearLayout {
         int textColor = Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourceProvider);
         int accentColor = Theme.getColor(Theme.key_featuredStickers_addButton, resourceProvider);
 
-        typeLabel = new TextView(context);
-        typeLabel.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
-        typeLabel.setTextColor(grayColor);
-        typeLabel.setTypeface(AndroidUtilities.bold());
-        addView(typeLabel, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, 0, 0, 0, 4));
+        coverContainer = new FrameLayout(context);
+        coverContainer.setVisibility(GONE);
+        coverContainer.setClipChildren(true);
+
+        coverImageView = new BackupImageView(context);
+        coverImageView.setRoundRadius(dp(12));
+        coverContainer.addView(coverImageView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
+
+        coverVideoOverlay = new TextView(context);
+        coverVideoOverlay.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 12);
+        coverVideoOverlay.setTextColor(0xFFFFFFFF);
+        coverVideoOverlay.setBackgroundColor(0x99000000);
+        coverVideoOverlay.setPadding(dp(8), dp(3), dp(8), dp(3));
+        coverVideoOverlay.setGravity(Gravity.CENTER);
+        coverVideoOverlay.setVisibility(GONE);
+        coverContainer.addView(coverVideoOverlay, LayoutHelper.createFrame(
+                LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.BOTTOM | Gravity.LEFT, 8, 0, 0, 8));
+
+        addView(coverContainer, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 200, 0, 0, 0, 8));
 
         questionView = new TextView(context);
         questionView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
         questionView.setTypeface(AndroidUtilities.bold());
         questionView.setTextColor(textColor);
-        addView(questionView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 0, 0, 10));
+        addView(questionView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 0, 0, 4));
+
+        typeLabel = new TextView(context);
+        typeLabel.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
+        typeLabel.setTextColor(grayColor);
+        addView(typeLabel, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, 0, 0, 0, 10));
 
         answersContainer = new LinearLayout(context);
         answersContainer.setOrientation(VERTICAL);
@@ -99,8 +135,7 @@ public class FeedPollView extends LinearLayout {
         voteButton.setGravity(Gravity.CENTER);
         voteButton.setPadding(0, dp(12), 0, dp(12));
         voteButton.setText("Vote");
-        voteButton.setBackground(Theme.createSelectorDrawable(
-                Theme.getColor(Theme.key_listSelector, resourceProvider), 2));
+        voteButton.setBackground(Theme.createSelectorDrawable(Theme.getColor(Theme.key_listSelector, resourceProvider), 2));
         voteButton.setVisibility(GONE);
         voteButton.setOnClickListener(v -> submitVote());
         addView(voteButton, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 4, 0, 0));
@@ -111,16 +146,27 @@ public class FeedPollView extends LinearLayout {
         retractButton.setGravity(Gravity.CENTER);
         retractButton.setPadding(0, dp(8), 0, dp(4));
         retractButton.setText("Retract Vote");
-        retractButton.setBackground(Theme.createSelectorDrawable(
-                Theme.getColor(Theme.key_listSelector, resourceProvider), 2));
+        retractButton.setBackground(Theme.createSelectorDrawable(Theme.getColor(Theme.key_listSelector, resourceProvider), 2));
         retractButton.setVisibility(GONE);
         retractButton.setOnClickListener(v -> retractVote());
         addView(retractButton, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
+            bottomLayout = new LinearLayout(context);
+        bottomLayout.setOrientation(HORIZONTAL);
+        bottomLayout.setGravity(Gravity.CENTER_VERTICAL);
+
         totalVotersView = new TextView(context);
         totalVotersView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
         totalVotersView.setTextColor(grayColor);
-        addView(totalVotersView, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, 0, 8, 0, 0));
+        bottomLayout.addView(totalVotersView, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f));
+
+        timerView = new TextView(context);
+        timerView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
+        timerView.setTextColor(grayColor);
+        timerView.setVisibility(GONE);
+        bottomLayout.addView(timerView, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT));
+
+        addView(bottomLayout, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 8, 0, 0));
 
         explanationContainer = new LinearLayout(context);
         explanationContainer.setOrientation(VERTICAL);
@@ -133,17 +179,14 @@ public class FeedPollView extends LinearLayout {
         explanationLabel.setTypeface(AndroidUtilities.bold());
         explanationLabel.setTextColor(grayColor);
         explanationLabel.setText("💡 Explanation");
-        explanationContainer.addView(explanationLabel, LayoutHelper.createLinear(
-                LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, 0, 0, 0, 4));
+        explanationContainer.addView(explanationLabel, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, 0, 0, 0, 4));
 
         explanationText = new TextView(context);
         explanationText.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
         explanationText.setTextColor(textColor);
-        explanationContainer.addView(explanationText, LayoutHelper.createLinear(
-                LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+        explanationContainer.addView(explanationText, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
-        addView(explanationContainer, LayoutHelper.createLinear(
-                LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 8, 0, 0));
+        addView(explanationContainer, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 8, 0, 0));
     }
 
     @SuppressLint("SetTextI18n")
@@ -159,6 +202,8 @@ public class FeedPollView extends LinearLayout {
         quiz = poll.quiz;
         multipleChoice = poll.multiple_choice;
         closed = poll.closed;
+        hideResults = poll.hide_results_until_close;
+        revotingDisabled = poll.revoting_disabled;
 
         voted = false;
         if (pollMedia.results != null && pollMedia.results.results != null) {
@@ -172,20 +217,31 @@ public class FeedPollView extends LinearLayout {
 
         StringBuilder typeText = new StringBuilder();
         if (quiz) {
-            typeText.append(poll.public_voters ? "📊 Quiz" : "📊 Anonymous Quiz");
+            typeText.append(poll.public_voters ? "Quiz" : "Anonymous Quiz");
         } else {
-            typeText.append(poll.public_voters ? "📊 Poll" : "📊 Anonymous Poll");
+            typeText.append(poll.public_voters ? "Poll" : "Anonymous Poll");
         }
+        if (poll.open_answers) typeText.append(" · Open answers");
         if (closed) typeText.append(" · Final Results");
         typeLabel.setText(typeText);
 
         questionView.setText(poll.question.text);
 
-        for (TLRPC.PollAnswer answer : poll.answers) {
+        if (pollMedia.attached_media != null) {
+            setupCoverMedia(pollMedia.attached_media);
+        } else {
+            coverContainer.setVisibility(GONE);
+        }
+
+        List<TLRPC.PollAnswer> answersList = new ArrayList<>(poll.answers);
+        if (poll.shuffle_answers && !voted && !closed) {
+            Collections.shuffle(answersList, Utilities.random);
+        }
+
+        for (TLRPC.PollAnswer answer : answersList) {
             AnswerRow row = createAnswerRow(answer);
             answerRows.add(row);
-            answersContainer.addView(row.container, LayoutHelper.createLinear(
-                    LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 0, 0, 4));
+            answersContainer.addView(row.container, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 0, 0, 4));
         }
 
         if (multipleChoice && !voted && !closed) {
@@ -198,6 +254,83 @@ public class FeedPollView extends LinearLayout {
 
         updateResultsUI();
         updateExplanation();
+        updateTimer();
+    }
+
+    private void setupCoverMedia(TLRPC.MessageMedia media) {
+        int displayWidth = AndroidUtilities.displaySize.x - dp(32);
+        int height = dp(200);
+
+        if (media instanceof TLRPC.TL_messageMediaPhoto && media.photo != null) {
+            TLRPC.PhotoSize best = FileLoader.getClosestPhotoSizeWithSize(media.photo.sizes, displayWidth);
+            if (best != null && best.w > 0) {
+                height = Math.max(dp(150), Math.min(dp(400), (int) (displayWidth * ((float) best.h / best.w))));
+            }
+            coverImageView.setImage(ImageLocation.getForPhoto(best, media.photo), displayWidth + "_" + height, null, null, 0);
+            coverContainer.setVisibility(VISIBLE);
+            coverVideoOverlay.setVisibility(GONE);
+        } else if (media instanceof TLRPC.TL_messageMediaDocument && media.document != null) {
+            TLRPC.Document doc = media.document;
+            TLRPC.PhotoSize thumb = FileLoader.getClosestPhotoSizeWithSize(doc.thumbs, displayWidth);
+            int videoW = 0, videoH = 0;
+            double duration = 0;
+
+            for (TLRPC.DocumentAttribute attr : doc.attributes) {
+                if (attr instanceof TLRPC.TL_documentAttributeVideo) {
+                    videoW = attr.w;
+                    videoH = attr.h;
+                    duration = attr.duration;
+                }
+            }
+
+            if (videoW > 0 && videoH > 0) {
+                height = Math.max(dp(150), Math.min(dp(400), (int) (displayWidth * ((float) videoH / videoW))));
+            }
+
+            if (thumb != null) {
+                coverImageView.setImage(ImageLocation.getForDocument(thumb, doc), displayWidth + "_" + height, null, null, 0);
+            }
+
+            if (duration > 0) {
+                int d = (int) duration;
+                coverVideoOverlay.setText(String.format(Locale.US, "▶ %d:%02d", d / 60, d % 60));
+                coverVideoOverlay.setVisibility(VISIBLE);
+            } else {
+                coverVideoOverlay.setVisibility(GONE);
+            }
+
+            coverContainer.setVisibility(VISIBLE);
+        } else {
+            coverContainer.setVisibility(GONE);
+        }
+
+        LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) coverContainer.getLayoutParams();
+        if (lp.height != height) {
+            lp.height = height;
+            coverContainer.setLayoutParams(lp);
+        }
+    }
+
+    private void setupAnswerMedia(BackupImageView imageView, TLRPC.MessageMedia media) {
+        if (media instanceof TLRPC.TL_messageMediaPhoto && media.photo != null) {
+            TLRPC.PhotoSize size = FileLoader.getClosestPhotoSizeWithSize(media.photo.sizes, 80);
+            if (size != null) {
+                imageView.setImage(ImageLocation.getForPhoto(size, media.photo), "36_36", null, null, 0);
+                imageView.setVisibility(VISIBLE);
+            }
+        } else if (media instanceof TLRPC.TL_messageMediaDocument && media.document != null) {
+            TLRPC.PhotoSize size = FileLoader.getClosestPhotoSizeWithSize(media.document.thumbs, 80);
+            if (size != null) {
+                imageView.setImage(ImageLocation.getForDocument(size, media.document), "36_36", null, null, 0);
+                imageView.setVisibility(VISIBLE);
+            }
+        } else if (media instanceof TLRPC.TL_messageMediaGeo || media instanceof TLRPC.TL_messageMediaVenue) {
+            if (media.geo != null) {
+                WebFile webFile = WebFile.createWithGeoPoint(media.geo, 80, 80, 15, Math.min(2, (int) Math.ceil(AndroidUtilities.density)));
+                imageView.setImage(ImageLocation.getForWebFile(webFile), "36_36", null, null, 0);
+                imageView.setVisibility(VISIBLE);
+            }
+        }
     }
 
     private AnswerRow createAnswerRow(TLRPC.PollAnswer answer) {
@@ -205,20 +338,29 @@ public class FeedPollView extends LinearLayout {
         AnswerRow row = new AnswerRow();
         row.option = answer.option;
 
-        row.container = new FrameLayout(context);
+        row.container = new LinearLayout(context);
+        row.container.setOrientation(HORIZONTAL);
+        row.container.setGravity(Gravity.CENTER_VERTICAL);
         row.container.setPadding(dp(12), dp(10), dp(12), dp(10));
         row.container.setMinimumHeight(dp(44));
-        row.container.setBackground(Theme.createSelectorDrawable(
-                Theme.getColor(Theme.key_listSelector, resourceProvider), 2));
+        row.container.setBackground(Theme.createSelectorDrawable(Theme.getColor(Theme.key_listSelector, resourceProvider), 2));
 
+        FrameLayout wrapper = new FrameLayout(context);
         row.progressBar = new PollProgressBar(context);
         row.progressBar.setVisibility(INVISIBLE);
-        row.container.addView(row.progressBar, LayoutHelper.createFrame(
-                LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
+        wrapper.addView(row.progressBar, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
 
         LinearLayout content = new LinearLayout(context);
         content.setOrientation(HORIZONTAL);
         content.setGravity(Gravity.CENTER_VERTICAL);
+
+        row.percentView = new TextView(context);
+        row.percentView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
+        row.percentView.setTypeface(AndroidUtilities.bold());
+        row.percentView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourceProvider));
+        row.percentView.setVisibility(GONE);
+        row.percentView.setMinWidth(dp(40));
+        content.addView(row.percentView, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_VERTICAL, 0, 0, 8, 0));
 
         row.indicator = new IndicatorView(context, resourceProvider);
         row.indicator.setType(multipleChoice ? IndicatorView.TYPE_CHECKBOX : IndicatorView.TYPE_RADIO);
@@ -231,22 +373,51 @@ public class FeedPollView extends LinearLayout {
         row.textView.setText(answer.text.text);
         content.addView(row.textView, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f));
 
-        row.percentView = new TextView(context);
-        row.percentView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
-        row.percentView.setTypeface(AndroidUtilities.bold());
-        row.percentView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourceProvider));
-        row.percentView.setVisibility(GONE);
-        row.percentView.setMinWidth(dp(40));
-        row.percentView.setGravity(Gravity.END);
-        content.addView(row.percentView, LayoutHelper.createLinear(
-                LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_VERTICAL, 8, 0, 0, 0));
+        row.answerImage = new BackupImageView(context);
+        row.answerImage.setRoundRadius(dp(6));
+        row.answerImage.setVisibility(GONE);
+        content.addView(row.answerImage, LayoutHelper.createLinear(36, 36, Gravity.CENTER_VERTICAL, 8, 0, 0, 0));
 
-        row.container.addView(content, LayoutHelper.createFrame(
-                LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_VERTICAL));
+        if (answer.media != null) {
+            setupAnswerMedia(row.answerImage, answer.media);
+        }
+
+        wrapper.addView(content, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_VERTICAL));
+        row.container.addView(wrapper, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
         row.container.setOnClickListener(v -> onAnswerClicked(row));
 
         return row;
+    }
+
+    @SuppressLint("SetTextI18n")
+    private void updateTimer() {
+        if (pollMedia == null || closed) {
+            timerView.setVisibility(GONE);
+            return;
+        }
+        TLRPC.Poll poll = pollMedia.poll;
+        if (poll.close_date > 0) {
+            int timeDiff = poll.close_date - ConnectionsManager.getInstance(currentAccount).getCurrentTime();
+            if (timeDiff > 0) {
+                timerView.setVisibility(VISIBLE);
+                timerView.setText("⏱ " + formatShortDuration(timeDiff));
+            } else {
+                timerView.setVisibility(GONE);
+            }
+        } else {
+            timerView.setVisibility(GONE);
+        }
+    }
+
+    private String formatShortDuration(int seconds) {
+        if (seconds < 60) return seconds + "s";
+        int minutes = seconds / 60;
+        if (minutes < 60) return minutes + "m";
+        int hours = minutes / 60;
+        if (hours < 24) return hours + "h";
+        int days = hours / 24;
+        return days + "d";
     }
 
     private void onAnswerClicked(AnswerRow row) {
@@ -297,7 +468,7 @@ public class FeedPollView extends LinearLayout {
 
     @SuppressLint("SetTextI18n")
     private void retractVote() {
-        if (voteSending || quiz) return;
+        if (voteSending || quiz || revotingDisabled) return;
         voteSending = true;
         retractButton.setEnabled(false);
         retractButton.setText("Retracting...");
@@ -369,23 +540,21 @@ public class FeedPollView extends LinearLayout {
                             newResult.option = chosen;
                             newResult.chosen = true;
                             newResult.voters = 1;
-
                             newResult.flags |= 1;
                             newResult.flags |= 4;
-
                             pollMedia.results.results.add(newResult);
                         }
                     }
                 }
 
-                voteButton.setVisibility(
-                        multipleChoice && !voted && !closed ? VISIBLE : GONE);
+                voteButton.setVisibility(multipleChoice && !voted && !closed ? VISIBLE : GONE);
                 voteButton.setText("Vote");
                 retractButton.setText("Retract Vote");
                 retractButton.setEnabled(true);
 
                 updateResultsUI();
                 updateExplanation();
+                updateTimer();
             });
         });
     }
@@ -407,7 +576,7 @@ public class FeedPollView extends LinearLayout {
                     }
                 }
             }
-        } catch (Exception e) { /* ignore parse errors */ }
+        } catch (Exception e) { /* ignore */ }
     }
 
     private void ensureResults() {
@@ -421,7 +590,7 @@ public class FeedPollView extends LinearLayout {
 
     @SuppressLint("SetTextI18n")
     private void updateResultsUI() {
-        boolean showResults = voted || closed;
+        boolean showResults = (voted || closed) && !(hideResults && !closed);
 
         int totalVoters = 0;
         if (pollMedia.results != null) {
@@ -506,7 +675,7 @@ public class FeedPollView extends LinearLayout {
             totalVotersView.setText("No votes yet");
         }
 
-        if (voted && !quiz && !closed) {
+        if (voted && !quiz && !closed && !revotingDisabled) {
             retractButton.setVisibility(VISIBLE);
         } else {
             retractButton.setVisibility(GONE);
@@ -518,7 +687,6 @@ public class FeedPollView extends LinearLayout {
             explanationContainer.setVisibility(GONE);
             return;
         }
-
         try {
             String solution = pollMedia.results != null ? pollMedia.results.solution : null;
             if (solution != null && !solution.isEmpty()) {
@@ -538,19 +706,10 @@ public class FeedPollView extends LinearLayout {
         private final Paint paint = new Paint();
         private final RectF rect = new RectF();
 
-        PollProgressBar(Context context) {
-            super(context);
-        }
+        PollProgressBar(Context context) { super(context); }
 
-        void setProgress(float p) {
-            this.progress = p;
-            invalidate();
-        }
-
-        void setBarColor(int c) {
-            this.barColor = c;
-            invalidate();
-        }
+        void setProgress(float p) { this.progress = p; invalidate(); }
+        void setBarColor(int c) { this.barColor = c; invalidate(); }
 
         @Override
         protected void onDraw(Canvas canvas) {
@@ -599,7 +758,7 @@ public class FeedPollView extends LinearLayout {
                     if (type == TYPE_RADIO) {
                         canvas.drawCircle(cx, cy, r, paint);
                     } else {
-                        @SuppressLint("DrawAllocation") RectF rect = new RectF(cx - r, cy - r, cx + r, cy + r);
+                        RectF rect = new RectF(cx - r, cy - r, cx + r, cy + r);
                         canvas.drawRoundRect(rect, dp(3), dp(3), paint);
                     }
                     break;
@@ -613,7 +772,7 @@ public class FeedPollView extends LinearLayout {
                         paint.setColor(0xFFFFFFFF);
                         canvas.drawCircle(cx, cy, r * 0.4f, paint);
                     } else {
-                        @SuppressLint("DrawAllocation") RectF rect = new RectF(cx - r, cy - r, cx + r, cy + r);
+                        RectF rect = new RectF(cx - r, cy - r, cx + r, cy + r);
                         canvas.drawRoundRect(rect, dp(3), dp(3), paint);
                         drawCheckmark(canvas, cx, cy, r, 0xFFFFFFFF);
                     }
