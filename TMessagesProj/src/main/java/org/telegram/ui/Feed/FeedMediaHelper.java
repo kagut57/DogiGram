@@ -343,26 +343,41 @@ public class FeedMediaHelper {
             }
 
             if (isGif) {
-                String gifFilter = makeFilter(displayWidth, height);
-
-                int docSize = 0;
-                if (doc.size > 0 && doc.size <= Integer.MAX_VALUE) {
-                    docSize = (int) doc.size;
-                }
-
-                iv.setImage(
-                        ImageLocation.getForDocument(doc), gifFilter,
-                        docThumbLoc, docThumbFilter,
-                        docSize, msg);
-                iv.getImageReceiver().setAutoRepeat(1);
-                iv.getImageReceiver().setAllowStartAnimation(true);
-                iv.getImageReceiver().setDelegate((imageReceiver, set, thumb, memCache) -> {
-                    if (set && !thumb) {
-                        iv.getImageReceiver().setAllowStartAnimation(true);
-                        iv.getImageReceiver().startAnimation();
-                        iv.invalidate();
+                if (isVideo) {
+                    TLRPC.PhotoSize thumb = bestSize(doc.thumbs);
+                    if (thumb != null) {
+                        String vFilter = makeFilter(displayWidth, height);
+                        iv.setImage(
+                                ImageLocation.getForDocument(thumb, doc), vFilter,
+                                docThumbLoc, docThumbFilter,
+                                0, msg);
+                    } else if (docThumbLoc != null) {
+                        iv.setImage(docThumbLoc,
+                                displayWidth + "_" + height + "_b",
+                                null, null, 0, msg);
                     }
-                });
+                } else {
+                    String gifFilter = makeFilter(displayWidth, height);
+
+                    int docSize = 0;
+                    if (doc.size > 0 && doc.size <= Integer.MAX_VALUE) {
+                        docSize = (int) doc.size;
+                    }
+
+                    iv.setImage(
+                            ImageLocation.getForDocument(doc), gifFilter,
+                            docThumbLoc, docThumbFilter,
+                            docSize, msg);
+                    iv.getImageReceiver().setAutoRepeat(1);
+                    iv.getImageReceiver().setAllowStartAnimation(true);
+                    iv.getImageReceiver().setDelegate((imageReceiver, set, thumb, memCache) -> {
+                        if (set && !thumb) {
+                            iv.getImageReceiver().setAllowStartAnimation(true);
+                            iv.getImageReceiver().startAnimation();
+                            iv.invalidate();
+                        }
+                    });
+                }
 
                 overlay.setText("GIF");
                 overlay.setVisibility(View.VISIBLE);

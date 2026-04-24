@@ -1656,7 +1656,7 @@ public class FeedPostCell extends LinearLayout {
 
             if (isVisual) {
                 mediaCount++;
-                if (isVideo && !isGif) hasVideo = true;
+                if (isVideo) hasVideo = true;
             }
         }
 
@@ -1733,7 +1733,7 @@ public class FeedPostCell extends LinearLayout {
                     if (attr instanceof TLRPC.TL_documentAttributeVideo) isVideo = true;
                     if (attr instanceof TLRPC.TL_documentAttributeAnimated) isGif = true;
                 }
-                if (isVideo && !isGif) return msg;
+                if (isVideo) return msg;
             }
         }
         return null;
