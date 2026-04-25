@@ -322,7 +322,7 @@ public class FeedSettingsActivity extends BaseFragment {
                     TextInfoPrivacyCell cell = (TextInfoPrivacyCell) holder.itemView;
                     if (pos == albumModeInfoRow) {
                         cell.setText("Carousel: swipe left/right between photos.\n" +
-                                "Grid: all photos visible at once, like VK.");
+                                "Grid: all photos visible at once.");
                     } else if (pos == recommendationsInfoRow) {
                         cell.setText("Discover new channels based on your subscriptions. " +
                                 "The system analyzes similar channels, forwarded posts, " +

@@ -75,14 +75,9 @@ public class FeedMediaHelper {
             return;
         }
 
-        if (loadCallback != null) {
-            mainImage.getImageReceiver().setDelegate(
-                    (imageReceiver, set, thumb, memCache) -> {
-                        if (set && !thumb) loadCallback.onMainImageLoaded(memCache);
-                    });
-        }
+        // Убираем установку делегата отсюда, теперь setupSingleMedia сам управляет делегатом
+        int h = setupSingleMedia(mediaMessages.get(0), mainImage, mediaOverlay, loadCallback);
 
-        int h = setupSingleMedia(mediaMessages.get(0), mainImage, mediaOverlay);
         mediaContainer.setVisibility(View.VISIBLE);
         LinearLayout.LayoutParams lp =
                 (LinearLayout.LayoutParams) mediaContainer.getLayoutParams();
@@ -124,7 +119,7 @@ public class FeedMediaHelper {
         }
     }
 
-    private static List<MessageObject> collectVisualMedia(FeedController.FeedItem item) {
+    public static List<MessageObject> collectVisualMedia(FeedController.FeedItem item) {
         List<MessageObject> result = new ArrayList<>();
 
         for (MessageObject msg : item.messages) {
@@ -241,7 +236,8 @@ public class FeedMediaHelper {
     @SuppressLint("SetTextI18n")
     static int setupSingleMedia(MessageObject msg,
                                 BackupImageView iv,
-                                TextView overlay) {
+                                TextView overlay,
+                                ImageLoadCallback loadCallback) {
         TLRPC.Message raw = msg.messageOwner;
 
         if (raw.media instanceof TLRPC.TL_messageMediaDocument && raw.media.document != null) {
@@ -249,12 +245,15 @@ public class FeedMediaHelper {
                 iv.setImageDrawable(null);
                 iv.getImageReceiver().clearImage();
                 overlay.setVisibility(View.GONE);
+                if (loadCallback != null) loadCallback.onMainImageLoaded(true);
                 return dp(200);
             }
         }
 
         int displayWidth = AndroidUtilities.displaySize.x - dp(32);
         int height = dp(200);
+
+        boolean isLivePhoto = msg.isLivePhoto();
 
         if (raw.media instanceof TLRPC.TL_messageMediaPhoto
                 && raw.media.photo != null) {
@@ -267,37 +266,67 @@ public class FeedMediaHelper {
                     height = Math.max(dp(150), Math.min(dp(400),
                             (int) (displayWidth * ((float) best.h / best.w))));
                 }
+            }
 
-                String filter = makeFilter(displayWidth, height);
+            String filter = makeFilter(displayWidth, height);
 
-                ImageLocation thumbLoc = null;
-                String thumbFilter = null;
-                TLRPC.PhotoSize stripped = findStripped(photo.sizes);
-                if (stripped != null) {
-                    thumbLoc = ImageLocation.getForPhoto(stripped, photo);
-                    thumbFilter = "b";
-                } else {
-                    TLRPC.PhotoSize small = smallestThumb(photo.sizes);
-                    if (small != null && small != best) {
-                        thumbLoc = ImageLocation.getForPhoto(small, photo);
-                        thumbFilter = "80_80_b";
-                    }
-                }
-
-                iv.setImage(
-                        ImageLocation.getForPhoto(best, photo), filter,
-                        thumbLoc, thumbFilter,
-                        0, msg);
-            } else {
-                TLRPC.PhotoSize stripped = findStripped(photo.sizes);
-                if (stripped != null) {
-                    iv.setImage(
-                            ImageLocation.getForPhoto(stripped, photo),
-                            displayWidth + "_" + height + "_b",
-                            null, null, 0, msg);
+            ImageLocation thumbLoc = null;
+            String thumbFilter = null;
+            TLRPC.PhotoSize stripped = findStripped(photo.sizes);
+            if (stripped != null) {
+                thumbLoc = ImageLocation.getForPhoto(stripped, photo);
+                thumbFilter = "b";
+            } else if (best != null) {
+                TLRPC.PhotoSize small = smallestThumb(photo.sizes);
+                if (small != null && small != best) {
+                    thumbLoc = ImageLocation.getForPhoto(small, photo);
+                    thumbFilter = "80_80_b";
                 }
             }
-            overlay.setVisibility(View.GONE);
+
+            if (isLivePhoto && msg.getDocument() != null) {
+                TLRPC.Document videoDoc = msg.getDocument();
+                ImageLocation videoLoc = ImageLocation.getForDocument(videoDoc);
+                int videoSize = videoDoc.size > 0 && videoDoc.size <= Integer.MAX_VALUE ? (int) videoDoc.size : 0;
+
+                ImageLocation photoThumb = best != null ? ImageLocation.getForPhoto(best, photo) : thumbLoc;
+                String photoThumbFilter = best != null ? filter : thumbFilter;
+
+                iv.setImage(
+                        videoLoc, filter,
+                        photoThumb, photoThumbFilter,
+                        videoSize, msg);
+
+                iv.getImageReceiver().setAutoRepeat(1);
+                iv.getImageReceiver().setAllowStartAnimation(true);
+                iv.getImageReceiver().setDelegate((imageReceiver, set, isThumb, memCache) -> {
+                    if (set && !isThumb) {
+                        if (loadCallback != null) loadCallback.onMainImageLoaded(memCache);
+                        iv.getImageReceiver().setAllowStartAnimation(true);
+                        iv.getImageReceiver().startAnimation();
+                        iv.invalidate();
+                    }
+                });
+
+                overlay.setText("LIVE");
+                overlay.setVisibility(View.VISIBLE);
+            } else {
+                // === ОБЫЧНОЕ ФОТО ===
+                if (best != null) {
+                    iv.setImage(
+                            ImageLocation.getForPhoto(best, photo), filter,
+                            thumbLoc, thumbFilter,
+                            0, msg);
+                } else if (thumbLoc != null) {
+                    iv.setImage(thumbLoc, filter, null, null, 0, msg);
+                }
+                iv.getImageReceiver().setDelegate((imageReceiver, set, isThumb, memCache) -> {
+                    if (set && !isThumb) {
+                        if (loadCallback != null) loadCallback.onMainImageLoaded(memCache);
+                    }
+                });
+                overlay.setVisibility(View.GONE);
+            }
 
         } else if (raw.media instanceof TLRPC.TL_messageMediaDocument
                 && raw.media.document != null) {
@@ -344,11 +373,11 @@ public class FeedMediaHelper {
 
             if (isGif) {
                 if (isVideo) {
-                    TLRPC.PhotoSize thumb = bestSize(doc.thumbs);
-                    if (thumb != null) {
+                    TLRPC.PhotoSize thumbSize = bestSize(doc.thumbs);
+                    if (thumbSize != null) {
                         String vFilter = makeFilter(displayWidth, height);
                         iv.setImage(
-                                ImageLocation.getForDocument(thumb, doc), vFilter,
+                                ImageLocation.getForDocument(thumbSize, doc), vFilter,
                                 docThumbLoc, docThumbFilter,
                                 0, msg);
                     } else if (docThumbLoc != null) {
@@ -370,8 +399,9 @@ public class FeedMediaHelper {
                             docSize, msg);
                     iv.getImageReceiver().setAutoRepeat(1);
                     iv.getImageReceiver().setAllowStartAnimation(true);
-                    iv.getImageReceiver().setDelegate((imageReceiver, set, thumb, memCache) -> {
-                        if (set && !thumb) {
+                    iv.getImageReceiver().setDelegate((imageReceiver, set, isThumb, memCache) -> {
+                        if (set && !isThumb) {
+                            if (loadCallback != null) loadCallback.onMainImageLoaded(memCache);
                             iv.getImageReceiver().setAllowStartAnimation(true);
                             iv.getImageReceiver().startAnimation();
                             iv.invalidate();
@@ -382,11 +412,11 @@ public class FeedMediaHelper {
                 overlay.setText("GIF");
                 overlay.setVisibility(View.VISIBLE);
             } else {
-                TLRPC.PhotoSize thumb = bestSize(doc.thumbs);
-                if (thumb != null) {
+                TLRPC.PhotoSize thumbSize = bestSize(doc.thumbs);
+                if (thumbSize != null) {
                     String vFilter = makeFilter(displayWidth, height);
                     iv.setImage(
-                            ImageLocation.getForDocument(thumb, doc), vFilter,
+                            ImageLocation.getForDocument(thumbSize, doc), vFilter,
                             docThumbLoc, docThumbFilter,
                             0, msg);
                 } else if (docThumbLoc != null) {
@@ -394,6 +424,12 @@ public class FeedMediaHelper {
                             displayWidth + "_" + height + "_b",
                             null, null, 0, msg);
                 }
+
+                iv.getImageReceiver().setDelegate((imageReceiver, set, isThumb, memCache) -> {
+                    if (set && !isThumb) {
+                        if (loadCallback != null) loadCallback.onMainImageLoaded(memCache);
+                    }
+                });
 
                 if (isVideo) {
                     int d = (int) duration;
