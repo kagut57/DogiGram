@@ -10320,3 +10320,4 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
         parentLayout = null;
     }
 }
+.
