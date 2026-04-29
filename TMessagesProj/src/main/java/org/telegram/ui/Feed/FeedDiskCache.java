@@ -8,8 +8,7 @@ import java.io.BufferedOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
@@ -70,7 +69,7 @@ public class FeedDiskCache {
             DataOutputStream out = null;
             try {
                 out = new DataOutputStream(
-                        new BufferedOutputStream(new FileOutputStream(snapshotFile)));
+                        new BufferedOutputStream(Files.newOutputStream(snapshotFile.toPath())));
                 out.writeInt(VERSION);
                 out.writeInt(copy.size());
 
@@ -104,7 +103,7 @@ public class FeedDiskCache {
                 }
 
                 in = new DataInputStream(
-                        new BufferedInputStream(new FileInputStream(snapshotFile)));
+                        new BufferedInputStream(Files.newInputStream(snapshotFile.toPath())));
 
                 int version = in.readInt();
                 if (version != VERSION) {

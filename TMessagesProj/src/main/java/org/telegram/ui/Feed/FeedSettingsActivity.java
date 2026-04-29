@@ -18,6 +18,7 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import org.telegram.messenger.ImageLocation;
+import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.R;
 import org.telegram.tgnet.TLRPC;
@@ -468,7 +469,6 @@ public class FeedSettingsActivity extends BaseFragment {
         radioGroup.check(current == FeedAlbumMode.CAROUSEL ? 0 : 1);
 
         layout.addView(radioGroup);
-
         AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
         builder.setTitle("Album display mode");
         builder.setView(layout);
@@ -481,8 +481,8 @@ public class FeedSettingsActivity extends BaseFragment {
             if (adapter != null) adapter.notifyDataSetChanged();
         });
         builder.setNegativeButton(
-                org.telegram.messenger.LocaleController.getString(
-                        "Cancel", org.telegram.messenger.R.string.Cancel),
+                LocaleController.getString(
+                        R.string.Cancel),
                 null);
         showDialog(builder.create());
     }

@@ -52,18 +52,16 @@ public class FeedHiddenLogActivity extends BaseFragment {
             }
         });
 
-        actionBar.createMenu().addItem(1, R.drawable.msg_clear).setOnClickListener(v -> {
-            new AlertDialog.Builder(getParentActivity())
-                    .setTitle("Clear Log")
-                    .setMessage("Are you sure you want to clear the hidden posts log?")
-                    .setPositiveButton("Clear", (dialog, which) -> {
-                        CustomSettings.clearHiddenLog();
-                        logArray = new JSONArray();
-                        adapter.notifyDataSetChanged();
-                    })
-                    .setNegativeButton("Cancel", null)
-                    .show();
-        });
+        actionBar.createMenu().addItem(1, R.drawable.msg_clear).setOnClickListener(v -> new AlertDialog.Builder(getParentActivity())
+                .setTitle("Clear Log")
+                .setMessage("Are you sure you want to clear the hidden posts log?")
+                .setPositiveButton("Clear", (dialog, which) -> {
+                    CustomSettings.clearHiddenLog();
+                    logArray = new JSONArray();
+                    adapter.notifyDataSetChanged();
+                })
+                .setNegativeButton("Cancel", null)
+                .show());
 
         FrameLayout root = new FrameLayout(context);
         root.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundGray));
@@ -99,7 +97,7 @@ public class FeedHiddenLogActivity extends BaseFragment {
                 view = new TextView(ctx);
                 ((TextView) view).setTextSize(15);
                 ((TextView) view).setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
-                ((TextView) view).setPadding(AndroidUtilities.dp(16), AndroidUtilities.dp(12), AndroidUtilities.dp(16), AndroidUtilities.dp(12));
+                view.setPadding(AndroidUtilities.dp(16), AndroidUtilities.dp(12), AndroidUtilities.dp(16), AndroidUtilities.dp(12));
                 view.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
             } else {
                 view = new TextInfoPrivacyCell(ctx);

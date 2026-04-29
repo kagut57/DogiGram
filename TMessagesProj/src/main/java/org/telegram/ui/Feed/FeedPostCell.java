@@ -14,7 +14,6 @@ import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.TextUtils;
 import android.text.style.ClickableSpan;
-import android.text.style.ImageSpan;
 import android.util.TypedValue;
 import android.view.GestureDetector;
 import android.view.Gravity;
@@ -884,7 +883,7 @@ public class FeedPostCell extends LinearLayout {
                         callback.onMediaClick(feedItem, index);
                     }
                 },
-                resourceProvider, roundVideoView,
+                roundVideoView,
                 (fromCache) -> {
                     if (currentItem != capturedItem) return;
                     mediaShimmer.hide(!fromCache);
@@ -985,9 +984,6 @@ public class FeedPostCell extends LinearLayout {
         cancelPendingTruncate();
         messageTextView.requestLayout();
 
-        final CharSequence expectedText = fullText;
-        final int expectedLength = expectedText != null ? expectedText.length() : 0;
-
         pendingTruncateListener = new ViewTreeObserver.OnPreDrawListener() {
             private int attempts = 0;
 
@@ -1046,10 +1042,10 @@ public class FeedPostCell extends LinearLayout {
                 setCollapsedText();
                 scheduleQuoteWidthUpdate();
                 readMoreView.setVisibility(VISIBLE);
-                readMoreView.setText(LocaleController.getString("FeedReadMore", R.string.FeedReadMore));
+                readMoreView.setText(LocaleController.getString(R.string.FeedReadMore));
             } else {
                 readMoreView.setVisibility(VISIBLE);
-                readMoreView.setText(LocaleController.getString("FeedShowLess", R.string.FeedShowLess));
+                readMoreView.setText(LocaleController.getString(R.string.FeedShowLess));
             }
         } else {
             collapsedEndOffset = -1;
@@ -1076,10 +1072,10 @@ public class FeedPostCell extends LinearLayout {
         if (textExpanded) {
             messageTextView.setText(fullText);
             messageTextView.post(messageTextView::invalidateEmojis);
-            readMoreView.setText(LocaleController.getString("FeedShowLess", R.string.FeedShowLess));
+            readMoreView.setText(LocaleController.getString(R.string.FeedShowLess));
         } else {
             setCollapsedText();
-            readMoreView.setText(LocaleController.getString("FeedReadMore", R.string.FeedReadMore));
+            readMoreView.setText(LocaleController.getString(R.string.FeedReadMore));
             scrollToTopOfPost();
         }
         scheduleQuoteWidthUpdate();
@@ -1155,12 +1151,12 @@ public class FeedPostCell extends LinearLayout {
                             setCollapsedText();
                             readMoreView.setVisibility(VISIBLE);
                             readMoreView.setText(
-                                    LocaleController.getString("FeedReadMore", R.string.FeedReadMore));
+                                    LocaleController.getString(R.string.FeedReadMore));
                             return false;
                         } else {
                             readMoreView.setVisibility(VISIBLE);
                             readMoreView.setText(
-                                    LocaleController.getString("FeedShowLess", R.string.FeedShowLess));
+                                    LocaleController.getString(R.string.FeedShowLess));
                         }
                     } else {
                         collapsedEndOffset = -1;
@@ -1387,14 +1383,6 @@ public class FeedPostCell extends LinearLayout {
         }
     }
 
-    boolean isTouchOnMessageText(MotionEvent ev) {
-        if (messageTextView == null || messageTextView.getVisibility() != VISIBLE) return false;
-        return ev.getX() >= messageTextView.getLeft()
-                && ev.getX() <= messageTextView.getRight()
-                && ev.getY() >= messageTextView.getTop()
-                && ev.getY() <= messageTextView.getBottom();
-    }
-
     private boolean isTouchOnInteractiveChild(MotionEvent ev) {
         return hasInteractiveTarget(this, ev.getX(), ev.getY());
     }
@@ -1458,7 +1446,7 @@ public class FeedPostCell extends LinearLayout {
 
         if (wasAutoplaying && canAutoplayVideo()) {
             wasAutoplaying = false;
-            post(() -> startAutoplay());
+            post(this::startAutoplay);
         }
     }
 
@@ -1595,41 +1583,6 @@ public class FeedPostCell extends LinearLayout {
         });
     }
 
-    private void appendBadge(SpannableStringBuilder builder, int drawableRes) {
-        int startIndex = builder.length();
-        builder.append("  ");
-
-        @SuppressLint("UseCompatLoadingForDrawables") Drawable drawable = getResources().getDrawable(drawableRes).mutate();
-        int size = dp(18);
-        drawable.setBounds(0, 0, size, size);
-
-        builder.setSpan(new CenteredImageSpan(drawable), startIndex, startIndex + 1,
-                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-    }
-
-    private static class CenteredImageSpan extends ImageSpan {
-        public CenteredImageSpan(Drawable drawable) {
-            super(drawable);
-        }
-
-        @Override
-        public void draw(@NonNull Canvas canvas, CharSequence text,
-                         int start, int end, float x,
-                         int top, int y, int bottom, @NonNull Paint paint) {
-            Drawable b = getDrawable();
-            Paint.FontMetrics fm = paint.getFontMetrics();
-
-            int textHeight = (int) (fm.descent - fm.ascent);
-            int transY = (int) ((textHeight - b.getBounds().bottom) / 2f
-                    + fm.ascent + paint.getTextSize() / 2f - b.getBounds().bottom / 2f);
-
-            canvas.save();
-            canvas.translate(x, transY);
-            b.draw(canvas);
-            canvas.restore();
-        }
-    }
-
     public boolean canAutoplayVideo() {
         if (currentItem == null || currentItem.messages == null) return false;
         if (FeedMediaHelper.hasVisualMediaSpoiler(currentItem)) return false;
@@ -1643,7 +1596,6 @@ public class FeedPostCell extends LinearLayout {
 
             boolean isVisual = false;
             boolean isVideo = false;
-            boolean isGif = false;
 
             if (media instanceof TLRPC.TL_messageMediaPhoto) {
                 isVisual = true;
@@ -1654,7 +1606,6 @@ public class FeedPostCell extends LinearLayout {
                         isVideo = true;
                         if (attr.round_message) return false;
                     }
-                    if (attr instanceof TLRPC.TL_documentAttributeAnimated) isGif = true;
                 }
             }
 
@@ -1746,10 +1697,11 @@ public class FeedPostCell extends LinearLayout {
             TLRPC.MessageMedia media = msg.messageOwner.media;
             if (media instanceof TLRPC.TL_messageMediaDocument && media.document != null) {
                 boolean isVideo = false;
-                boolean isGif = false;
                 for (TLRPC.DocumentAttribute attr : media.document.attributes) {
-                    if (attr instanceof TLRPC.TL_documentAttributeVideo) isVideo = true;
-                    if (attr instanceof TLRPC.TL_documentAttributeAnimated) isGif = true;
+                    if (attr instanceof TLRPC.TL_documentAttributeVideo) {
+                        isVideo = true;
+                        break;
+                    }
                 }
                 if (isVideo) return msg;
             }

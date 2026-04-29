@@ -111,17 +111,17 @@ public class FeedInlineButtonsView extends LinearLayout {
 
     private void handleClick(TLRPC.KeyboardButton button) {
         if (button instanceof TLRPC.TL_keyboardButtonUrl) {
-            String url = ((TLRPC.TL_keyboardButtonUrl) button).url;
+            String url = button.url;
             if (url != null) Browser.openUrl(getContext(), url);
             return;
         }
         if (button instanceof TLRPC.TL_keyboardButtonUrlAuth) {
-            String url = ((TLRPC.TL_keyboardButtonUrlAuth) button).url;
+            String url = button.url;
             if (url != null) Browser.openUrl(getContext(), url);
             return;
         }
         if (button instanceof TLRPC.TL_keyboardButtonWebView) {
-            String url = ((TLRPC.TL_keyboardButtonWebView) button).url;
+            String url = button.url;
             if (url != null) Browser.openUrl(getContext(), url);
             return;
         }

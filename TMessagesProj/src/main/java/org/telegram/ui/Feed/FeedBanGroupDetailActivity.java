@@ -1,6 +1,7 @@
 package org.telegram.ui.Feed;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
+import static org.telegram.messenger.LocaleController.getString;
 
 import android.content.Context;
 import android.graphics.Canvas;
@@ -64,24 +65,31 @@ public class FeedBanGroupDetailActivity extends BaseFragment {
             }
         });
 
-        actionBar.createMenu().addItem(1, R.drawable.msg_delete).setOnClickListener(v -> {
-            new AlertDialog.Builder(getParentActivity())
-                    .setTitle("Delete Group")
-                    .setMessage("Are you sure you want to delete \"" + group.name + "\"?")
-                    .setPositiveButton("Delete", (dialog, which) -> {
-                        List<CustomSettings.BanGroup> allGroups = CustomSettings.getBanGroups();
-                        allGroups.removeIf(g -> g.id.equals(group.id));
-                        CustomSettings.saveBanGroups(allGroups);
-                        finishFragment();
-                    })
-                    .setNegativeButton("Cancel", null)
-                    .show();
-        });
+        actionBar.createMenu().addItem(1, R.drawable.msg_delete).setOnClickListener(v -> new AlertDialog.Builder(getParentActivity())
+                .setTitle(getString(R.string.DeleteMega))
+                .setMessage("Are you sure you want to delete \"" + group.name + "\"?")
+                .setPositiveButton(getString(R.string.Delete), (dialog, which) -> {
+                    List<CustomSettings.BanGroup> allGroups = CustomSettings.getBanGroups();
+                    allGroups.removeIf(g -> g.id.equals(group.id));
+                    CustomSettings.saveBanGroups(allGroups);
+                    finishFragment();
+                })
+                .setNegativeButton(getString(R.string.Cancel), null)
+                .show());
 
         FrameLayout root = new FrameLayout(context);
         root.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundGray));
 
         adapter = new ListAdapter(context);
+        RecyclerListView listView = getRecyclerListView(context);
+
+        root.addView(listView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
+        fragmentView = root;
+        return root;
+    }
+
+    @NonNull
+    private RecyclerListView getRecyclerListView(Context context) {
         RecyclerListView listView = new RecyclerListView(context);
         listView.setLayoutManager(new LinearLayoutManager(context));
         listView.setAdapter(adapter);
@@ -95,10 +103,7 @@ public class FeedBanGroupDetailActivity extends BaseFragment {
                 showAddPhraseDialog();
             }
         });
-
-        root.addView(listView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
-        fragmentView = root;
-        return root;
+        return listView;
     }
 
     private void showAddPhraseDialog() {
@@ -116,7 +121,7 @@ public class FeedBanGroupDetailActivity extends BaseFragment {
                 saveAndRefresh();
             }
         });
-        builder.setNegativeButton("Cancel", null);
+        builder.setNegativeButton(getString(R.string.Cancel), null);
         showDialog(builder.create());
     }
 
@@ -206,7 +211,6 @@ public class FeedBanGroupDetailActivity extends BaseFragment {
 
     private class PhraseCell extends FrameLayout {
         private final TextView textView;
-        private final ImageView deleteButton;
         private int currentIndex = -1;
 
         public PhraseCell(Context context) {
@@ -216,7 +220,7 @@ public class FeedBanGroupDetailActivity extends BaseFragment {
             textView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
             addView(textView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_VERTICAL, 16, 0, 56, 0));
 
-            deleteButton = new ImageView(context);
+            ImageView deleteButton = new ImageView(context);
             deleteButton.setScaleType(ImageView.ScaleType.CENTER);
             deleteButton.setImageResource(R.drawable.msg_close);
             deleteButton.setColorFilter(Theme.getColor(Theme.key_windowBackgroundWhiteGrayIcon));

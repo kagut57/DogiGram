@@ -6,7 +6,10 @@ import android.os.Handler;
 import android.os.Looper;
 import android.view.TextureView;
 
+import androidx.annotation.NonNull;
+
 import org.telegram.messenger.FileLoader;
+import org.telegram.messenger.FileLog;
 import org.telegram.messenger.MessageObject;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.Components.VideoPlayer;
@@ -63,7 +66,7 @@ public class FeedInlineVideoPlayer implements VideoPlayer.VideoPlayerDelegate {
         if (tv == null) return;
         tv.setSurfaceTextureListener(new TextureView.SurfaceTextureListener() {
             @Override
-            public void onSurfaceTextureAvailable(SurfaceTexture surface, int width, int height) {
+            public void onSurfaceTextureAvailable(@NonNull SurfaceTexture surface, int width, int height) {
                 if (videoPlayer != null && textureView != null) {
                     videoPlayer.setTextureView(textureView);
                     if (!isPlaying && currentMessage != null) {
@@ -74,14 +77,14 @@ public class FeedInlineVideoPlayer implements VideoPlayer.VideoPlayerDelegate {
                 }
             }
             @Override
-            public void onSurfaceTextureSizeChanged(SurfaceTexture surface, int width, int height) {}
+            public void onSurfaceTextureSizeChanged(@NonNull SurfaceTexture surface, int width, int height) {}
             @Override
-            public boolean onSurfaceTextureDestroyed(SurfaceTexture surface) {
+            public boolean onSurfaceTextureDestroyed(@NonNull SurfaceTexture surface) {
                 pause();
                 return true;
             }
             @Override
-            public void onSurfaceTextureUpdated(SurfaceTexture surface) {}
+            public void onSurfaceTextureUpdated(@NonNull SurfaceTexture surface) {}
         });
     }
 
@@ -129,7 +132,7 @@ public class FeedInlineVideoPlayer implements VideoPlayer.VideoPlayerDelegate {
             try {
                 uri = VideoPlayer.VideoUri.getUri(msg.currentAccount, document, 0);
             } catch (Exception e) {
-                e.printStackTrace();
+                FileLog.e(e);
                 return;
             }
         }
@@ -234,22 +237,24 @@ public class FeedInlineVideoPlayer implements VideoPlayer.VideoPlayerDelegate {
             return;
         }
 
-        float actualVideoWidth = videoWidth * (pixelRatio > 0 ? pixelRatio : 1f);
+        float unrotatedWidth = videoWidth * (pixelRatio > 0 ? pixelRatio : 1f);
 
-        if (actualVideoWidth <= 0 || (float) videoHeight <= 0) return;
+        if (unrotatedWidth <= 0 || (float) videoHeight <= 0) return;
 
-        float visualWidth = actualVideoWidth;
-        float visualHeight = (float) videoHeight;
+        float scaleX;
+        float scaleY;
+
         if (rotation == 90 || rotation == 270) {
-            visualWidth = (float) videoHeight;
-            visualHeight = actualVideoWidth;
+            scaleX = containerWidth / (float) videoHeight;
+            scaleY = containerHeight / unrotatedWidth;
+        } else {
+            scaleX = containerWidth / unrotatedWidth;
+            scaleY = containerHeight / (float) videoHeight;
         }
 
-        float scaleX = containerWidth / visualWidth;
-        float scaleY = containerHeight / visualHeight;
         float scale = Math.max(scaleX, scaleY);
 
-        int scaledWidth = Math.round(actualVideoWidth * scale);
+        int scaledWidth = Math.round(unrotatedWidth * scale);
         int scaledHeight = Math.round((float) videoHeight * scale);
 
         android.widget.FrameLayout.LayoutParams lp = (android.widget.FrameLayout.LayoutParams) textureView.getLayoutParams();

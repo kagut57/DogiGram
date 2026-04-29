@@ -27,10 +27,6 @@ public class FeedDateSpan extends ClickableSpan {
         return LocaleController.formatEntityFormattedDate(entity, true);
     }
 
-    public String getFormattedShort() {
-        return LocaleController.formatEntityFormattedDate(entity);
-    }
-
     @Override
     public void onClick(@NonNull View widget) {
         // обрабатывается снаружи через callback

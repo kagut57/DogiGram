@@ -94,6 +94,7 @@ public class FeedController implements NotificationCenter.NotificationCenterDele
             if (CustomSettings.hideProxySponsor() && controller.isPromoDialog(dialogId, false))
                 return;
 
+            @SuppressWarnings("unchecked")
             ArrayList<MessageObject> messages = (ArrayList<MessageObject>) args[1];
             if (messages == null || messages.isEmpty()) return;
 
@@ -265,7 +266,6 @@ public class FeedController implements NotificationCenter.NotificationCenterDele
     private boolean feedLoaded = false;
     private Runnable saveRunnable;
 
-    private boolean noMorePosts = false;
     private final Set<String> loadedItemIds = new HashSet<>();
 
     private final List<Object> displayItems = new ArrayList<>();
@@ -407,10 +407,6 @@ public class FeedController implements NotificationCenter.NotificationCenterDele
         });
     }
 
-    public boolean isLocallyRead(long channelId, int messageId) {
-        return localReadIds.contains(channelId + "_" + messageId);
-    }
-
     public boolean isBookmarked(String uid) { return bookmarkedIds.contains(uid); }
 
     public boolean hasCachedFeed() {
@@ -464,7 +460,6 @@ public class FeedController implements NotificationCenter.NotificationCenterDele
 
                     feedLoaded = true;
                     isLoading = false;
-                    noMorePosts = !hasMore;
 
                     rebuildDisplayList();
                     scheduleSnapshotSave();
@@ -561,7 +556,6 @@ public class FeedController implements NotificationCenter.NotificationCenterDele
     }
 
     public void resetLoadMore() {
-        noMorePosts = false;
         channelCursors.clear();
     }
 
@@ -591,7 +585,6 @@ public class FeedController implements NotificationCenter.NotificationCenterDele
                     int addedDisplayItems = appendItemsToDisplay(page);
 
                     isLoading = false;
-                    noMorePosts = !hasMore;
 
                     new FeedStatsRefresher(currentAccount).refreshReactions(page, () ->
                             AndroidUtilities.runOnUIThread(this::notifyNewPostListeners)
@@ -783,7 +776,6 @@ public class FeedController implements NotificationCenter.NotificationCenterDele
         displayItems.clear();
         postsSinceLastRec = 0;
         recPostsUsedIndex = 0;
-        noMorePosts = false;
     }
 
     private void appendPageToCache(List<FeedItem> pageItems) {

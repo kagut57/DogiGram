@@ -22,9 +22,6 @@ public class FeedCodeSpan {
     public static final int BLOCK_CORNER     = dp(6);
     public static final int COPY_ZONE        = dp(30);
 
-    public static final float INLINE_PAD_H   = dp(4);
-    public static final float INLINE_CORNER  = dp(4);
-
     public static class Inline extends MetricAffectingSpan {
 
         @Override

@@ -70,7 +70,6 @@ public class FeedAlbumGridView extends ViewGroup {
         this.clickListener = l;
     }
 
-    @SuppressLint("SetTextI18n")
     private void rebuildCells() {
         for (int i = getChildCount() - 1; i >= 0; i--) {
             android.view.View child = getChildAt(i);
@@ -274,7 +273,6 @@ public class FeedAlbumGridView extends ViewGroup {
         int n = cells.length;
 
         float padW = dp(6);
-        float padH = dp(3);
         float boxH = dp(18);
         float margin = dp(6);
 

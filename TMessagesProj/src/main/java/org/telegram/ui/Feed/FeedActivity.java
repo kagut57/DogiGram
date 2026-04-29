@@ -90,7 +90,7 @@ public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFr
             if (pv != null && pv.getLayoutParams() instanceof FrameLayout.LayoutParams) {
                 FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) pv.getLayoutParams();
                 lp.topMargin = ActionBar.getCurrentActionBarHeight()
-                        + AndroidUtilities.statusBarHeight + dp(8);
+                        + AndroidUtilities.getStatusBarHeight(getContext()) + dp(8);
                 pv.setLayoutParams(lp);
             }
         });
@@ -179,7 +179,7 @@ public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFr
 
     @Override
     public View createView(Context context) {
-        actionBar.setTitle(LocaleController.getString("FeedTitle", R.string.FeedTitle));
+        actionBar.setTitle(LocaleController.getString(R.string.FeedTitle));
         actionBar.setBackButtonDrawable(null);
         actionBar.setCastShadows(false);
         actionBar.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite, resourceProvider));
@@ -203,7 +203,7 @@ public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFr
         rootView.setClipToPadding(false);
         rootView.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite, resourceProvider));
 
-        int topPad = ActionBar.getCurrentActionBarHeight() + AndroidUtilities.statusBarHeight;
+        int topPad = ActionBar.getCurrentActionBarHeight() + AndroidUtilities.getStatusBarHeight(getContext());
         int bottomPad = hasMainTabs
                 ? dp(DialogsActivity.MAIN_TABS_HEIGHT + DialogsActivity.MAIN_TABS_MARGIN + 96)
                 : dp(96);
@@ -255,7 +255,7 @@ public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFr
                 LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
 
         emptyView = new TextView(context);
-        emptyView.setText(LocaleController.getString("FeedEmpty", R.string.FeedEmpty));
+        emptyView.setText(LocaleController.getString(R.string.FeedEmpty));
         emptyView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText, resourceProvider));
         emptyView.setTextSize(16);
         emptyView.setGravity(Gravity.CENTER);
@@ -267,7 +267,7 @@ public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFr
         FeedPlayerBar playerBar = new FeedPlayerBar(context, this, listView, resourceProvider);
         FrameLayout.LayoutParams playerLp = new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, dp(38));
-        playerLp.topMargin = ActionBar.getCurrentActionBarHeight() + AndroidUtilities.statusBarHeight;
+        playerLp.topMargin = ActionBar.getCurrentActionBarHeight() + AndroidUtilities.getStatusBarHeight(getContext());
         playerLp.gravity = Gravity.TOP;
         rootView.addView(playerBar, playerLp);
 
@@ -435,7 +435,7 @@ public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFr
             }
             @Override
             public void onTextLongPress(View cell, FeedController.FeedItem item, CharSequence text) {
-                actionHandler.onTextLongPress(cell, item, text);
+                actionHandler.onTextLongPress(cell, text);
             }
         };
     }
@@ -670,7 +670,7 @@ public class FeedActivity extends BaseFragment implements MainTabsActivity.TabFr
         canvas.scale(1.0f / 9.0f, 1.0f / 9.0f);
         fragmentView.draw(canvas);
         Utilities.stackBlurBitmap(bitmap, Math.max(9, Math.max(w, h) / 180));
-        blurredView.setBackground(new BitmapDrawable(bitmap));
+        blurredView.setBackground(new BitmapDrawable(getContext().getResources(), bitmap));
         blurredView.setAlpha(0.0f);
         blurredView.setVisibility(View.VISIBLE);
         blurredView.animate().alpha(1f).setDuration(220).start();

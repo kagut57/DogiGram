@@ -48,7 +48,6 @@ public class FeedPollView extends LinearLayout {
     private final TextView questionView;
     private final TextView typeLabel;
     private final LinearLayout answersContainer;
-    private final LinearLayout bottomLayout;
     private final TextView totalVotersView;
     private final TextView timerView;
 
@@ -151,7 +150,7 @@ public class FeedPollView extends LinearLayout {
         retractButton.setOnClickListener(v -> retractVote());
         addView(retractButton, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
-            bottomLayout = new LinearLayout(context);
+        LinearLayout bottomLayout = new LinearLayout(context);
         bottomLayout.setOrientation(HORIZONTAL);
         bottomLayout.setGravity(Gravity.CENTER_VERTICAL);
 
@@ -495,68 +494,66 @@ public class FeedPollView extends LinearLayout {
         req.msg_id = message.id;
         req.options = options;
 
-        ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> {
-            AndroidUtilities.runOnUIThread(() -> {
-                voteSending = false;
+        ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
+            voteSending = false;
 
-                if (error != null) {
-                    for (AnswerRow r : answerRows) r.container.setClickable(true);
-                    voteButton.setEnabled(true);
-                    voteButton.setText("Vote");
-                    retractButton.setEnabled(true);
-                    retractButton.setText("Retract Vote");
-                    try {
-                        Toast.makeText(getContext(), "Vote failed: " + error.text, Toast.LENGTH_SHORT).show();
-                    } catch (Exception e) { /* ignore */ }
-                    return;
-                }
-
-                if (response instanceof TLRPC.Updates) {
-                    extractPollResults((TLRPC.Updates) response);
-                }
-
-                if (options.isEmpty()) {
-                    voted = false;
-                    selectedOptions.clear();
-                    if (pollMedia.results != null && pollMedia.results.results != null) {
-                        for (TLRPC.PollAnswerVoters answerResult : pollMedia.results.results) {
-                            answerResult.chosen = false;
-                        }
-                    }
-                } else {
-                    voted = true;
-                    ensureResults();
-                    for (byte[] chosen : options) {
-                        boolean found = false;
-                        for (TLRPC.PollAnswerVoters answerResult : pollMedia.results.results) {
-                            if (Arrays.equals(answerResult.option, chosen)) {
-                                answerResult.chosen = true;
-                                found = true;
-                                break;
-                            }
-                        }
-                        if (!found) {
-                            TLRPC.TL_pollAnswerVoters newResult = new TLRPC.TL_pollAnswerVoters();
-                            newResult.option = chosen;
-                            newResult.chosen = true;
-                            newResult.voters = 1;
-                            newResult.flags |= 1;
-                            newResult.flags |= 4;
-                            pollMedia.results.results.add(newResult);
-                        }
-                    }
-                }
-
-                voteButton.setVisibility(multipleChoice && !voted && !closed ? VISIBLE : GONE);
+            if (error != null) {
+                for (AnswerRow r : answerRows) r.container.setClickable(true);
+                voteButton.setEnabled(true);
                 voteButton.setText("Vote");
-                retractButton.setText("Retract Vote");
                 retractButton.setEnabled(true);
+                retractButton.setText("Retract Vote");
+                try {
+                    Toast.makeText(getContext(), "Vote failed: " + error.text, Toast.LENGTH_SHORT).show();
+                } catch (Exception e) { /* ignore */ }
+                return;
+            }
 
-                updateResultsUI();
-                updateExplanation();
-                updateTimer();
-            });
-        });
+            if (response instanceof TLRPC.Updates) {
+                extractPollResults((TLRPC.Updates) response);
+            }
+
+            if (options.isEmpty()) {
+                voted = false;
+                selectedOptions.clear();
+                if (pollMedia.results != null && pollMedia.results.results != null) {
+                    for (TLRPC.PollAnswerVoters answerResult : pollMedia.results.results) {
+                        answerResult.chosen = false;
+                    }
+                }
+            } else {
+                voted = true;
+                ensureResults();
+                for (byte[] chosen : options) {
+                    boolean found = false;
+                    for (TLRPC.PollAnswerVoters answerResult : pollMedia.results.results) {
+                        if (Arrays.equals(answerResult.option, chosen)) {
+                            answerResult.chosen = true;
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found) {
+                        TLRPC.TL_pollAnswerVoters newResult = new TLRPC.TL_pollAnswerVoters();
+                        newResult.option = chosen;
+                        newResult.chosen = true;
+                        newResult.voters = 1;
+                        newResult.flags |= 1;
+                        newResult.flags |= 4;
+                        pollMedia.results.results.add(newResult);
+                    }
+                }
+            }
+
+            voteButton.setVisibility(multipleChoice && !voted && !closed ? VISIBLE : GONE);
+            voteButton.setText("Vote");
+            retractButton.setText("Retract Vote");
+            retractButton.setEnabled(true);
+
+            updateResultsUI();
+            updateExplanation();
+            updateTimer();
+        }));
     }
 
     private void extractPollResults(TLRPC.Updates updates) {

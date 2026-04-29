@@ -21,7 +21,6 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ImageLocation;
 import org.telegram.messenger.MessageObject;
 import org.telegram.tgnet.TLRPC;
-import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.BackupImageView;
 import org.telegram.ui.Components.LayoutHelper;
 
@@ -80,7 +79,7 @@ public class FeedAlbumCarouselView extends FrameLayout {
     private final FeedInlineVideoPlayer videoPlayer;
     private boolean autoplayEnabled = false;
 
-    public FeedAlbumCarouselView(Context context, Theme.ResourcesProvider rp) {
+    public FeedAlbumCarouselView(Context context) {
         super(context);
         setWillNotDraw(false);
         setClipChildren(true);
@@ -423,7 +422,7 @@ public class FeedAlbumCarouselView extends FrameLayout {
 
     private void drawCounter(Canvas canvas) {
         String txt  = (currentIndex + 1) + " / " + size();
-        float  padW = dp(10), padH = dp(5);
+        float  padW = dp(10);
         float  boxW = txtPaint.measureText(txt) + padW * 2;
         float  boxH = dp(20);
         float  right = getWidth() - dp(10);
@@ -597,7 +596,7 @@ public class FeedAlbumCarouselView extends FrameLayout {
     private void drawMediaOverlay(Canvas canvas) {
         if (currentOverlayText == null) return;
 
-        float padW = dp(8), padH = dp(4);
+        float padW = dp(8);
         float boxH = dp(20);
         float textW = txtPaint.measureText(currentOverlayText);
         float boxW = textW + padW * 2;

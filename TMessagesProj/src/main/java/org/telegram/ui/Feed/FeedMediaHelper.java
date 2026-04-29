@@ -4,7 +4,6 @@ import static org.telegram.messenger.AndroidUtilities.dp;
 
 import android.content.Context;
 import android.annotation.SuppressLint;
-import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.FrameLayout;
@@ -15,9 +14,7 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ImageLocation;
 import org.telegram.messenger.MessageObject;
 import org.telegram.tgnet.TLRPC;
-import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.BackupImageView;
-import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Custom.CustomSettings;
 
 import java.util.ArrayList;
@@ -46,7 +43,6 @@ public class FeedMediaHelper {
             LinearLayout mediaRow,
             TextView albumLabel,
             MediaClickListener listener,
-            Theme.ResourcesProvider rp,
             FeedRoundVideoView roundVideoView,
             ImageLoadCallback loadCallback) {
 
@@ -75,7 +71,6 @@ public class FeedMediaHelper {
             return;
         }
 
-        // Убираем установку делегата отсюда, теперь setupSingleMedia сам управляет делегатом
         int h = setupSingleMedia(mediaMessages.get(0), mainImage, mediaOverlay, loadCallback);
 
         mediaContainer.setVisibility(View.VISIBLE);
@@ -96,7 +91,7 @@ public class FeedMediaHelper {
             } else {
                 setupAlbumCarousel(mediaMessages, context, item,
                         mediaContainer, mainImage,
-                        listener, rp, h);
+                        listener, h);
             }
             mediaRow.setVisibility(View.GONE);
             albumLabel.setVisibility(View.GONE);
@@ -311,7 +306,6 @@ public class FeedMediaHelper {
                 overlay.setText("LIVE");
                 overlay.setVisibility(View.VISIBLE);
             } else {
-                // === ОБЫЧНОЕ ФОТО ===
                 if (best != null) {
                     iv.setImage(
                             ImageLocation.getForPhoto(best, photo), filter,
@@ -445,54 +439,6 @@ public class FeedMediaHelper {
         return height;
     }
 
-    @SuppressLint("SetTextI18n")
-    private static void setupAlbumRow(List<MessageObject> mediaMessages,
-                                      Context context,
-                                      FeedController.FeedItem item,
-                                      LinearLayout mediaRow,
-                                      TextView albumLabel,
-                                      MediaClickListener listener,
-                                      Theme.ResourcesProvider rp) {
-        mediaRow.removeAllViews();
-        int show = Math.min(mediaMessages.size() - 1, 3);
-        for (int i = 0; i < show; i++) {
-            final int idx = i + 1;
-            BackupImageView thumb = new BackupImageView(context);
-            thumb.setRoundRadius(dp(8));
-            thumb.setOnClickListener(v -> {
-                if (listener != null) listener.onMediaClick(item, idx);
-            });
-            setupMediaThumb(mediaMessages.get(idx), thumb);
-            mediaRow.addView(thumb,
-                    LayoutHelper.createLinear(80, 80, 0, 0, 4, 0));
-        }
-        if (mediaMessages.size() > 4) {
-            TextView more = new TextView(context);
-            more.setText("+" + (mediaMessages.size() - 4));
-            more.setTextColor(Theme.getColor(
-                    Theme.key_windowBackgroundWhiteGrayText3, rp));
-            more.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
-            more.setGravity(Gravity.CENTER);
-            mediaRow.addView(more,
-                    LayoutHelper.createLinear(48, 80, Gravity.CENTER_VERTICAL));
-        }
-        mediaRow.setVisibility(View.VISIBLE);
-
-        int photos = 0, videos = 0;
-        for (MessageObject m : mediaMessages) {
-            if (m.isVideo() || m.isRoundVideo()) videos++;
-            else photos++;
-        }
-        StringBuilder sb = new StringBuilder("Album • ");
-        if (photos > 0)
-            sb.append(photos).append(photos == 1 ? " photo" : " photos");
-        if (photos > 0 && videos > 0) sb.append(", ");
-        if (videos > 0)
-            sb.append(videos).append(videos == 1 ? " video" : " videos");
-        albumLabel.setText(sb.toString());
-        albumLabel.setVisibility(View.VISIBLE);
-    }
-
     static void setupMediaThumb(MessageObject msg, BackupImageView v) {
         TLRPC.Message raw = msg.messageOwner;
         v.getImageReceiver().clearImage();
@@ -586,7 +532,6 @@ public class FeedMediaHelper {
             FrameLayout mediaContainer,
             BackupImageView mainImage,
             MediaClickListener listener,
-            Theme.ResourcesProvider rp,
             int heightPx) {
 
         for (int i = mediaContainer.getChildCount() - 1; i >= 0; i--) {
@@ -609,7 +554,7 @@ public class FeedMediaHelper {
         }
 
         if (carousel == null) {
-            carousel = new FeedAlbumCarouselView(context, rp);
+            carousel = new FeedAlbumCarouselView(context);
             FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
                     FrameLayout.LayoutParams.MATCH_PARENT,
                     FrameLayout.LayoutParams.MATCH_PARENT);

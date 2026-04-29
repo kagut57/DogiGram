@@ -2,6 +2,7 @@ package org.telegram.ui.Custom;
 
 import android.content.SharedPreferences;
 import org.telegram.messenger.ApplicationLoader;
+import org.telegram.messenger.FileLog;
 import org.telegram.ui.Feed.FeedAlbumMode;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -70,7 +71,7 @@ public class CustomSettings {
                 }
                 result.add(new BanGroup(obj.optString("id"), obj.getString("name"), obj.optBoolean("enabled", true), phrases));
             }
-        } catch (Exception e) { e.printStackTrace(); }
+        } catch (Exception e) { FileLog.e(e); }
         return result;
     }
 
@@ -88,7 +89,7 @@ public class CustomSettings {
                 arr.put(obj);
             }
             getPrefs().edit().putString(KEY_BAN_GROUPS, arr.toString()).apply();
-        } catch (Exception e) { e.printStackTrace(); }
+        } catch (Exception e) { FileLog.e(e); }
     }
 
     private static final String KEY_HIDDEN_LOG = "hidden_log_json";
@@ -108,7 +109,7 @@ public class CustomSettings {
                 arr = new JSONArray(arr.toString().substring(arr.toString().indexOf(",") + 1));
             }
             getPrefs().edit().putString(KEY_HIDDEN_LOG, arr.toString()).apply();
-        } catch (Exception e) { e.printStackTrace(); }
+        } catch (Exception e) { FileLog.e(e); }
     }
 
     public static JSONArray getHiddenLog() {

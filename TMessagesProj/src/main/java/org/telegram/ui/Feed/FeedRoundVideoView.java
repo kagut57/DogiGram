@@ -34,6 +34,7 @@ import androidx.annotation.NonNull;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.FileLoader;
+import org.telegram.messenger.FileLog;
 import org.telegram.messenger.ImageLocation;
 import org.telegram.messenger.MediaController;
 import org.telegram.messenger.MessageObject;
@@ -179,11 +180,6 @@ public class FeedRoundVideoView extends FrameLayout
     public static boolean isActivelyPlaying() {
         FeedRoundVideoView v = getActivePlayer();
         return v != null && v.isPlaying;
-    }
-
-    public static boolean isActivePausedOrFinished() {
-        FeedRoundVideoView v = getActivePlayer();
-        return v != null && !v.isPlaying && v.isPrepared;
     }
 
     public static MessageObject getActiveMessage() {
@@ -424,7 +420,7 @@ public class FeedRoundVideoView extends FrameLayout
             mediaPlayer.prepareAsync();
             textureView.setVisibility(VISIBLE);
         } catch (Exception e) {
-            e.printStackTrace();
+            FileLog.e(e);
             release();
         }
     }

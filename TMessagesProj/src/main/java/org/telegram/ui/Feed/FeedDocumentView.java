@@ -270,7 +270,7 @@ public class FeedDocumentView extends LinearLayout implements NotificationCenter
             row.iconView.setImageResource(R.drawable.msg_round_cancel_m);
             row.iconView.setColorFilter(new PorterDuffColorFilter(accent, PorterDuff.Mode.SRC_IN));
             setProgressVisible(row, true);
-            row.sizeView.setText(LocaleController.getString("Loading", R.string.Loading)
+            row.sizeView.setText(LocaleController.getString(R.string.Loading)
                     + "… · " + FeedUtils.formatFileSize(row.document.size));
 
         } else {
@@ -346,7 +346,7 @@ public class FeedDocumentView extends LinearLayout implements NotificationCenter
 
                 setProgressVisible(row, true);
                 row.progressBar.setProgress(pct);
-                row.sizeView.setText(LocaleController.getString("Loading", R.string.Loading)
+                row.sizeView.setText(LocaleController.getString(R.string.Loading)
                         + "… · " + pct + "% · " + FeedUtils.formatFileSize(row.document.size));
             }
             break;

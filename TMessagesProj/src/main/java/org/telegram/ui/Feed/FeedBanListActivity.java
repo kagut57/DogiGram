@@ -48,6 +48,15 @@ public class FeedBanListActivity extends BaseFragment {
         root.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundGray));
 
         adapter = new ListAdapter(context);
+        RecyclerListView listView = getRecyclerListView(context);
+
+        root.addView(listView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
+        fragmentView = root;
+        return root;
+    }
+
+    @NonNull
+    private RecyclerListView getRecyclerListView(Context context) {
         RecyclerListView listView = new RecyclerListView(context);
         listView.setLayoutManager(new LinearLayoutManager(context));
         listView.setAdapter(adapter);
@@ -60,10 +69,7 @@ public class FeedBanListActivity extends BaseFragment {
                 presentFragment(new FeedBanGroupDetailActivity(groups.get(position).id));
             }
         });
-
-        root.addView(listView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
-        fragmentView = root;
-        return root;
+        return listView;
     }
 
     @Override

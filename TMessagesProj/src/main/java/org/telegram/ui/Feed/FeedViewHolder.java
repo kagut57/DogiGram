@@ -9,7 +9,7 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import org.telegram.ui.ActionBar.Theme;
 
-class FeedViewHolder extends RecyclerView.ViewHolder {
+public class FeedViewHolder extends RecyclerView.ViewHolder {
 
     FeedViewHolder(@NonNull View v) {
         super(v);

@@ -1,5 +1,7 @@
 package org.telegram.ui.Custom;
 
+import static org.telegram.messenger.LocaleController.getString;
+
 import android.content.Context;
 import android.view.View;
 import android.view.ViewGroup;
@@ -54,7 +56,7 @@ public class CustomSettingsActivity extends BaseFragment {
     public View createView(Context context) {
 
         actionBar.setBackButtonImage(R.drawable.ic_ab_back);
-        actionBar.setTitle("Custom Settings");
+        actionBar.setTitle(getString(R.string.CustomSettingsTitle));
         actionBar.setAllowOverlayTitle(true);
         actionBar.setActionBarMenuOnItemClick(new ActionBar.ActionBarMenuOnItemClick() {
             @Override
@@ -175,19 +177,19 @@ public class CustomSettingsActivity extends BaseFragment {
             switch (holder.getItemViewType()) {
                 case TYPE_HEADER: {
                     HeaderCell cell = (HeaderCell) holder.itemView;
-                    if (pos == adsHeaderRow)   cell.setText("Advertising");
-                    if (pos == proxyHeaderRow)  cell.setText("Proxy");
-                    if (pos == feedHeaderRow)   cell.setText("Feed");
+                    if (pos == adsHeaderRow)   cell.setText(getString(R.string.CustomSettingsAdvertisingHeader));
+                    if (pos == proxyHeaderRow)  cell.setText(getString(R.string.Proxy));
+                    if (pos == feedHeaderRow)   cell.setText(getString(R.string.CustomSettingsFeedHeader));
                     break;
                 }
                 case TYPE_CHECK: {
                     TextCheckCell cell = (TextCheckCell) holder.itemView;
                     if (pos == hideAdsRow) {
-                        cell.setTextAndCheck("Hide Sponsored Messages",
+                        cell.setTextAndCheck(getString(R.string.CustomSettingsHideSponsoredMessages),
                                 CustomSettings.hideAds(), true);
                     }
                     if (pos == hideProxySponsorRow) {
-                        cell.setTextAndCheck("Hide Proxy Sponsor",
+                        cell.setTextAndCheck(getString(R.string.CustomSettingsHideProxySponsor),
                                 CustomSettings.hideProxySponsor(), false);
                     }
                     break;
@@ -195,22 +197,20 @@ public class CustomSettingsActivity extends BaseFragment {
                 case TYPE_INFO: {
                     TextInfoPrivacyCell cell = (TextInfoPrivacyCell) holder.itemView;
                     if (pos == hideAdsInfoRow) {
-                        cell.setText("Completely hides sponsored messages " +
-                                "in channels without Telegram Premium");
+                        cell.setText(getString(R.string.CustomSettingsHideAdsInfo));
                     }
                     if (pos == hideProxySponsorInfoRow) {
-                        cell.setText("Hides the proxy sponsor channel " +
-                                "from your chat list and feed");
+                        cell.setText(getString(R.string.CustomSettingsHideProxySponsorInfo));
                     }
                     if (pos == feedInfoRow) {
-                        cell.setText("Manage your feed channels and recommendations");
+                        cell.setText(getString(R.string.CustomSettingsFeedInfo));
                     }
                     break;
                 }
                 case TYPE_TEXT_CELL: {
                     TextCell cell = (TextCell) holder.itemView;
                     if (pos == feedSettingsRow) {
-                        cell.setTextAndIcon("Feed Settings", R.drawable.msg_channel, true);
+                        cell.setTextAndIcon(getString(R.string.CustomSettingsFeedSettings), R.drawable.msg_channel, true);
                     }
                     break;
                 }

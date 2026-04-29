@@ -184,7 +184,7 @@ public class FeedReplyView extends LinearLayout {
             if (thumb != null) {
                 imageView.setImage(
                         ImageLocation.getForPhoto(thumb, replyMsg.media.photo),
-                        "36_36", (ImageLocation) null, null, 0, replyMsg.media.photo);
+                        "36_36", null, null, 0, replyMsg.media.photo);
                 imageView.setVisibility(VISIBLE);
             }
         } else if (replyMsg.media instanceof TLRPC.TL_messageMediaDocument

@@ -758,7 +758,7 @@ public class FeedRecommendationEngine {
             int score = 0;
             if (first.media instanceof TLRPC.TL_messageMediaPhoto) score += 2;
             if (first.media instanceof TLRPC.TL_messageMediaDocument) score += 2;
-            if (first.views > 0) score += Math.min(3, (int) Math.log10(Math.max(1, first.views)));
+            if (first.views > 0) score += Math.min(3, (int) Math.log10(first.views));
             if (age < 24 * 3600) score += 2;
             if (albumCaption != null && albumCaption.length() > 50) score += 3;
             else if (albumCaption != null && !albumCaption.isEmpty()) score += 1;
@@ -972,7 +972,6 @@ public class FeedRecommendationEngine {
         }
 
         AtomicInteger pending = new AtomicInteger(nextBatch.size());
-        Set<Long> finalSubscribed = subscribedChatIds;
 
         for (int i = 0; i < nextBatch.size(); i++) {
             long chatId = nextBatch.get(i);
@@ -986,7 +985,7 @@ public class FeedRecommendationEngine {
 
                 if (req.channel == null) {
                     if (pending.decrementAndGet() <= 0) {
-                        processExpandResults(scores, finalSubscribed, controller, onDone);
+                        processExpandResults(scores, subscribedChatIds, controller, onDone);
                     }
                     return;
                 }
@@ -1000,7 +999,7 @@ public class FeedRecommendationEngine {
 
                                 for (TLRPC.Chat similar : chats) {
                                     if (similar == null || similar.id == 0) continue;
-                                    if (finalSubscribed.contains(similar.id)) continue;
+                                    if (subscribedChatIds.contains(similar.id)) continue;
 
                                     ChannelScore cs = scores.get(similar.id);
                                     if (cs == null) {
@@ -1012,7 +1011,7 @@ public class FeedRecommendationEngine {
                                 }
                             }
                             if (pending.decrementAndGet() <= 0) {
-                                processExpandResults(scores, finalSubscribed, controller, onDone);
+                                processExpandResults(scores, subscribedChatIds, controller, onDone);
                             }
                         })
                 );
@@ -1086,42 +1085,6 @@ public class FeedRecommendationEngine {
         finishScan();
     }
 
-    public void refreshPosts(Runnable onComplete) {
-        if (!isEnabled()) {
-            if (onComplete != null) onComplete.run();
-            return;
-        }
-
-        this.onScanComplete = onComplete;
-
-        if (allDiscovered.isEmpty()
-                || System.currentTimeMillis() - lastScanTime >= SCAN_INTERVAL_MS) {
-            scanIfNeeded(onComplete);
-            return;
-        }
-
-        List<RecommendedChannel> needPosts = new ArrayList<>();
-        for (RecommendedChannel rec : allDiscovered) {
-            Set<Long> channelsWithPosts = new HashSet<>();
-            synchronized (recommendedPosts) {
-                for (FeedController.FeedItem p : recommendedPosts) {
-                    channelsWithPosts.add(p.recommendedChannelId);
-                }
-            }
-            if (!channelsWithPosts.contains(rec.channelId) && !allPostsSeen(rec.channelId)) {
-                needPosts.add(rec);
-            }
-        }
-
-        if (needPosts.isEmpty()) {
-            if (onComplete != null) onComplete.run();
-            return;
-        }
-
-        isLoadingMore = true;
-        loadPostsForChannels(needPosts, this::notifyComplete);
-    }
-
     private String findAlbumCaption(List<TLRPC.Message> group) {
         for (TLRPC.Message msg : group) {
             if (msg.message != null && !msg.message.isEmpty()) {
@@ -1132,19 +1095,15 @@ public class FeedRecommendationEngine {
     }
 
     private void fixAlbumCaption(List<MessageObject> msgList) {
-        boolean hasCaption = false;
         for (MessageObject msg : msgList) {
             if (msg.messageOwner.message != null
                     && !msg.messageOwner.message.isEmpty()) {
-                hasCaption = true;
                 break;
             }
             if (msg.caption != null && msg.caption.length() > 0) {
-                hasCaption = true;
                 break;
             }
         }
-        if (hasCaption) return;
     }
 
     private void saveDiscoveredChannels() {

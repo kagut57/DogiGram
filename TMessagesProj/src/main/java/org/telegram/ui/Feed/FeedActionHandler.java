@@ -1,7 +1,10 @@
 package org.telegram.ui.Feed;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
+import static org.telegram.messenger.LocaleController.getString;
 
+import android.graphics.PorterDuff;
+import android.graphics.PorterDuffColorFilter;
 import android.os.Bundle;
 import android.text.TextUtils;
 import android.text.style.ClickableSpan;
@@ -52,16 +55,15 @@ class FeedActionHandler {
     void showMenu(View anchor, FeedController.FeedItem item) {
         ItemOptions options = ItemOptions.makeOptions(activity, anchor);
 
-        options.add(R.drawable.msg_saved, "Save to bookmarks", () -> {
+        options.add(R.drawable.msg_saved, getString(R.string.SaveToBookmarks), () -> {
             activity.shareHelper.forwardToSaved(item);
             BulletinFactory.of(activity)
                     .createSimpleBulletin(R.drawable.msg_saved,
-                            LocaleController.getString("FeedSavedToBookmarks",
-                                    R.string.FeedSavedToBookmarks))
+                            getString(R.string.FeedSavedToBookmarks))
                     .show();
         });
 
-        options.add(R.drawable.msg_channel, "Open channel", () -> {
+        options.add(R.drawable.msg_channel,  getString(R.string.OpenChannel2), () -> {
             activity.saveScroll();
             activity.openChannel(item);
         });
@@ -71,8 +73,8 @@ class FeedActionHandler {
                 .isDialogMuted(item.channelId, 0);
         options.add(
                 isMuted ? R.drawable.msg_mute : R.drawable.msg_unmute,
-                isMuted ? LocaleController.getString(R.string.ChatsUnmute)
-                        : LocaleController.getString(R.string.ChatsMute),
+                isMuted ? getString(R.string.ChatsUnmute)
+                        : getString(R.string.ChatsMute),
                 () -> {
                     if (!isMuted) {
                         NotificationsController.getInstance(account)
@@ -86,7 +88,7 @@ class FeedActionHandler {
                     BulletinFactory.createMuteBulletin(activity, !isMuted, null).show();
                 });
 
-        options.add(R.drawable.msg_markread, "Mark as read", () -> {
+        options.add(R.drawable.msg_markread, getString(R.string.MarkAsRead), () -> {
             activity.feedController.markAsRead(item);
             int pos = activity.adapter.findItemPosition(item);
             if (pos >= 0) activity.adapter.updateItem(pos);
@@ -98,19 +100,19 @@ class FeedActionHandler {
                 .getChat(-item.channelId);
         String channelName = chat != null ? chat.title : "this channel";
 
-        options.add(R.drawable.msg_block2, "Hide from feed", () -> {
+        options.add(R.drawable.msg_block2, getString(R.string.HideFromFeed), () -> {
             long chatId = -item.channelId;
             activity.feedController.hideChannel(chatId);
             activity.adapter.setItems(activity.feedController.getCachedFeed());
             activity.updateEmpty();
             BulletinFactory.of(activity)
                     .createSimpleBulletin(R.drawable.msg_block2,
-                            channelName + " hidden from feed")
+                            channelName + getString(R.string.HiddenFromFeed))
                     .show();
         });
 
         options.add(R.drawable.msg_report,
-                LocaleController.getString(R.string.ReportChat), true,
+                getString(R.string.ReportChat), true,
                 () -> activity.reportHelper.showReportDialog(item));
 
         options.show();
@@ -131,21 +133,21 @@ class FeedActionHandler {
 
         if (!TextUtils.isEmpty(text)) {
             options.add(R.drawable.msg_copy,
-                    LocaleController.getString(R.string.Copy), () -> {
+                    getString(R.string.Copy), () -> {
                         AndroidUtilities.addToClipboard(text);
                         BulletinFactory.of(activity)
                                 .createCopyBulletin(
-                                        LocaleController.getString(R.string.TextCopied))
+                                        getString(R.string.TextCopied))
                                 .show();
                     });
 
             options.add(R.drawable.msg_select,
-                    LocaleController.getString(R.string.Select),
+                    getString(R.string.Select),
                     () -> showSelectableTextDialog(text));
         }
 
         options.add(R.drawable.msg_link2,
-                LocaleController.getString(R.string.CopyLink), () -> {
+                getString(R.string.CopyLink), () -> {
                     String link = activity.shareHelper.buildPostLink(item);
                     AndroidUtilities.addToClipboard(link);
                     BulletinFactory.of(activity).createCopyLinkBulletin().show();
@@ -154,10 +156,10 @@ class FeedActionHandler {
         options.addGap();
 
         options.add(R.drawable.msg_forward,
-                LocaleController.getString(R.string.Forward),
+                getString(R.string.Forward),
                 () -> activity.shareHelper.sharePost(item));
 
-        options.add(R.drawable.msg_channel, "Open channel", () -> {
+        options.add(R.drawable.msg_channel, getString(R.string.OpenChannel2), () -> {
             activity.saveScroll();
             activity.openChannel(item);
         });
@@ -235,7 +237,7 @@ class FeedActionHandler {
             long selfId = UserConfig.getInstance(account).getClientUserId();
             Bulletin b = BulletinFactory.of(activity)
                     .createSimpleBulletin(R.drawable.msg_saved,
-                            "Removed from bookmarks", "Open Saved", () -> {
+                            getString(R.string.RemovedFromBookmarks), getString(R.string.OpenSaved), () -> {
                                 Bundle args = new Bundle();
                                 args.putLong("user_id", selfId);
                                 activity.presentFragment(new ChatActivity(args));
@@ -266,7 +268,7 @@ class FeedActionHandler {
 
         Bulletin b = BulletinFactory.of(activity)
                 .createSimpleBulletin(R.drawable.msg_saved,
-                        "Saved to bookmarks", "View", () -> {
+                        getString(R.string.FeedSavedToBookmarks), getString(R.string.View), () -> {
                             Bundle args = new Bundle();
                             args.putLong("user_id", selfId);
                             activity.presentFragment(new ChatActivity(args));
@@ -280,7 +282,7 @@ class FeedActionHandler {
                         item.isBookmarked = false;
                         updateBookmarkIcon(item);
                         Bulletin err = BulletinFactory.of(activity)
-                                .createSimpleBulletin(R.drawable.msg_saved, "Failed to save");
+                                .createSimpleBulletin(R.drawable.msg_saved, getString(R.string.FailedToSave));
                         activity.showBulletinTop(err);
                     }
                 }));
@@ -380,17 +382,17 @@ class FeedActionHandler {
 
         if (!isMail) {
             options.add(R.drawable.msg_openin,
-                    LocaleController.getString(customTabs && !isHashtag
+                    getString(customTabs && !isHashtag
                             ? R.string.OpenInTelegramBrowser : R.string.Open),
                     () -> Browser.openUrl(activity.getParentActivity(), urlFinal, true));
         }
         if (customTabs && !isHashtag || isMail) {
             options.add(R.drawable.msg_language,
-                    LocaleController.getString(R.string.OpenInSystemBrowser),
+                    getString(R.string.OpenInSystemBrowser),
                     () -> Browser.openUrl(activity.getParentActivity(), urlFinal, false));
         }
         options.add(R.drawable.msg_copy,
-                LocaleController.getString(isHashtag ? R.string.CopyHashtag
+                getString(isHashtag ? R.string.CopyHashtag
                         : isMail ? R.string.CopyMail : R.string.CopyLink),
                 () -> {
                     AndroidUtilities.addToClipboard(
@@ -398,7 +400,7 @@ class FeedActionHandler {
                     BulletinFactory.of(activity).createCopyLinkBulletin().show();
                 });
         if (!isHashtag && !isMail) {
-            options.add(R.drawable.msg_copy, "Copy without protocol", () -> {
+            options.add(R.drawable.msg_copy, getString(R.string.CopyWithoutProtocol), () -> {
                 AndroidUtilities.addToClipboard(cleanUrlFinal);
                 BulletinFactory.of(activity).createCopyLinkBulletin().show();
             });
@@ -450,14 +452,14 @@ class FeedActionHandler {
         options.addGap();
 
         options.add(R.drawable.msg_copy,
-                LocaleController.getString(R.string.Copy), () -> {
+                getString(R.string.Copy), () -> {
                     AndroidUtilities.addToClipboard(fullDate);
                     BulletinFactory.of(activity)
-                            .createCopyBulletin(LocaleController.getString(R.string.TextCopied))
+                            .createCopyBulletin(getString(R.string.TextCopied))
                             .show();
                 });
 
-        options.add(R.drawable.msg_calendar2, "Add to calendar", () -> {
+        options.add(R.drawable.msg_calendar2, getString(R.string.RelativeDateMenuAddToACalendar), () -> {
             try {
                 android.content.Intent intent = new android.content.Intent(
                         android.content.Intent.ACTION_INSERT);
@@ -469,7 +471,7 @@ class FeedActionHandler {
             } catch (Exception e) {
                 BulletinFactory.of(activity)
                         .createSimpleBulletin(R.drawable.msg_calendar2,
-                                "No calendar app found")
+                                getString(R.string.NoCalendarAppFound))
                         .show();
             }
         });
@@ -515,12 +517,12 @@ class FeedActionHandler {
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
                 android.graphics.drawable.Drawable left = tv.getTextSelectHandleLeft();
                 if (left != null) {
-                    left.setColorFilter(handleColor, android.graphics.PorterDuff.Mode.SRC_IN);
+                    left.setColorFilter(new PorterDuffColorFilter(handleColor, PorterDuff.Mode.SRC_IN));
                     tv.setTextSelectHandleLeft(left);
                 }
                 android.graphics.drawable.Drawable right = tv.getTextSelectHandleRight();
                 if (right != null) {
-                    right.setColorFilter(handleColor, android.graphics.PorterDuff.Mode.SRC_IN);
+                    right.setColorFilter(new PorterDuffColorFilter(handleColor, PorterDuff.Mode.SRC_IN));
                     tv.setTextSelectHandleRight(right);
                 }
             }
@@ -563,13 +565,13 @@ class FeedActionHandler {
 
                         BulletinFactory.of(activity)
                                 .createSimpleBulletin(R.drawable.msg_channel,
-                                        "Subscribed to " + name)
+                                        getString(R.string.SubscribedTo) + name)
                                 .show();
 
                     } else {
-                        String errText = "Failed to subscribe";
+                        String errText = getString(R.string.FailedToSubscribe);
                         if (err.text != null && err.text.contains("CHANNELS_TOO_MUCH"))
-                            errText = "You have joined too many channels";
+                            errText = getString(R.string.YouHaveJoinedTooManyChannels);
                         BulletinFactory.of(activity)
                                 .createSimpleBulletin(R.drawable.msg_channel, errText)
                                 .show();
@@ -583,7 +585,7 @@ class FeedActionHandler {
         activity.refreshDisplayList();
         BulletinFactory.of(activity)
                 .createSimpleBulletin(R.drawable.msg_close,
-                        "Won't recommend this channel")
+                        getString(R.string.WontRecommendThisChannel))
                 .show();
     }
 
@@ -627,7 +629,7 @@ class FeedActionHandler {
         ActionBarMenuSubItem openItem = new ActionBarMenuSubItem(
                 activity.getParentActivity(), true, false);
         openItem.setTextAndIcon(
-                LocaleController.getString(R.string.OpenChannel),
+                getString(R.string.OpenChannel),
                 R.drawable.msg_channel);
         openItem.setMinimumWidth(dp(160));
         openItem.setOnClickListener(v -> {
@@ -646,7 +648,7 @@ class FeedActionHandler {
             ActionBarMenuSubItem readItem = new ActionBarMenuSubItem(
                     activity.getParentActivity(), false, false);
             readItem.setTextAndIcon(
-                    LocaleController.getString(R.string.MarkAsRead),
+                    getString(R.string.MarkAsRead),
                     R.drawable.msg_markread);
             readItem.setMinimumWidth(dp(160));
             readItem.setOnClickListener(v -> {
@@ -661,8 +663,8 @@ class FeedActionHandler {
         ActionBarMenuSubItem muteItem = new ActionBarMenuSubItem(
                 activity.getParentActivity(), false, false);
         muteItem.setTextAndIcon(
-                isMuted ? LocaleController.getString(R.string.ChatsUnmute)
-                        : LocaleController.getString(R.string.ChatsMute),
+                isMuted ? getString(R.string.ChatsUnmute)
+                        : getString(R.string.ChatsMute),
                 isMuted ? R.drawable.msg_unmute : R.drawable.msg_mute);
         muteItem.setMinimumWidth(dp(160));
         muteItem.setOnClickListener(v -> {
@@ -687,7 +689,7 @@ class FeedActionHandler {
         hideItem.setTextColor(Theme.getColor(Theme.key_text_RedBold, activity.getResProvider()));
         hideItem.setSelectorColor(Theme.multAlpha(
                 Theme.getColor(Theme.key_text_RedBold, activity.getResProvider()), .12f));
-        hideItem.setTextAndIcon("Hide from feed", R.drawable.msg_block2);
+        hideItem.setTextAndIcon(getString(R.string.HideFromFeed), R.drawable.msg_block2);
         hideItem.setMinimumWidth(dp(160));
         hideItem.setOnClickListener(v -> {
             activity.finishPreviewAndResetBlur();
@@ -697,7 +699,7 @@ class FeedActionHandler {
                 activity.updateEmpty();
                 BulletinFactory.of(activity)
                         .createSimpleBulletin(R.drawable.msg_block2,
-                                channelName + " hidden from feed")
+                                channelName + getString(R.string.HiddenFromFeed))
                         .show();
             }, 100);
         });
@@ -750,11 +752,11 @@ class FeedActionHandler {
         if (pos >= 0) activity.adapter.notifyItemChanged(pos);
 
         BulletinFactory.of(activity)
-                .createSimpleBulletin(R.drawable.msg_markread, "Marked as read")
+                .createSimpleBulletin(R.drawable.msg_markread, getString(R.string.MarkAsRead))
                 .show();
     }
 
-    void onTextLongPress(View cell, FeedController.FeedItem item, CharSequence text) {
+    void onTextLongPress(View cell, CharSequence text) {
         if (TextUtils.isEmpty(text)) {
             showPostScrim(cell);
             return;
