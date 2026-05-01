@@ -2983,6 +2983,13 @@ public class AndroidUtilities {
         return isTabletInternal() && !SharedConfig.forceDisableTabletMode;
     }
 
+    public static boolean isAutoRotationEnabled(Context context) {
+        return android.provider.Settings.System.getInt(
+            context.getContentResolver(),
+            android.provider.Settings.System.ACCELEROMETER_ROTATION, 0
+        ) == 1;
+    }
+
     public static boolean isSmallScreen() {
         if (isSmallScreen == null) {
             isSmallScreen = (Math.max(displaySize.x, displaySize.y) - statusBarHeight - navigationBarHeight) / density <= 650;

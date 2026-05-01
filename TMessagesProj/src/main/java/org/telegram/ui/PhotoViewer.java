@@ -10502,17 +10502,23 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                             if (orientation >= 270 - 30 && orientation <= 270 + 30) {
                                 wasRotated = true;
                             } else if (wasRotated && orientation > 0 && (orientation >= 330 || orientation <= 30)) {
-                                parentActivity.setRequestedOrientation(prevOrientation);
-                                fullscreenedByButton = 0;
-                                wasRotated = false;
-                            }
+                                
+                                if (AndroidUtilities.isAutoRotationEnabled(parentActivity)) {
+                                    parentActivity.setRequestedOrientation(prevOrientation);
+                                    fullscreenedByButton = 0;
+                                    wasRotated = false;
+                                }
+                            }    
                         } else {
                             if (orientation > 0 && (orientation >= 330 || orientation <= 30)) {
                                 wasRotated = true;
                             } else if (wasRotated && orientation >= 270 - 30 && orientation <= 270 + 30) {
-                                parentActivity.setRequestedOrientation(prevOrientation);
-                                fullscreenedByButton = 0;
-                                wasRotated = false;
+                                
+                                if (AndroidUtilities.isAutoRotationEnabled(parentActivity)) {
+                                    parentActivity.setRequestedOrientation(prevOrientation);
+                                    fullscreenedByButton = 0;
+                                    wasRotated = false;
+                                }
                             }
                         }
                     }
