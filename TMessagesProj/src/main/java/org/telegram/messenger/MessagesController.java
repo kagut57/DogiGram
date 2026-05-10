@@ -21579,8 +21579,12 @@ public class MessagesController extends BaseController implements NotificationCe
         fragment.showDialog(builder.create());
     }
 
-    private String getTeleLibertyRestrictedDialogReason() {
+    private String getGenericUnavailableReason() {
         return LocaleController.getString(R.string.Unavailable);
+    }
+
+    private boolean isBlockedGroupOrChannelDialogId(long dialogId) {
+        return dialogId < 0 && !DialogObject.isPersonalOrFolderDialog(dialogId);
     }
 
     public boolean checkCanOpenChat(Bundle bundle, BaseFragment fragment) {
@@ -21602,8 +21606,8 @@ public class MessagesController extends BaseController implements NotificationCe
         long userId = bundle.getLong("user_id", 0);
         long chatId = bundle.getLong("chat_id", 0);
         int messageId = bundle.getInt("message_id", 0);
-        if (chatId != 0 && !DialogObject.isPersonalOrFolderDialog(-chatId)) {
-            showCantOpenAlert(fragment, getTeleLibertyRestrictedDialogReason());
+        if (isBlockedGroupOrChannelDialogId(-chatId)) {
+            showCantOpenAlert(fragment, getGenericUnavailableReason());
             return false;
         }
         long dialogId = 0;
@@ -21710,8 +21714,8 @@ public class MessagesController extends BaseController implements NotificationCe
         if (user == null && chat == null || fragment == null) {
             return;
         }
-        if (chat != null && !DialogObject.isPersonalOrFolderDialog(-chat.id)) {
-            showCantOpenAlert(fragment, getTeleLibertyRestrictedDialogReason());
+        if (chat != null && isBlockedGroupOrChannelDialogId(-chat.id)) {
+            showCantOpenAlert(fragment, getGenericUnavailableReason());
             return;
         }
         String reason;
@@ -21780,7 +21784,7 @@ public class MessagesController extends BaseController implements NotificationCe
         if (user != null) {
             openChatOrProfileWith(user, null, fragment, type, false);
         } else if (chat != null) {
-            showCantOpenAlert(fragment, getTeleLibertyRestrictedDialogReason());
+            showCantOpenAlert(fragment, getGenericUnavailableReason());
         } else {
             if (fragment.getParentActivity() == null) {
                 return;
@@ -21803,8 +21807,8 @@ public class MessagesController extends BaseController implements NotificationCe
                     return;
                 }
                 if (peerId != null) {
-                    if (peerId < 0 && !DialogObject.isPersonalOrFolderDialog(peerId)) {
-                        showCantOpenAlert(fragment, getTeleLibertyRestrictedDialogReason());
+                    if (isBlockedGroupOrChannelDialogId(peerId)) {
+                        showCantOpenAlert(fragment, getGenericUnavailableReason());
                     } else {
                         openChatOrProfileWith(getUser(peerId), null, fragment, type, false);
                     }

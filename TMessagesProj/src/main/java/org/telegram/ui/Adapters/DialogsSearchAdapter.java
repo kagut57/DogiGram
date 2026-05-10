@@ -283,7 +283,7 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
     }
 
     private boolean filter(Object obj) {
-        if (shouldFilterOutFromRestrictedModeSearch(obj)) {
+        if (shouldBlockGroupOrChannelSearchResult(obj)) {
             return false;
         }
         if (dialogsType != DialogsActivity.DIALOGS_TYPE_START_ATTACH_BOT) {
@@ -308,7 +308,7 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
         return false;
     }
 
-    private boolean shouldFilterOutFromRestrictedModeSearch(Object obj) {
+    private boolean shouldBlockGroupOrChannelSearchResult(Object obj) {
         return obj instanceof TLRPC.Chat || obj instanceof TLRPC.ChatInvite;
     }
 
