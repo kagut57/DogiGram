@@ -112,7 +112,7 @@ public class DialogObject {
         return isUserDialog(dialogId) || isEncryptedDialog(dialogId);
     }
 
-    public static boolean isAllowedInPrivateChatsOnlyMode(long dialogId) {
+    public static boolean isAllowedInPrivateChatsOnlyModeOrFolder(long dialogId) {
         return isFolderDialogId(dialogId) || isPersonalDialog(dialogId);
     }
 

@@ -224,7 +224,7 @@ public class SearchAdapterHelper {
                                         chat = chatsMap.get(peer.channel_id);
                                     }
                                     if (chat != null) {
-                                        boolean restrictedModeBlocked = !DialogObject.isAllowedInPrivateChatsOnlyMode(-chat.id);
+                                        boolean restrictedModeBlocked = !DialogObject.isAllowedInPrivateChatsOnlyModeOrFolder(-chat.id);
                                         boolean cannotAddBotToChat = canAddGroupsOnly && !ChatObject.canAddBotsToChat(chat);
                                         boolean globalResultBlocked = !allowGlobalResults && ChatObject.isNotInChat(chat);
                                         if (!allowChats || restrictedModeBlocked || cannotAddBotToChat || globalResultBlocked || !filter(chat)) {
@@ -254,7 +254,7 @@ public class SearchAdapterHelper {
                                         chat = chatsMap.get(peer.channel_id);
                                     }
                                     if (chat != null) {
-                                        boolean restrictedModeBlocked = !DialogObject.isAllowedInPrivateChatsOnlyMode(-chat.id);
+                                        boolean restrictedModeBlocked = !DialogObject.isAllowedInPrivateChatsOnlyModeOrFolder(-chat.id);
                                         boolean cannotAddBotToChat = canAddGroupsOnly && !ChatObject.canAddBotsToChat(chat);
                                         if (!allowChats || restrictedModeBlocked || cannotAddBotToChat || -chat.id == exceptDialogId || !filter(chat)) {
                                             continue;
