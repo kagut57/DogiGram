@@ -21248,6 +21248,9 @@ public class MessagesController extends BaseController implements NotificationCe
                 for (int a = 0, N = allDialogs.size(); a < N; a++) {
                     TLRPC.Dialog d = allDialogs.get(a);
                     if (d instanceof TLRPC.TL_dialog) {
+                        if (!DialogObject.isTeleLibertyAllowedDialog(d.id)) {
+                            continue;
+                        }
                         long dialogId = d.id;
                         if (DialogObject.isEncryptedDialog(dialogId)) {
                             TLRPC.EncryptedChat encryptedChat = getEncryptedChat(DialogObject.getEncryptedChatId(dialogId));
@@ -21278,6 +21281,12 @@ public class MessagesController extends BaseController implements NotificationCe
         }
         for (int a = 0, N = allDialogs.size(); a < N; a++) {
             TLRPC.Dialog d = allDialogs.get(a);
+            if (d instanceof TLRPC.TL_dialog && !DialogObject.isTeleLibertyAllowedDialog(d.id)) {
+                allDialogs.remove(a);
+                a--;
+                N--;
+                continue;
+            }
             if (d instanceof TLRPC.TL_dialog) {
                 ArrayList<MessageObject> messageObjects = dialogMessage.get(d.id);
                 if (messageObjects != null) {
@@ -21570,6 +21579,10 @@ public class MessagesController extends BaseController implements NotificationCe
         fragment.showDialog(builder.create());
     }
 
+    private String getTeleLibertyRestrictedDialogReason() {
+        return LocaleController.getString(R.string.Unavailable);
+    }
+
     public boolean checkCanOpenChat(Bundle bundle, BaseFragment fragment) {
         return checkCanOpenChat(bundle, fragment, null);
     }
@@ -21589,13 +21602,14 @@ public class MessagesController extends BaseController implements NotificationCe
         long userId = bundle.getLong("user_id", 0);
         long chatId = bundle.getLong("chat_id", 0);
         int messageId = bundle.getInt("message_id", 0);
+        if (chatId != 0) {
+            showCantOpenAlert(fragment, getTeleLibertyRestrictedDialogReason());
+            return false;
+        }
         long dialogId = 0;
         if (userId != 0) {
             dialogId = userId;
             user = getUser(userId);
-        } else if (chatId != 0) {
-            dialogId = -chatId;
-            chat = getChat(chatId);
         }
         if (user == null && chat == null) {
             return true;
@@ -21696,17 +21710,17 @@ public class MessagesController extends BaseController implements NotificationCe
         if (user == null && chat == null || fragment == null) {
             return;
         }
-        String reason;
         if (chat != null) {
-            reason = getRestrictionReason(chat.restriction_reason);
-        } else {
-            reason = getRestrictionReason(user.restriction_reason);
-            if (type != 3 && user.bot) {
-                type = 1;
-                BaseFragment lastFragment = LaunchActivity.getLastFragment();
-                if (lastFragment.getLastStoryViewer() == null) {
-                    closeLast = true;
-                }
+            showCantOpenAlert(fragment, getTeleLibertyRestrictedDialogReason());
+            return;
+        }
+        String reason;
+        reason = getRestrictionReason(user.restriction_reason);
+        if (type != 3 && user.bot) {
+            type = 1;
+            BaseFragment lastFragment = LaunchActivity.getLastFragment();
+            if (lastFragment.getLastStoryViewer() == null) {
+                closeLast = true;
             }
         }
         boolean doNotCloseLast = false;
@@ -21766,7 +21780,7 @@ public class MessagesController extends BaseController implements NotificationCe
         if (user != null) {
             openChatOrProfileWith(user, null, fragment, type, false);
         } else if (chat != null) {
-            openChatOrProfileWith(null, chat, fragment, 1, false);
+            showCantOpenAlert(fragment, getTeleLibertyRestrictedDialogReason());
         } else {
             if (fragment.getParentActivity() == null) {
                 return;
@@ -21790,7 +21804,7 @@ public class MessagesController extends BaseController implements NotificationCe
                 }
                 if (peerId != null) {
                     if (peerId < 0) {
-                        openChatOrProfileWith(null, getChat(-peerId), fragment, 1, false);
+                        showCantOpenAlert(fragment, getTeleLibertyRestrictedDialogReason());
                     } else {
                         openChatOrProfileWith(getUser(peerId), null, fragment, type, false);
                     }

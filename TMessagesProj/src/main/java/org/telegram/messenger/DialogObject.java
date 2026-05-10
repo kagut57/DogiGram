@@ -108,6 +108,14 @@ public class DialogObject {
         return (dialogId & 0x4000000000000000L) != 0 && (dialogId & 0x8000000000000000L) == 0;
     }
 
+    public static boolean isPersonalDialog(long dialogId) {
+        return isUserDialog(dialogId) || isEncryptedDialog(dialogId);
+    }
+
+    public static boolean isTeleLibertyAllowedDialog(long dialogId) {
+        return isFolderDialogId(dialogId) || isPersonalDialog(dialogId);
+    }
+
     public static long makeEncryptedDialogId(long chatId) {
         return 0x4000000000000000L | (chatId & 0x00000000ffffffffL);
     }
