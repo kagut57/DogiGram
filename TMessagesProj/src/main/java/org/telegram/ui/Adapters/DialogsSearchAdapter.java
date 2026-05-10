@@ -283,7 +283,7 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
     }
 
     private boolean filter(Object obj) {
-        if ((obj instanceof TLRPC.Chat && !DialogObject.isAllowedInPrivateChatsOnlyModeOrFolder(-((TLRPC.Chat) obj).id)) || obj instanceof TLRPC.ChatInvite) {
+        if (shouldFilterOutFromRestrictedModeSearch(obj)) {
             return false;
         }
         if (dialogsType != DialogsActivity.DIALOGS_TYPE_START_ATTACH_BOT) {
@@ -306,6 +306,10 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
             }
         }
         return false;
+    }
+
+    private boolean shouldFilterOutFromRestrictedModeSearch(Object obj) {
+        return (obj instanceof TLRPC.Chat && !DialogObject.isPersonalOrFolderDialog(-((TLRPC.Chat) obj).id)) || obj instanceof TLRPC.ChatInvite;
     }
 
     public DialogsSearchAdapter(Context context, DialogsActivity dialogsActivity, int messagesSearch, int type, DefaultItemAnimator itemAnimator, boolean allowGlobalSearch, Theme.ResourcesProvider resourcesProvider) {
