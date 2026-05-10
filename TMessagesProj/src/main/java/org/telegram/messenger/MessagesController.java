@@ -21248,7 +21248,7 @@ public class MessagesController extends BaseController implements NotificationCe
                 for (int a = 0, N = allDialogs.size(); a < N; a++) {
                     TLRPC.Dialog d = allDialogs.get(a);
                     if (d instanceof TLRPC.TL_dialog) {
-                        if (!DialogObject.isTeleLibertyAllowedDialog(d.id)) {
+                        if (!DialogObject.isAllowedInPrivateChatsOnlyMode(d.id)) {
                             continue;
                         }
                         long dialogId = d.id;
@@ -21281,7 +21281,7 @@ public class MessagesController extends BaseController implements NotificationCe
         }
         for (int a = 0, N = allDialogs.size(); a < N; a++) {
             TLRPC.Dialog d = allDialogs.get(a);
-            if (d instanceof TLRPC.TL_dialog && !DialogObject.isTeleLibertyAllowedDialog(d.id)) {
+            if (d instanceof TLRPC.TL_dialog && !DialogObject.isAllowedInPrivateChatsOnlyMode(d.id)) {
                 allDialogs.remove(a);
                 a--;
                 N--;
@@ -21602,7 +21602,7 @@ public class MessagesController extends BaseController implements NotificationCe
         long userId = bundle.getLong("user_id", 0);
         long chatId = bundle.getLong("chat_id", 0);
         int messageId = bundle.getInt("message_id", 0);
-        if (chatId != 0) {
+        if (chatId != 0 && !DialogObject.isAllowedInPrivateChatsOnlyMode(-chatId)) {
             showCantOpenAlert(fragment, getTeleLibertyRestrictedDialogReason());
             return false;
         }
@@ -21710,7 +21710,7 @@ public class MessagesController extends BaseController implements NotificationCe
         if (user == null && chat == null || fragment == null) {
             return;
         }
-        if (chat != null) {
+        if (chat != null && !DialogObject.isAllowedInPrivateChatsOnlyMode(-chat.id)) {
             showCantOpenAlert(fragment, getTeleLibertyRestrictedDialogReason());
             return;
         }
@@ -21803,7 +21803,7 @@ public class MessagesController extends BaseController implements NotificationCe
                     return;
                 }
                 if (peerId != null) {
-                    if (peerId < 0) {
+                    if (peerId < 0 && !DialogObject.isAllowedInPrivateChatsOnlyMode(peerId)) {
                         showCantOpenAlert(fragment, getTeleLibertyRestrictedDialogReason());
                     } else {
                         openChatOrProfileWith(getUser(peerId), null, fragment, type, false);

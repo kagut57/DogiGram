@@ -224,7 +224,10 @@ public class SearchAdapterHelper {
                                         chat = chatsMap.get(peer.channel_id);
                                     }
                                     if (chat != null) {
-                                        if (!allowChats || !DialogObject.isTeleLibertyAllowedDialog(-chat.id) || canAddGroupsOnly && !ChatObject.canAddBotsToChat(chat) || !allowGlobalResults && ChatObject.isNotInChat(chat) || !filter(chat)) {
+                                        boolean restrictedModeBlocked = !DialogObject.isAllowedInPrivateChatsOnlyMode(-chat.id);
+                                        boolean cannotAddBotToChat = canAddGroupsOnly && !ChatObject.canAddBotsToChat(chat);
+                                        boolean globalResultBlocked = !allowGlobalResults && ChatObject.isNotInChat(chat);
+                                        if (!allowChats || restrictedModeBlocked || cannotAddBotToChat || globalResultBlocked || !filter(chat)) {
                                             continue;
                                         }
                                         globalSearch.add(chat);
@@ -251,7 +254,9 @@ public class SearchAdapterHelper {
                                         chat = chatsMap.get(peer.channel_id);
                                     }
                                     if (chat != null) {
-                                        if (!allowChats || !DialogObject.isTeleLibertyAllowedDialog(-chat.id) || canAddGroupsOnly && !ChatObject.canAddBotsToChat(chat) || -chat.id == exceptDialogId || !filter(chat)) {
+                                        boolean restrictedModeBlocked = !DialogObject.isAllowedInPrivateChatsOnlyMode(-chat.id);
+                                        boolean cannotAddBotToChat = canAddGroupsOnly && !ChatObject.canAddBotsToChat(chat);
+                                        if (!allowChats || restrictedModeBlocked || cannotAddBotToChat || -chat.id == exceptDialogId || !filter(chat)) {
                                             continue;
                                         }
                                         localServerSearch.add(chat);

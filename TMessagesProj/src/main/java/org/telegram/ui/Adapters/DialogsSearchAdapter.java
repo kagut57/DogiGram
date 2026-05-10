@@ -283,7 +283,7 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
     }
 
     private boolean filter(Object obj) {
-        if (obj instanceof TLRPC.Chat || obj instanceof TLRPC.ChatInvite) {
+        if (obj instanceof TLRPC.Chat && !DialogObject.isAllowedInPrivateChatsOnlyMode(-((TLRPC.Chat) obj).id) || obj instanceof TLRPC.ChatInvite) {
             return false;
         }
         if (dialogsType != DialogsActivity.DIALOGS_TYPE_START_ATTACH_BOT) {
