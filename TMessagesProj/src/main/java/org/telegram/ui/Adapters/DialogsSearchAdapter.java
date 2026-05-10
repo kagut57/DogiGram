@@ -309,7 +309,7 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
     }
 
     private boolean shouldFilterOutFromRestrictedModeSearch(Object obj) {
-        return (obj instanceof TLRPC.Chat && !DialogObject.isPersonalOrFolderDialog(-((TLRPC.Chat) obj).id)) || obj instanceof TLRPC.ChatInvite;
+        return obj instanceof TLRPC.Chat || obj instanceof TLRPC.ChatInvite;
     }
 
     public DialogsSearchAdapter(Context context, DialogsActivity dialogsActivity, int messagesSearch, int type, DefaultItemAnimator itemAnimator, boolean allowGlobalSearch, Theme.ResourcesProvider resourcesProvider) {

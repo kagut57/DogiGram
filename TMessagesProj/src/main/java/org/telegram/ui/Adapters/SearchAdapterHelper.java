@@ -224,10 +224,10 @@ public class SearchAdapterHelper {
                                         chat = chatsMap.get(peer.channel_id);
                                     }
                                     if (chat != null) {
-                                        boolean restrictedModeBlocked = !DialogObject.isPersonalOrFolderDialog(-chat.id);
+                                        boolean shouldBlockChat = !DialogObject.isPersonalOrFolderDialog(-chat.id);
                                         boolean cannotAddBotToChat = canAddGroupsOnly && !ChatObject.canAddBotsToChat(chat);
                                         boolean globalResultBlocked = !allowGlobalResults && ChatObject.isNotInChat(chat);
-                                        if (!allowChats || restrictedModeBlocked || cannotAddBotToChat || globalResultBlocked || !filter(chat)) {
+                                        if (!allowChats || shouldBlockChat || cannotAddBotToChat || globalResultBlocked || !filter(chat)) {
                                             continue;
                                         }
                                         globalSearch.add(chat);
@@ -254,9 +254,9 @@ public class SearchAdapterHelper {
                                         chat = chatsMap.get(peer.channel_id);
                                     }
                                     if (chat != null) {
-                                        boolean restrictedModeBlocked = !DialogObject.isPersonalOrFolderDialog(-chat.id);
+                                        boolean shouldBlockChat = !DialogObject.isPersonalOrFolderDialog(-chat.id);
                                         boolean cannotAddBotToChat = canAddGroupsOnly && !ChatObject.canAddBotsToChat(chat);
-                                        if (!allowChats || restrictedModeBlocked || cannotAddBotToChat || -chat.id == exceptDialogId || !filter(chat)) {
+                                        if (!allowChats || shouldBlockChat || cannotAddBotToChat || -chat.id == exceptDialogId || !filter(chat)) {
                                             continue;
                                         }
                                         localServerSearch.add(chat);
