@@ -1,0 +1,50 @@
+name: Build Mermaid APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - prototype/markdown-mermaid-embed-android
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android packages
+        run: |
+          yes | sdkmanager --licenses
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "cmake;3.10.2.4988404" \
+            "ndk;27.2.12479018"
+
+      - name: Build standalone debug APK
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
+          ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
+        run: |
+          chmod +x gradlew
+          ./gradlew --stacktrace :TMessagesProj_AppStandalone:assembleAfatDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: telegram-mermaid-apk
+          path: TMessagesProj_AppStandalone/build/outputs/apk/**/app.apk
+          if-no-files-found: error

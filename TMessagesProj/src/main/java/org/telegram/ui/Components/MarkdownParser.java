@@ -73,6 +73,8 @@ public class MarkdownParser {
 
     private static final int MAX_RICH_TEXT_LEN = 8192;
     private static final int MAX_FILE_SIZE = 64 * 1024;
+    private static final int MERMAID_EMBED_WIDTH = 720;
+    private static final int MERMAID_EMBED_HEIGHT = 240;
 
     public static boolean isMarkdown(MessageObject msg) {
         if (msg == null) return false;
@@ -900,6 +902,10 @@ public class MarkdownParser {
 
         @Override
         public void visit(FencedCodeBlock fencedCodeBlock) {
+            if (isMermaidFence(fencedCodeBlock.getInfo())) {
+                emit(buildMermaidBlock(fencedCodeBlock.getLiteral()));
+                return;
+            }
             final TLRPC.TL_pageBlockPreformatted b = new TLRPC.TL_pageBlockPreformatted();
             b.text = first(plain(fencedCodeBlock.getLiteral()));
             b.language = fencedCodeBlock.getInfo() == null ? "" : fencedCodeBlock.getInfo();
@@ -1048,6 +1054,88 @@ public class MarkdownParser {
             c.text = first(richTextOf(cell, null));
             c.flags |= TLObject.FLAG_7;
             return c;
+        }
+    }
+
+    private static boolean isMermaidFence(String info) {
+        if (TextUtils.isEmpty(info)) {
+            return false;
+        }
+        final String trimmed = info.trim();
+        if (trimmed.isEmpty()) {
+            return false;
+        }
+        final int space = trimmed.indexOf(' ');
+        final String language = (space >= 0 ? trimmed.substring(0, space) : trimmed).trim();
+        return "mermaid".equalsIgnoreCase(language);
+    }
+
+    private static TLRPC.TL_pageBlockEmbed buildMermaidBlock(String literal) {
+        final TLRPC.TL_pageBlockEmbed block = new TLRPC.TL_pageBlockEmbed();
+        block.html = buildMermaidHtml(literal == null ? "" : literal);
+        block.flags |= TLObject.FLAG_2;
+        block.w = MERMAID_EMBED_WIDTH;
+        block.h = MERMAID_EMBED_HEIGHT;
+        block.flags |= TLObject.FLAG_5;
+        block.allow_scrolling = false;
+        block.full_width = false;
+        block.caption = emptyCaption();
+        return block;
+    }
+
+    private static TLRPC.TL_pageCaption emptyCaption() {
+        final TLRPC.TL_pageCaption caption = new TLRPC.TL_pageCaption();
+        caption.text = new TLRPC.TL_textEmpty();
+        caption.credit = new TLRPC.TL_textEmpty();
+        return caption;
+    }
+
+    private static String buildMermaidHtml(String source) {
+        final StringBuilder html = new StringBuilder(source.length() + 2048);
+        html.append("<!doctype html><html><head><meta charset=\"utf-8\">");
+        html.append("<meta name=\"viewport\" content=\"width=device-width,initial-scale=1,maximum-scale=1\">");
+        html.append("<style>");
+        html.append("html,body{margin:0;padding:0;background:#fff;color:#222;font:14px/1.45 sans-serif;overflow:hidden;}");
+        html.append(".wrap{padding:12px;box-sizing:border-box;}");
+        html.append(".mermaid{display:flex;justify-content:center;}");
+        html.append("#error{display:none;white-space:pre-wrap;color:#b00020;padding:12px;font:12px/1.5 monospace;}");
+        html.append("</style>");
+        html.append("</head><body><div class=\"wrap\">");
+        html.append("<pre class=\"mermaid\">");
+        appendEscapedHtml(html, source);
+        html.append("</pre><div id=\"error\"></div></div>");
+        html.append("<script src=\"https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js\"></script>");
+        html.append("<script>");
+        html.append("function tgResize(){var h=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight,120);");
+        html.append("if(window.TelegramWebviewProxy&&window.TelegramWebviewProxy.postEvent){");
+        html.append("window.TelegramWebviewProxy.postEvent('resize_frame',JSON.stringify({height:Math.ceil(h)}));}}");
+        html.append("window.addEventListener('resize',function(){setTimeout(tgResize,0);});");
+        html.append("(async function(){try{");
+        html.append("mermaid.initialize({startOnLoad:false,securityLevel:'loose',theme:(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'default'});");
+        html.append("await mermaid.run({nodes:document.querySelectorAll('.mermaid')});");
+        html.append("}catch(e){var err=document.getElementById('error');if(err){err.style.display='block';err.textContent=String(e);}}");
+        html.append("setTimeout(tgResize,50);})();");
+        html.append("</script></body></html>");
+        return html.toString();
+    }
+
+    private static void appendEscapedHtml(StringBuilder out, String source) {
+        for (int i = 0; i < source.length(); i++) {
+            final char ch = source.charAt(i);
+            switch (ch) {
+                case '&':
+                    out.append("&amp;");
+                    break;
+                case '<':
+                    out.append("&lt;");
+                    break;
+                case '>':
+                    out.append("&gt;");
+                    break;
+                default:
+                    out.append(ch);
+                    break;
+            }
         }
     }
 
