@@ -1,0 +1,24 @@
+{
+  "mermaidVersion": "11.15.0",
+  "root": "mermaid.esm.min.mjs",
+  "selected": [
+    "chunks/mermaid.esm.min/flowDiagram-H6V6AXG4.mjs",
+    "chunks/mermaid.esm.min/sequenceDiagram-VS2MUI6T.mjs",
+    "chunks/mermaid.esm.min/classDiagram-KGZ6W3CR.mjs",
+    "chunks/mermaid.esm.min/classDiagram-v2-72OJOZXJ.mjs",
+    "chunks/mermaid.esm.min/stateDiagram-7D4R322I.mjs",
+    "chunks/mermaid.esm.min/stateDiagram-v2-36443NZ5.mjs",
+    "chunks/mermaid.esm.min/erDiagram-L5TCEMPS.mjs",
+    "chunks/mermaid.esm.min/gitGraphDiagram-S2ZK5IYY.mjs",
+    "chunks/mermaid.esm.min/journeyDiagram-M6C3CM3L.mjs",
+    "chunks/mermaid.esm.min/ganttDiagram-JCBTUEKG.mjs",
+    "chunks/mermaid.esm.min/pieDiagram-CU6KROY3.mjs",
+    "chunks/mermaid.esm.min/quadrantDiagram-VICAPDV7.mjs",
+    "chunks/mermaid.esm.min/requirementDiagram-JXO7QTGE.mjs",
+    "chunks/mermaid.esm.min/mindmap-definition-2TDM6QVE.mjs",
+    "chunks/mermaid.esm.min/timeline-definition-O6YCAMPW.mjs",
+    "chunks/mermaid.esm.min/xychartDiagram-N2JHSOCM.mjs"
+  ],
+  "fileCount": 57,
+  "totalBytes": 2327638
+}

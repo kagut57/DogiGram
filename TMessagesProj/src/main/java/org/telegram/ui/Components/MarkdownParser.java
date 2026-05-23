@@ -73,6 +73,9 @@ public class MarkdownParser {
 
     private static final int MAX_RICH_TEXT_LEN = 8192;
     private static final int MAX_FILE_SIZE = 64 * 1024;
+    private static final int MERMAID_EMBED_WIDTH = 720;
+    private static final int MERMAID_EMBED_HEIGHT = 240;
+    private static final String MERMAID_ASSET_ENTRY = "https://telegram.org/embed/mermaid/mermaid.esm.min.mjs";
 
     public static boolean isMarkdown(MessageObject msg) {
         if (msg == null) return false;
@@ -900,6 +903,10 @@ public class MarkdownParser {
 
         @Override
         public void visit(FencedCodeBlock fencedCodeBlock) {
+            if (isMermaidFence(fencedCodeBlock.getInfo())) {
+                emit(buildMermaidBlock(fencedCodeBlock.getLiteral()));
+                return;
+            }
             final TLRPC.TL_pageBlockPreformatted b = new TLRPC.TL_pageBlockPreformatted();
             b.text = first(plain(fencedCodeBlock.getLiteral()));
             b.language = fencedCodeBlock.getInfo() == null ? "" : fencedCodeBlock.getInfo();
@@ -1048,6 +1055,133 @@ public class MarkdownParser {
             c.text = first(richTextOf(cell, null));
             c.flags |= TLObject.FLAG_7;
             return c;
+        }
+    }
+
+    private static boolean isMermaidFence(String info) {
+        if (TextUtils.isEmpty(info)) {
+            return false;
+        }
+        final String trimmed = info.trim();
+        if (trimmed.isEmpty()) {
+            return false;
+        }
+        final int space = trimmed.indexOf(' ');
+        final String language = (space >= 0 ? trimmed.substring(0, space) : trimmed).trim();
+        return "mermaid".equalsIgnoreCase(language);
+    }
+
+    private static TLRPC.TL_pageBlockEmbed buildMermaidBlock(String literal) {
+        final TLRPC.TL_pageBlockEmbed block = new TLRPC.TL_pageBlockEmbed();
+        block.html = buildMermaidHtml(literal == null ? "" : literal);
+        block.flags |= TLObject.FLAG_2;
+        block.w = MERMAID_EMBED_WIDTH;
+        block.h = MERMAID_EMBED_HEIGHT;
+        block.flags |= TLObject.FLAG_5;
+        block.allow_scrolling = false;
+        block.full_width = false;
+        block.caption = emptyCaption();
+        return block;
+    }
+
+    private static TLRPC.TL_pageCaption emptyCaption() {
+        final TLRPC.TL_pageCaption caption = new TLRPC.TL_pageCaption();
+        caption.text = new TLRPC.TL_textEmpty();
+        caption.credit = new TLRPC.TL_textEmpty();
+        return caption;
+    }
+
+    private static String buildMermaidHtml(String source) {
+        final StringBuilder html = new StringBuilder(source.length() + 2048);
+        html.append("<!doctype html><html><head><meta charset=\"utf-8\">");
+        html.append("<meta name=\"viewport\" content=\"width=device-width,initial-scale=1,maximum-scale=1\">");
+        html.append("<meta name=\"telegram-mermaid\" content=\"1\">");
+        html.append("<style>");
+        html.append("html,body{margin:0;padding:0;background:var(--tg-mermaid-bg,#fff);color:var(--tg-mermaid-text,#222);font:14px/1.45 sans-serif;overflow:hidden;}");
+        html.append(".wrap{padding:12px;box-sizing:border-box;}");
+        html.append(".mermaid{display:flex;justify-content:center;}");
+        html.append(".mermaid svg{max-width:100%;height:auto;background:var(--tg-mermaid-bg,#fff);}");
+        html.append(".mermaid svg text,.mermaid .label text,.mermaid .cluster-label text{fill:var(--tg-mermaid-text,#222)!important;}");
+        html.append(".mermaid .nodeLabel,.mermaid .nodeLabel p,.mermaid .nodeLabel span,.mermaid .edgeLabel,.mermaid .edgeLabel p,.mermaid .edgeLabel span,.mermaid .cluster-label span,.mermaid .cluster-label span p,.mermaid foreignObject,.mermaid foreignObject *{color:var(--tg-mermaid-text,#222)!important;fill:var(--tg-mermaid-text,#222)!important;}");
+        html.append("#error{display:none;white-space:pre-wrap;color:#b00020;padding:12px;font:12px/1.5 monospace;}");
+        html.append("</style>");
+        html.append("</head><body><div class=\"wrap\">");
+        html.append("<pre class=\"mermaid\">");
+        appendEscapedHtml(html, source);
+        html.append("</pre><div id=\"error\"></div></div>");
+        html.append("<script type=\"module\">");
+        html.append("import mermaid from '").append(MERMAID_ASSET_ENTRY).append("';");
+        html.append("function tgResize(){var h=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight,120);");
+        html.append("if(window.TelegramWebviewProxy&&window.TelegramWebviewProxy.postEvent){");
+        html.append("window.TelegramWebviewProxy.postEvent('resize_frame',JSON.stringify({height:Math.ceil(h)}));}}");
+        html.append("function tgTheme(){var dark=!!(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches);");
+        html.append("return dark?{theme:'dark',bg:'#1f1f1f',text:'#f2f2f2',line:'#d8d8d8',main:'#2f3142',border:'#9b84d8',cluster:'#27283a',edgeBg:'#1f1f1f'}:{theme:'default',bg:'#ffffff',text:'#222222',line:'#333333',main:'#ececff',border:'#9b84d8',cluster:'#f8f7ff',edgeBg:'#ffffff'};}");
+        html.append("function tgApplyThemeVars(p){document.documentElement.style.setProperty('--tg-mermaid-bg',p.bg);document.documentElement.style.setProperty('--tg-mermaid-text',p.text);}");
+        html.append("function tgParseNum(v){var n=parseFloat(v||'0');return isFinite(n)?n:0;}");
+        html.append("function tgTextLines(el){if(!el)return [];var text=(el.innerText||el.textContent||'').replace(/\\r/g,'');");
+        html.append("return text.split(/\\n+/).map(function(line){return line.replace(/\\s+/g,' ').trim();}).filter(Boolean);}");
+        html.append("function tgForceLabelColors(){var texts=document.querySelectorAll('.mermaid svg text');");
+        html.append("var color=getComputedStyle(document.documentElement).getPropertyValue('--tg-mermaid-text').trim()||'#222';");
+        html.append("for(var i=0;i<texts.length;i++){texts[i].setAttribute('fill',color);texts[i].style.fill=color;}");
+        html.append("var htmlNodes=document.querySelectorAll('.mermaid foreignObject,.mermaid foreignObject *,.mermaid .nodeLabel,.mermaid .edgeLabel,.mermaid .cluster-label span,.mermaid .cluster-label span *');");
+        html.append("for(var j=0;j<htmlNodes.length;j++){htmlNodes[j].style.color=color;htmlNodes[j].style.fill=color;}}");
+        html.append("function tgFixForeignObjectLabels(){var svgs=document.querySelectorAll('.mermaid svg');");
+        html.append("for(var i=0;i<svgs.length;i++){var svg=svgs[i];var fos=svg.querySelectorAll('foreignObject');");
+        html.append("for(var j=0;j<fos.length;j++){var fo=fos[j];if(fo.dataset&&fo.dataset.tgLabelFixed==='1')continue;");
+        html.append("var host=fo.closest('.label,.edgeLabel,.cluster-label')||fo.parentNode;if(!host)continue;");
+        html.append("var lines=tgTextLines(fo);if(!lines.length)continue;");
+        html.append("var x=tgParseNum(fo.getAttribute('x'));var y=tgParseNum(fo.getAttribute('y'));");
+        html.append("var width=tgParseNum(fo.getAttribute('width'));var height=tgParseNum(fo.getAttribute('height'));");
+        html.append("if(!width||!height){var box=fo.getBoundingClientRect();width=width||box.width;height=height||box.height;}");
+        html.append("if(!width||!height)continue;");
+        html.append("var probe=fo.querySelector('span,p,div')||fo;var style=window.getComputedStyle(probe);");
+        html.append("var fontSize=tgParseNum(style.fontSize)||14;var lineHeight=tgParseNum(style.lineHeight);");
+        html.append("if(!lineHeight||lineHeight<fontSize)lineHeight=fontSize*1.2;");
+        html.append("var fontFamily=style.fontFamily||'sans-serif';");
+        html.append("var color=getComputedStyle(document.documentElement).getPropertyValue('--tg-mermaid-text').trim()||'#222';");
+        html.append("var text=document.createElementNS('http://www.w3.org/2000/svg','text');");
+        html.append("text.setAttribute('x',String(x+width/2));text.setAttribute('y',String(y+height/2));");
+        html.append("text.setAttribute('fill',color);text.setAttribute('font-size',String(fontSize));");
+        html.append("text.setAttribute('font-family',fontFamily);text.setAttribute('text-anchor','middle');");
+        html.append("text.setAttribute('dominant-baseline','middle');text.setAttribute('class','tg-fo-label');");
+        html.append("if(lines.length===1){text.textContent=lines[0];}else{");
+        html.append("var startY=y+(height-((lines.length-1)*lineHeight))/2;");
+        html.append("text.removeAttribute('dominant-baseline');text.setAttribute('y',String(startY));");
+        html.append("for(var k=0;k<lines.length;k++){var tspan=document.createElementNS('http://www.w3.org/2000/svg','tspan');");
+        html.append("tspan.setAttribute('x',String(x+width/2));if(k===0){tspan.setAttribute('dy','0');}else{tspan.setAttribute('dy',String(lineHeight));}");
+        html.append("tspan.textContent=lines[k];text.appendChild(tspan);}}");
+        html.append("host.appendChild(text);fo.style.display='none';if(fo.dataset)fo.dataset.tgLabelFixed='1';}}}");
+        html.append("window.addEventListener('resize',function(){setTimeout(tgResize,0);});");
+        html.append("(async function(){try{");
+        html.append("var palette=tgTheme();tgApplyThemeVars(palette);");
+        html.append("mermaid.initialize({startOnLoad:false,securityLevel:'loose',theme:'base',themeVariables:{background:palette.bg,textColor:palette.text,nodeTextColor:palette.text,primaryTextColor:palette.text,secondaryTextColor:palette.text,tertiaryTextColor:palette.text,lineColor:palette.line,mainBkg:palette.main,primaryColor:palette.main,secondaryColor:palette.main,tertiaryColor:palette.bg,primaryBorderColor:palette.border,secondaryBorderColor:palette.border,tertiaryBorderColor:palette.border,clusterBkg:palette.cluster,clusterBorder:palette.border,edgeLabelBackground:palette.edgeBg,titleColor:palette.text,labelTextColor:palette.text,actorTextColor:palette.text,signalTextColor:palette.text,labelBoxBkgColor:palette.main,labelBoxBorderColor:palette.border},flowchart:{htmlLabels:false}});");
+        html.append("await mermaid.run({nodes:document.querySelectorAll('.mermaid')});");
+        html.append("tgForceLabelColors();");
+        html.append("tgFixForeignObjectLabels();");
+        html.append("tgForceLabelColors();");
+        html.append("}catch(e){var err=document.getElementById('error');if(err){err.style.display='block';var msg='';if(e&&typeof e==='object'){msg=e.message||e.str||e.text||'';if(!msg){try{msg=JSON.stringify(e,null,2);}catch(ignore){}}}err.textContent=msg||String(e);}}");
+        html.append("setTimeout(tgResize,50);})();");
+        html.append("</script></body></html>");
+        return html.toString();
+    }
+
+    private static void appendEscapedHtml(StringBuilder out, String source) {
+        for (int i = 0; i < source.length(); i++) {
+            final char ch = source.charAt(i);
+            switch (ch) {
+                case '&':
+                    out.append("&amp;");
+                    break;
+                case '<':
+                    out.append("&lt;");
+                    break;
+                case '>':
+                    out.append("&gt;");
+                    break;
+                default:
+                    out.append(ch);
+                    break;
+            }
         }
     }
 

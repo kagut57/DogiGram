@@ -1,5 +1,7 @@
 apply plugin: 'com.android.application'
 
+def testArm64Only = "1".equals(System.getenv("TELEGRAM_TEST_ABI_ONLY_ARM64"))
+
 repositories {
     mavenCentral()
     google()
@@ -94,7 +96,11 @@ android {
     productFlavors {
         afat {
             ndk {
-                abiFilters "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
+                if (testArm64Only) {
+                    abiFilters "arm64-v8a"
+                } else {
+                    abiFilters "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
+                }
             }
             ext {
                 abiVersionCode = 9

@@ -90,6 +90,8 @@ import android.webkit.RenderProcessGoneDetail;
 import android.webkit.WebBackForwardList;
 import android.webkit.WebChromeClient;
 import android.webkit.WebHistoryItem;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -221,6 +223,7 @@ import org.telegram.ui.web.WebActionBar;
 import org.telegram.ui.web.WebBrowserSettings;
 import org.telegram.ui.web.WebInstantView;
 
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.net.URLDecoder;
@@ -8462,6 +8465,9 @@ public class ArticleViewer implements NotificationCenter.NotificationCenterDeleg
 
         private WebpageAdapter parentAdapter;
 
+        private static final String MERMAID_ASSET_URL_PREFIX = "https://telegram.org/embed/mermaid/";
+        private static final String MERMAID_ASSET_PATH_PREFIX = "mermaid/";
+
         public class TouchyWebView extends WebView {
 
             public TouchyWebView(Context context) {
@@ -8635,6 +8641,25 @@ public class ArticleViewer implements NotificationCenter.NotificationCenterDeleg
                 });
 
                 webView.setWebViewClient(new WebViewClient() {
+                    @Nullable
+                    @Override
+                    public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+                        if (request != null && request.getUrl() != null && request.getUrl().toString().startsWith(MERMAID_ASSET_URL_PREFIX)) {
+                            final String assetName = request.getUrl().toString().substring(MERMAID_ASSET_URL_PREFIX.length());
+                            final String assetPath = MERMAID_ASSET_PATH_PREFIX + assetName;
+                            try {
+                                if (assetName.contains("..") || assetName.startsWith("/")) {
+                                    throw new IllegalArgumentException("Invalid Mermaid asset path");
+                                }
+                                return new WebResourceResponse("application/javascript", "UTF-8", ApplicationLoader.applicationContext.getAssets().open(assetPath));
+                            } catch (Exception e) {
+                                FileLog.e(e);
+                                return new WebResourceResponse("application/javascript", "UTF-8", new ByteArrayInputStream("export default {};".getBytes(StandardCharsets.UTF_8)));
+                            }
+                        }
+                        return super.shouldInterceptRequest(view, request);
+                    }
+
                     @Override
                     public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) {
                         try {
