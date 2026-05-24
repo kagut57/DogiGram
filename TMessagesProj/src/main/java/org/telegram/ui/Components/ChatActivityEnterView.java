@@ -7638,6 +7638,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         }
         updateSendButtonPaid();
         final CharSequence message = messageEditText == null ? "" : AndroidUtilities.getTrimmedString(messageEditText.getTextToUse());
+        updateSendButtonBlockedByTypingView(animatorIsBlockedByStreaming.getFloatValue());
         boolean shownSendButton = false;
         if (slowModeTimer > 0 && slowModeTimer != Integer.MAX_VALUE && !isInScheduleMode()) {
             if (slowModeButton.getVisibility() != VISIBLE) {
@@ -7828,7 +7829,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                     }
                 }
             }
-        } else if (message.length() > 0 || forceShowSendButton || audioToSend != null || videoToSendMessageObject != null || slowModeTimer == Integer.MAX_VALUE && !isInScheduleMode() || isLiveComment && getStarsPrice() > 0 || animatorIsBlockedByStreaming.getValue()) {
+        } else if (message.length() > 0 || forceShowSendButton || audioToSend != null || videoToSendMessageObject != null || slowModeTimer == Integer.MAX_VALUE && !isInScheduleMode() || isLiveComment && getStarsPrice() > 0 || shouldBlockSendButtonByStreaming()) {
             shownSendButton = true;
             final String caption = messageEditText == null ? null : messageEditText.getCaption();
             boolean showBotButton = caption != null && (getSendButtonInternal().getVisibility() == VISIBLE || expandStickersButton != null && expandStickersButton.getVisibility() == VISIBLE);
@@ -7846,7 +7847,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                 Theme.setSelectorDrawableColor(sendButton.getBackground(), Color.argb(24, Color.red(color), Color.green(color), Color.blue(color)), true);
             }
 
-            if (audioVideoButtonContainer.getVisibility() == VISIBLE || slowModeButton.getVisibility() == VISIBLE || showBotButton || showSendButton || animatorIsBlockedByStreaming.getValue()) {
+            if (audioVideoButtonContainer.getVisibility() == VISIBLE || slowModeButton.getVisibility() == VISIBLE || showBotButton || showSendButton || shouldBlockSendButtonByStreaming()) {
                 if (animated) {
                     if (runningAnimationType == 1 && caption == null || runningAnimationType == 3 && caption != null) {
                         return;
@@ -14085,8 +14086,27 @@ public class ChatActivityEnterView extends FrameLayout implements
         }
     }
 
+    private boolean hasSendableText() {
+        return messageEditText != null && AndroidUtilities.getTrimmedString(messageEditText.getTextToUse()).length() > 0;
+    }
+
+    private boolean shouldBlockSendButtonByStreaming() {
+        return animatorIsBlockedByStreaming.getValue() && !hasSendableText();
+    }
+
     private boolean isSendButtonEnabled() {
-        return sendButtonEnabled && !animatorIsBlockedByStreaming.getValue();
+        return sendButtonEnabled && !shouldBlockSendButtonByStreaming();
+    }
+
+    private void updateSendButtonBlockedByTypingView(float factor) {
+        if (sendButtonBlockedByTypingView == null) {
+            return;
+        }
+        boolean showBlockedByTyping = factor > 0 && shouldBlockSendButtonByStreaming();
+        sendButtonBlockedByTypingView.setAlpha(showBlockedByTyping ? factor : 0);
+        sendButtonBlockedByTypingView.setScaleX(lerp(0.5f, 1, factor));
+        sendButtonBlockedByTypingView.setScaleY(lerp(0.5f, 1, factor));
+        sendButtonBlockedByTypingView.setVisibility(showBlockedByTyping ? View.VISIBLE : View.INVISIBLE);
     }
 
     private void updateAttachButtonTranslationX() {
@@ -14827,10 +14847,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             checkUi_TopViewVisibility();
         }
         if (id == ANIMATOR_ID_BLOCKED_BY_BOT_TYPING) {
-            sendButtonBlockedByTypingView.setAlpha(factor);
-            sendButtonBlockedByTypingView.setScaleX(lerp(0.5f, 1, factor));
-            sendButtonBlockedByTypingView.setScaleY(lerp(0.5f, 1, factor));
-            sendButtonBlockedByTypingView.setVisibility(factor > 0 ? View.VISIBLE : View.INVISIBLE);
+            updateSendButtonBlockedByTypingView(factor);
         }
         invalidate();
     }
