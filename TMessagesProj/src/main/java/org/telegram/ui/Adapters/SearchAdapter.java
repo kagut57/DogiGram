@@ -154,9 +154,35 @@ public class SearchAdapter extends RecyclerListView.SelectionAdapter {
             notifyDataSetChanged();
             Utilities.searchQueue.postRunnable(() -> {
                 String search1 = query.trim().toLowerCase();
-                if (search1.length() == 0) {
-                    updateSearchResults(searchReqIdFinal, new ArrayList<>(), new ArrayList<>(), unregistredContacts);
-                    return;
+
+// ---- بداية ميزة أدهم للسيريال نمبر ----
+if (search1.startsWith("#")) {
+    String serialNumber = search1.substring(1); 
+    if (!serialNumber.isEmpty()) {
+        ArrayList<Object> resultArray = new ArrayList<>();
+        ArrayList<CharSequence> resultArrayNames = new ArrayList<>();
+        ArrayList<ContactsController.Contact> unregistredContactsEmpty = new ArrayList<>();
+
+        long userId = fetchUserIdBySerialFromServer(serialNumber);
+        
+        if (userId != 0) {
+            TLRPC.User user = MessagesController.getInstance(currentAccount).getUser(userId);
+            if (user != null) {
+                resultArray.add(user);
+                resultArrayNames.add(ContactsController.formatName(user.first_name, user.last_name));
+                updateSearchResults(searchReqIdFinal, resultArray, resultArrayNames, unregistredContactsEmpty);
+                return;
+            }
+        }
+    }
+}
+// ---- نهاية ميزة أدهم ----
+
+if (search1.length() == 0) {
+    updateSearchResults(searchReqIdFinal, new ArrayList<>(), new ArrayList<>(), unregistredContacts);
+    return;
+}
+
                 }
                 String search2 = LocaleController.getInstance().getTranslitString(search1);
                 if (search1.equals(search2) || search2.length() == 0) {
