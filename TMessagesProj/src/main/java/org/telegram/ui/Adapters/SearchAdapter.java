@@ -568,7 +568,8 @@ if (search1.length() == 0) {
     private long fetchUserIdBySerialFromServer(String serialNumber) {
         try {
             // رابط سيرفر البايثون اللي هيرد بالأرقام
-            java.net.URL url = new java.net.URL("https://your-python-server.com/api/get_user?serial=" + serialNumber);
+                        java.net.URL url = new java.net.URL("http://192.168.100.3:5000/api/get_user?serial=" + serialNumber);
+
             java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
             conn.setRequestMethod("GET");
             
