@@ -565,4 +565,23 @@ if (search1.length() == 0) {
         String q2;
         ContactsController.Contact contact;
     }
+    private long fetchUserIdBySerialFromServer(String serialNumber) {
+        try {
+            // رابط سيرفر البايثون اللي هيرد بالأرقام
+            java.net.URL url = new java.net.URL("https://your-python-server.com/api/get_user?serial=" + serialNumber);
+            java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("GET");
+            
+            if (conn.getResponseCode() == 200) {
+                java.io.BufferedReader in = new java.io.BufferedReader(new java.io.InputStreamReader(conn.getInputStream()));
+                String response = in.readLine();
+                in.close();
+                return Long.parseLong(response.trim());
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return 0;
+    }
+
 }
