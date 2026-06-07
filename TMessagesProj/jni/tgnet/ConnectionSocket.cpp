@@ -80,12 +80,17 @@ static void generate_key_ml_kem_768(unsigned char *key) {
     constexpr uint32_t Q = 3329;
     constexpr int N = 384;
 
-    std::vector<uint32_t> values(N * 2);
-    RAND_bytes(reinterpret_cast<unsigned char*>(values.data()),values.size() * sizeof(uint32_t));
+    auto get_rand_u32 = []() -> uint32_t {
+        uint32_t val;
+        do {
+            RAND_bytes(reinterpret_cast<unsigned char*>(&val), sizeof(uint32_t));
+        } while (val >= 4294967072U);
+        return val % Q;
+    };
 
     for (int i = 0; i < N; ++i) {
-        uint32_t a = values[i * 2]     % Q;
-        uint32_t b = values[i * 2 + 1] % Q;
+        uint32_t a = get_rand_u32();
+        uint32_t b = get_rand_u32();
 
         key[i * 3 + 0] = static_cast<unsigned char>(a & 0xFFu);
         key[i * 3 + 1] = static_cast<unsigned char>((a >> 8) | ((b & 0x0Fu) << 4));
@@ -415,10 +420,11 @@ private:
             }
             case Type::P: {
                 auto length = offset;
-                if (length <= 513) {
+                uint32_t targetLength = 512 + (rand() % 128);
+                if (length + 4 < targetLength) {
                     writeOp(Op::string("\x00\x15", 2), data, offset);
                     writeOp(Op::begin_scope(), data, offset);
-                    writeOp(Op::zero(513 - length), data, offset);
+                    writeOp(Op::zero(targetLength - length - 4), data, offset);
                     writeOp(Op::end_scope(), data, offset);
                 }
                 break;
@@ -1011,8 +1017,9 @@ void ConnectionSocket::onEvent(uint32_t events) {
                 if (remaining) {
                     ssize_t sentLength;
                     if (tlsState != 0) {
-                        if (remaining > 2878) {
-                            remaining = 2878;
+                        uint32_t maxRecordSize = 4096 + (rand() % 8192);
+                        if (remaining > maxRecordSize) {
+                            remaining = maxRecordSize;
                         }
                         size_t headersSize = 0;
                         if (tlsState == 1) {
