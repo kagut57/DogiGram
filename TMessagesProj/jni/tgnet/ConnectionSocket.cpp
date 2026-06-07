@@ -420,10 +420,11 @@ private:
             }
             case Type::P: {
                 auto length = offset;
-                if (length <= 513) {
+                uint32_t targetLength = 512 + (rand() % 128);
+                if (length + 4 < targetLength) {
                     writeOp(Op::string("\x00\x15", 2), data, offset);
                     writeOp(Op::begin_scope(), data, offset);
-                    writeOp(Op::zero(513 - length), data, offset);
+                    writeOp(Op::zero(targetLength - length - 4), data, offset);
                     writeOp(Op::end_scope(), data, offset);
                 }
                 break;
