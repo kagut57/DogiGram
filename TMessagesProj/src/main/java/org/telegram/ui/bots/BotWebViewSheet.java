@@ -1319,6 +1319,9 @@ public class BotWebViewSheet extends Dialog implements NotificationCenter.Notifi
     }
 
     public boolean isFullSize() {
+        if (requestProps != null && requestProps.compact) {
+            return false;
+        }
         return fullscreen || (fullsize == null ? defaultFullsize : fullsize);
     }
 
