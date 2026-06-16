@@ -17,6 +17,7 @@ import org.telegram.SQLite.SQLiteCursor;
 import org.telegram.SQLite.SQLitePreparedStatement;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ChatObject;
+import org.telegram.messenger.DialogObject;
 import org.telegram.messenger.ContactsController;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.MessageObject;
@@ -223,7 +224,10 @@ public class SearchAdapterHelper {
                                         chat = chatsMap.get(peer.channel_id);
                                     }
                                     if (chat != null) {
-                                        if (!allowChats || canAddGroupsOnly && !ChatObject.canAddBotsToChat(chat) || !allowGlobalResults && ChatObject.isNotInChat(chat) || !filter(chat)) {
+                                        boolean shouldBlockChat = !DialogObject.isPersonalOrFolderDialog(-chat.id);
+                                        boolean cannotAddBotToChat = canAddGroupsOnly && !ChatObject.canAddBotsToChat(chat);
+                                        boolean globalResultBlocked = !allowGlobalResults && ChatObject.isNotInChat(chat);
+                                        if (!allowChats || shouldBlockChat || cannotAddBotToChat || globalResultBlocked || !filter(chat)) {
                                             continue;
                                         }
                                         globalSearch.add(chat);
@@ -250,7 +254,9 @@ public class SearchAdapterHelper {
                                         chat = chatsMap.get(peer.channel_id);
                                     }
                                     if (chat != null) {
-                                        if (!allowChats || canAddGroupsOnly && !ChatObject.canAddBotsToChat(chat) || -chat.id == exceptDialogId || !filter(chat)) {
+                                        boolean shouldBlockChat = !DialogObject.isPersonalOrFolderDialog(-chat.id);
+                                        boolean cannotAddBotToChat = canAddGroupsOnly && !ChatObject.canAddBotsToChat(chat);
+                                        if (!allowChats || shouldBlockChat || cannotAddBotToChat || -chat.id == exceptDialogId || !filter(chat)) {
                                             continue;
                                         }
                                         localServerSearch.add(chat);

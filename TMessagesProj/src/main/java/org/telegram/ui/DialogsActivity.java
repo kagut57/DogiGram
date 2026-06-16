@@ -2803,10 +2803,10 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             hasInvoice = arguments.getBoolean("hasInvoice", false);
             showSetPasswordConfirm = arguments.getBoolean("showSetPasswordConfirm", showSetPasswordConfirm);
             otherwiseReloginDays = arguments.getInt("otherwiseRelogin");
-            allowGroups = arguments.getBoolean("allowGroups", true);
-            allowMegagroups = arguments.getBoolean("allowMegagroups", true);
-            allowLegacyGroups = arguments.getBoolean("allowLegacyGroups", true);
-            allowChannels = arguments.getBoolean("allowChannels", true);
+            allowGroups = arguments.getBoolean("allowGroups", false);
+            allowMegagroups = arguments.getBoolean("allowMegagroups", false);
+            allowLegacyGroups = arguments.getBoolean("allowLegacyGroups", false);
+            allowChannels = arguments.getBoolean("allowChannels", false);
             allowUsers = arguments.getBoolean("allowUsers", true);
             allowBots = arguments.getBoolean("allowBots", true);
             closeFragment = arguments.getBoolean("closeFragment", true);
