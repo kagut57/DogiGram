@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="AppName">텔레그램</string>
-    <string name="AppNameBeta">텔레그램</string>
+    <string name="AppName">Nogram</string>
+    <string name="AppNameBeta">Nogram 베타</string>
     <string name="LanguageName">한국어</string>
     <string name="English">영어</string>
     <string name="LanguageNameInEnglish">한국어</string>
@@ -915,6 +915,19 @@
     <string name="CheckYourNewEmail">새 이메일을 확인하세요</string>
     <string name="CheckYourNewEmailSubtitle">새로운 이메일 %1$s으로 보낸 코드를 입력해주세요.</string>
     <string name="LoginOrSingInWithGoogle">혹은</string>
+    <!--Intro view-->
+    <string name="Page1Title">Nogram</string>
+    <string name="Page2Title">단순함</string>
+    <string name="Page3Title">조용함</string>
+    <string name="Page4Title">최소화</string>
+    <string name="Page5Title">가벼움</string>
+    <string name="Page6Title">완료</string>
+    <string name="Page1Message">**실제 사람만**. 채널이나 봇은 없습니다.</string>
+    <string name="Page2Message">**텍스트만**. 스티커, GIF, 스토리는 없습니다.</string>
+    <string name="Page3Message">**접속 표시 없음**. 온라인 또는 입력 중 표시가 없습니다.</string>
+    <string name="Page4Message">**탐색할 것 없음**. 보내고 빠르게 나가세요.</string>
+    <string name="Page5Message">**가벼움**. 애니메이션, 미리보기, 불필요한 요소가 없습니다.</string>
+    <string name="Page6Message">**대화를 위한 도구**이지, 시간을 낭비하기 위한 것이 아닙니다.</string>
     <!--edit video view-->
     <string name="SendingVideo">동영상 보내는 중...</string>
     <string name="SendingGif">GIF 보내는 중...</string>

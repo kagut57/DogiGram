@@ -1,39 +1,36 @@
-## Telegram messenger for Android
+# Nogram
 
-[Telegram](https://telegram.org) is a messaging app with a focus on speed and security. It’s superfast, simple and free.
-This repo contains the official source code for [Telegram App for Android](https://play.google.com/store/apps/details?id=org.telegram.messenger).
+Nogram is a minimalist Telegram client for Android focused on one thing only:
+plain text conversations with real people.
 
-## Creating your Telegram Application
+It is intentionally a reduced version of the official Telegram app. The goal is
+not to make messaging richer, more engaging, or more entertaining. The goal is
+to make opening the app boring and fast: write what you need, read what matters,
+and leave.
 
-We welcome all developers to use our API and source code to create applications on our platform.
-There are several things we require from **all developers** for the moment.
+## What Nogram Keeps
 
-1. [**Obtain your own api_id**](https://core.telegram.org/api/obtaining_api_id) for your application.
-2. Please **do not** use the name Telegram for your app — or make sure your users understand that it is unofficial.
-3. Kindly **do not** use our standard logo (white paper plane in a blue circle) as your app's logo.
-3. Please study our [**security guidelines**](https://core.telegram.org/mtproto/security_guidelines) and take good care of your users' data and privacy.
-4. Please remember to publish **your** code too in order to comply with the licences.
+- Direct text messaging with real people
+- A lightweight, distraction-free chat experience
+- The basic Telegram account and messaging infrastructure needed for everyday communication
 
-### API, Protocol documentation
+## Design Principle
 
-Telegram API manuals: https://core.telegram.org/api
+Nogram treats messaging as a utility, not a feed.
 
-MTproto protocol manuals: https://core.telegram.org/mtproto
+The app should feel quiet, limited, and slightly boring on purpose. It is built
+for people who want Telegram's basic person-to-person communication without the
+surrounding attention loops.
 
-### Compilation Guide
+## Project Notes
 
-**Note**: In order to support [reproducible builds](https://core.telegram.org/reproducible-builds), this repo contains dummy release.keystore,  google-services.json and filled variables inside BuildVars.java. Before publishing your own APKs please make sure to replace all these files with your own.
+This project is an unofficial Android client based on Telegram's open-source
+Android codebase. **It is not affiliated with Telegram**.
 
-You will require Android Studio 3.4, Android NDK rev. 20 and Android SDK 8.1
+Developers building or publishing their own Telegram-based client must use their
+own Telegram API credentials and follow Telegram's platform rules and licensing
+requirements:
 
-1. Download the Telegram source code from https://github.com/DrKLO/Telegram ( git clone https://github.com/DrKLO/Telegram.git )
-2. Copy your release.keystore into TMessagesProj/config
-3. Fill out RELEASE_KEY_PASSWORD, RELEASE_KEY_ALIAS, RELEASE_STORE_PASSWORD in gradle.properties to access your  release.keystore
-4.  Go to https://console.firebase.google.com/, create two android apps with application IDs org.telegram.messenger and org.telegram.messenger.beta, turn on firebase messaging and download google-services.json, which should be copied to the same folder as TMessagesProj.
-5. Open the project in the Studio (note that it should be opened, NOT imported).
-6. Fill out values in TMessagesProj/src/main/java/org/telegram/messenger/BuildVars.java – there’s a link for each of the variables showing where and which data to obtain.
-7. You are ready to compile Telegram.
-
-### Localization
-
-We moved all translations to https://translations.telegram.org/en/android/. Please use it.
+- Telegram API documentation: https://core.telegram.org/api
+- MTProto documentation: https://core.telegram.org/mtproto
+- API credentials: https://core.telegram.org/api/obtaining_api_id

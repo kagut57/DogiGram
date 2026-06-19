@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="AppName">Telegram</string>
-    <string name="AppNameBeta">Telegram Beta</string>
+    <string name="AppName">Nogram</string>
+    <string name="AppNameBeta">Nogram Beta</string>
     <string name="LanguageName">Español</string>
     <string name="English">Inglés</string>
     <string name="LanguageNameInEnglish">Spanish</string>
@@ -1258,18 +1258,18 @@
     <string name="PermissionDrawAboveOtherAppsTitle">Modo imagen en imagen</string>
     <string name="PermissionDrawAboveOtherAppsGroupCallTitle">Superposición del videochat</string>
     <!--Intro view-->
-    <string name="Page1Title">Telegram</string>
-    <string name="Page2Title">Rápido</string>
-    <string name="Page3Title">Gratuito</string>
-    <string name="Page4Title">Seguro</string>
-    <string name="Page5Title">Poderoso</string>
-    <string name="Page6Title">Basado en la nube</string>
-    <string name="Page1Message">La app de mensajería **más rápida**\ndel mundo. Es **gratis** y **segura**.</string>
-    <string name="Page2Message">**Telegram** entrega mensajes más\nrápido que cualquier otra aplicación.</string>
-    <string name="Page3Message">**Telegram** da almacenamiento gratuito e\nilimitado en la nube para chats y multimedia.</string>
-    <string name="Page4Message">**Telegram** mantiene tus mensajes\na salvo del ataque de hackers.</string>
-    <string name="Page5Message">**Telegram** no tiene límite de espacio\npara tus archivos multimedia y chats.</string>
-    <string name="Page6Message">**Telegram** te permite acceder a tus\nmensajes desde múltiples dispositivos.</string>
+    <string name="Page1Title">Nogram</string>
+    <string name="Page2Title">Simple</string>
+    <string name="Page3Title">Silencioso</string>
+    <string name="Page4Title">Mínimo</string>
+    <string name="Page5Title">Ligero</string>
+    <string name="Page6Title">Listo</string>
+    <string name="Page1Message">**Solo personas reales**. Sin canales ni bots.</string>
+    <string name="Page2Message">**Solo texto**. Sin stickers, GIFs ni historias.</string>
+    <string name="Page3Message">**Sin presencia**. Sin indicadores de conexión ni escritura.</string>
+    <string name="Page4Message">**Nada que descubrir**. Envía y sal rápido.</string>
+    <string name="Page5Message">**Ligero**. Sin animaciones, vistas previas ni exceso.</string>
+    <string name="Page6Message">**Una herramienta para hablar**, no para perder el tiempo.</string>
     <string name="StartMessaging">Empezar a chatear</string>
     <!--contacts shortcuts-->
     <string name="ContactShortcutMessage">Mensaje al %1$s</string>

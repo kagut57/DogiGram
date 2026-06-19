@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="AppName">تيليجرام</string>
-    <string name="AppNameBeta">(Beta) تيليجرام</string>
+    <string name="AppName">Nogram</string>
+    <string name="AppNameBeta">(تجريبي) Nogram</string>
     <string name="LanguageName">العربية</string>
     <string name="English">الإنجليزية</string>
     <string name="LanguageNameInEnglish">Arabic</string>
@@ -1191,18 +1191,18 @@
     <string name="TosUpdateDecline">للأسف، لا توجد خيارات أخرى. على عكس التطبيقات الأخرى؛ لا تستخدم تيليجرام بيانات المستخدمين لاستهدافهم بالإعلانات أو لأغراض تجارية أخرى. يخزن تيليجرام فقط المعلومات التي يحتاجها للعمل كخدمة سحابية غنية بالميزات. يمكنك ضبط كيفية استخدام بياناتك في إعدادات الخصوصية والأمان.\n\nإذا لم تكن مرتاحًا لاحتياجات تيليجرام المتواضعة؛ لن نتمكن من تزويدك بهذه الخدمة.</string>
     <string name="TosDeclineDeleteAccount">تحذير، سيؤدي هذا إلى حذف حسابك في تيليجرام بشكل نهائي بالإضافة لجميع البيانات التي تخزنها في سحابة تيليجرام.\n\nهام: يمكنك الإلغاء الآن وتصدير بياناتك قبل حذف حسابك عوضًا عن خسارتها كلها. (للقيام بذلك، افتح النسخة الأخيرة من تيليجرام لسطح المكتب وتوجه إلى الإعدادات &gt; إعدادات متقدمة &gt; تصدير بيانات تيليجرام).</string>
     <!--Intro view-->
-    <string name="Page1Title">تيليجرام</string>
-    <string name="Page2Title">سريع</string>
-    <string name="Page3Title">مجاني</string>
-    <string name="Page4Title">آمن</string>
-    <string name="Page5Title">قوي</string>
-    <string name="Page6Title">تخزين سحابي</string>
-    <string name="Page1Message">تطبيق المراسلة **الأسرعُ** عالميًّا.\nإنه **مجانيٌّ** و**آمنٌ** كذلك.</string>
-    <string name="Page2Message">**تيليجرام** يوصل الرسائل\nأسرع من أي تطبيق آخر.</string>
-    <string name="Page3Message">**تيليجرام** يقدم تخزينًا سحابيًا مجانيًا\nغير محدود للمحادثات والوسائط.</string>
-    <string name="Page4Message">يحمي **تيليجرام** رسائلك\nمن هجمات المخترقين.</string>
-    <string name="Page5Message">لا يفرض **تيليجرام** قيودًا على\nحجم وسائطك ومحادثاتك.</string>
-    <string name="Page6Message">**تيليجرام** يتيح لك الوصول\nلرسائلك من أجهزة متعددة.</string>
+    <string name="Page1Title">Nogram</string>
+    <string name="Page2Title">بسيط</string>
+    <string name="Page3Title">هادئ</string>
+    <string name="Page4Title">أدنى حد</string>
+    <string name="Page5Title">خفيف</string>
+    <string name="Page6Title">تم</string>
+    <string name="Page1Message">**أشخاص حقيقيون فقط**. بلا قنوات أو بوتات.</string>
+    <string name="Page2Message">**نص فقط**. بلا ملصقات أو صور GIF أو قصص.</string>
+    <string name="Page3Message">**بلا حضور**. بلا مؤشرات اتصال أو كتابة.</string>
+    <string name="Page4Message">**لا شيء لاكتشافه**. أرسل واخرج بسرعة.</string>
+    <string name="Page5Message">**خفيف**. بلا حركات أو معاينات أو حشو.</string>
+    <string name="Page6Message">**أداة للتحدث**، وليس لإضاعة الوقت.</string>
     <string name="StartMessaging">بدء المراسلة</string>
     <!--date formatters-->
     <string name="formatterBoostExpired">MMM dd, yyyy</string>
