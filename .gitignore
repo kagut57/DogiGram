@@ -13,3 +13,10 @@ TMessagesProj_App/afat/
 TMessagesProj_AppHockeyApp/afat/
 TMessagesProj_AppStandalone/afat/
 TMessagesProj_AppHuawei/afat/
+TMessagesProj/config/release.keystore
+*.keystore
+*.jks
+google-services.json
+**/google-services.json
+agconnect-services.json
+**/agconnect-services.json

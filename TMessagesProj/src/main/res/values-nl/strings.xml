@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="AppName">Telegram</string>
-    <string name="AppNameBeta">Telegram-bèta</string>
+    <string name="AppName">Nogram</string>
+    <string name="AppNameBeta">Nogram-bèta</string>
     <string name="LanguageName">Nederlands</string>
     <string name="English">Engels</string>
     <string name="LanguageNameInEnglish">Dutch</string>
@@ -861,6 +861,19 @@
     <string name="CheckYourNewEmail">Controleer je mailbox</string>
     <string name="CheckYourNewEmailSubtitle">Voer de code in die naar je nieuwe e-mailadres is verzonden: %1$s.</string>
     <string name="LoginOrSingInWithGoogle">of</string>
+    <!--Intro view-->
+    <string name="Page1Title">Nogram</string>
+    <string name="Page2Title">Eenvoudig</string>
+    <string name="Page3Title">Stil</string>
+    <string name="Page4Title">Minimaal</string>
+    <string name="Page5Title">Licht</string>
+    <string name="Page6Title">Klaar</string>
+    <string name="Page1Message">**Alleen echte mensen**. Geen kanalen of bots.</string>
+    <string name="Page2Message">**Alleen tekst**. Geen stickers, GIF\'s of verhalen.</string>
+    <string name="Page3Message">**Geen aanwezigheid**. Geen online- of typindicatoren.</string>
+    <string name="Page4Message">**Niets te ontdekken**. Verstuur en sluit snel af.</string>
+    <string name="Page5Message">**Lichtgewicht**. Geen animaties, voorvertoningen of ballast.</string>
+    <string name="Page6Message">**Een hulpmiddel om te praten**, niet om tijd te verspillen.</string>
     <!--edit video view-->
     <string name="SendingVideo">Video versturen</string>
     <string name="SendingGif">GIF versturen...</string>

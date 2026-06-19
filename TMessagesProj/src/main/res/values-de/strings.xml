@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="AppName">Telegram</string>
-    <string name="AppNameBeta">Telegram Beta</string>
+    <string name="AppName">Nogram</string>
+    <string name="AppNameBeta">Nogram Beta</string>
     <string name="LanguageName">Deutsch</string>
     <string name="English">Englisch</string>
     <string name="LanguageNameInEnglish">German</string>
@@ -1051,6 +1051,19 @@
     <string name="CheckYourNewEmail">Prüfe jetzt deine E-Mails</string>
     <string name="CheckYourNewEmailSubtitle">Bitte Code eingeben, der dir an die neue Adresse %1$s geschickt wurde.</string>
     <string name="LoginOrSingInWithGoogle">oder</string>
+    <!--Intro view-->
+    <string name="Page1Title">Nogram</string>
+    <string name="Page2Title">Schlicht</string>
+    <string name="Page3Title">Ruhig</string>
+    <string name="Page4Title">Minimal</string>
+    <string name="Page5Title">Schlank</string>
+    <string name="Page6Title">Fertig</string>
+    <string name="Page1Message">**Nur echte Menschen**. Keine Kanäle oder Bots.</string>
+    <string name="Page2Message">**Nur Text**. Keine Sticker, GIFs oder Storys.</string>
+    <string name="Page3Message">**Keine Präsenz**. Keine Online- oder Tippanzeigen.</string>
+    <string name="Page4Message">**Nichts zu entdecken**. Senden und schnell raus.</string>
+    <string name="Page5Message">**Leichtgewichtig**. Keine Animationen, Vorschauen oder Ballast.</string>
+    <string name="Page6Message">**Ein Werkzeug zum Reden**, nicht zum Zeitverschwenden.</string>
     <!--edit video view-->
     <string name="SendingVideo">Sende Video...</string>
     <string name="SendingGif">Sende GIF...</string>

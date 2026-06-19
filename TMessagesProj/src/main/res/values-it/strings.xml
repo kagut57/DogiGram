@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="AppName">Telegram</string>
-    <string name="AppNameBeta">Telegram Beta</string>
+    <string name="AppName">Nogram</string>
+    <string name="AppNameBeta">Nogram Beta</string>
     <string name="LanguageName">Italiano</string>
     <string name="English">Inglese</string>
     <string name="LanguageNameInEnglish">Italian</string>
@@ -1052,6 +1052,19 @@
     <string name="CheckYourNewEmail">Controlla la nuova email</string>
     <string name="CheckYourNewEmailSubtitle">Inserisci il codice che abbiamo inviato alla tua nuova email %1$s.</string>
     <string name="LoginOrSingInWithGoogle">o</string>
+    <!--Intro view-->
+    <string name="Page1Title">Nogram</string>
+    <string name="Page2Title">Semplice</string>
+    <string name="Page3Title">Silenzioso</string>
+    <string name="Page4Title">Minimale</string>
+    <string name="Page5Title">Leggero</string>
+    <string name="Page6Title">Fatto</string>
+    <string name="Page1Message">**Solo persone reali**. Niente canali o bot.</string>
+    <string name="Page2Message">**Solo testo**. Niente sticker, GIF o storie.</string>
+    <string name="Page3Message">**Nessuna presenza**. Niente indicatori online o di scrittura.</string>
+    <string name="Page4Message">**Niente da scoprire**. Invia ed esci rapidamente.</string>
+    <string name="Page5Message">**Leggero**. Niente animazioni, anteprime o superfluo.</string>
+    <string name="Page6Message">**Uno strumento per parlare**, non per perdere tempo.</string>
     <!--privacy settings-->
     <string name="PrivacySettings">Privacy e sicurezza</string>
     <string name="PrivacyTitle">Privacy</string>

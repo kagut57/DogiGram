@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="AppName">Telegram</string>
-    <string name="AppNameBeta">Telegram Beta</string>
+    <string name="AppName">Nogram</string>
+    <string name="AppNameBeta">Nogram Бета</string>
     <string name="LanguageName">Українська</string>
     <string name="English">Англійська</string>
     <string name="LanguageNameInEnglish">Ukrainian</string>
@@ -222,18 +222,18 @@
     <string name="CheckYourNewEmailSubtitle">Введіть код, який ми щойно надіслали на вашу нову е-пошту %1$s.</string>
     <string name="LoginOrSingInWithGoogle">або</string>
     <!--Intro view-->
-    <string name="Page1Title">Telegram</string>
-    <string name="Page2Title">Швидкий</string>
-    <string name="Page3Title">Безплатний</string>
-    <string name="Page4Title">Захищений</string>
-    <string name="Page5Title">Потужний</string>
-    <string name="Page6Title">Хмарний</string>
-    <string name="Page1Message">**Найшвидший** месенджер у світі.\n**Безплатний** і **захищений**.</string>
-    <string name="Page2Message">**Telegram** доставляє повідомлення\nшвидше за всі інші застосунки.</string>
-    <string name="Page3Message">У **Telegram** можна безплатно зберігати\nскільки завгодно повідомлень і медіафайлів.</string>
-    <string name="Page4Message">**Telegram** оберігає ваші повідомлення\nвід хакерських атак.</string>
-    <string name="Page5Message">**Telegram** не обмежує вас\nу розмірі чатів і медіа.</string>
-    <string name="Page6Message">**Telegram** надає вам доступ до\nповідомлень з безлічі пристроїв.</string>
+    <string name="Page1Title">Nogram</string>
+    <string name="Page2Title">Простий</string>
+    <string name="Page3Title">Тихий</string>
+    <string name="Page4Title">Мінімальний</string>
+    <string name="Page5Title">Легкий</string>
+    <string name="Page6Title">Готово</string>
+    <string name="Page1Message">**Тільки реальні люди**. Без каналів і ботів.</string>
+    <string name="Page2Message">**Тільки текст**. Без стікерів, GIF-анімацій чи історій.</string>
+    <string name="Page3Message">**Без присутності**. Без індикаторів «онлайн» або «друкує».</string>
+    <string name="Page4Message">**Нічого шукати**. Надішліть і швидко вийдіть.</string>
+    <string name="Page5Message">**Легкий**. Без анімацій, попередніх переглядів чи зайвого.</string>
+    <string name="Page6Message">**Інструмент для розмов**, а не для марнування часу.</string>
     <string name="StartMessaging">Почати спілкування</string>
     <!--date formatters-->
     <string name="formatterBoostExpired">dd MMM yyyy</string>

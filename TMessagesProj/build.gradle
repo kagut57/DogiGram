@@ -123,6 +123,9 @@ android {
                 arguments '-DANDROID_STL=c++_static', '-DANDROID_PLATFORM=android-21' //, '-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON'
             }
         }
+
+        buildConfigField "int", "APP_ID", project.findProperty("NOGRAM_APP_ID") ?: "0"
+        buildConfigField "String", "APP_HASH", "\"" + (project.findProperty("NOGRAM_APP_HASH") ?: "") + "\""
     }
 
     buildTypes {
@@ -239,8 +242,6 @@ def getProps(String propName) {
         return "";
     }
 }
-apply plugin: 'com.google.gms.google-services'
-
 task checkVisibility {
     doFirst {
         def isPrivateBuild = project.gradle.startParameter.taskNames.find {
