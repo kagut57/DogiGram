@@ -230,7 +230,6 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
     private boolean drawForwardIcon, drawGiftIcon;
     private boolean visibleOnScreen = true;
     private boolean updateLayout;
-    private boolean wasDrawnOnline;
 
     public void setMoving(boolean moving) {
         this.moving = moving;
@@ -395,7 +394,6 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
 
     private float cornerProgress;
     private long lastUpdateTime;
-    private float onlineProgress;
     private float chatCallProgress;
     private float innerProgress;
     private int progressStage;
@@ -428,8 +426,8 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
     private boolean allowBotOpenButton;
     private Utilities.Callback<TLRPC.User> onOpenButtonClick;
     public DialogCell allowBotOpenButton(boolean allow, Utilities.Callback<TLRPC.User> onOpenClick) {
-        allowBotOpenButton = allow;
-        onOpenButtonClick = onOpenClick;
+        allowBotOpenButton = false;
+        onOpenButtonClick = null;
         return this;
     }
 
@@ -747,8 +745,6 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                 user = newUser;
             }
         }
-        boolean isOnline = isOnline();
-        onlineProgress = isOnline ? 1.0f : 0.0f;
     }
 
     private boolean isOnline() {
@@ -774,6 +770,17 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
 
     private boolean shouldHideSubtitle() {
         return customDialog == null && isDialogCell;
+    }
+
+    private int getNameTop() {
+        if (shouldHideSubtitle() && nameLayout != null) {
+            return (int) (storyParams.originalAvatarRect.centerY() - nameLayout.getHeight() / 2f);
+        }
+        int nameTop = dp(useForceThreeLines || SharedConfig.useThreeLinesLayout ? 10 : 14);
+        if ((!(useForceThreeLines || SharedConfig.useThreeLinesLayout) || isForumCell()) && hasTags()) {
+            nameTop -= dp(isForumCell() ? 8 : 9);
+        }
+        return nameTop;
     }
 
     private void checkGroupCall() {
@@ -1382,7 +1389,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                             drawScam = 2;
                             Theme.dialogs_fakeDrawable.checkText();
                         } else if (DialogObject.getEmojiStatusDocumentId(chat.emoji_status) != 0) {
-                            drawPremium = true;
+                            drawPremium = false; // true
                             nameLayoutEllipsizeByGradient = true;
                             emojiStatus.center = LocaleController.isRTL;
                             emojiStatus.set(DialogObject.getEmojiStatusDocumentId(chat.emoji_status), false);
@@ -1403,7 +1410,8 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                             drawVerified = !forbidVerified && user.verified;
                             drawBotVerified = !forbidVerified && !UserObject.isUserSelf(user) && user.bot_verification_icon != 0;
                         }
-                        drawPremium = MessagesController.getInstance(currentAccount).isPremiumUser(user) && UserConfig.getInstance(currentAccount).clientUserId != user.id && user.id != 0;
+//                        drawPremium = MessagesController.getInstance(currentAccount).isPremiumUser(user) && UserConfig.getInstance(currentAccount).clientUserId != user.id && user.id != 0;
+                        drawPremium = false;
                         if (drawPremium) {
                             Long emojiStatusId = UserObject.getEmojiStatusDocumentId(user);
                             emojiStatus.center = LocaleController.isRTL;
@@ -3214,9 +3222,6 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                 boolean continueUpdate = false;
                 if (user != null && !MessagesController.isSupportUser(user) && !user.bot && (mask & MessagesController.UPDATE_MASK_STATUS) != 0) {
                     user = MessagesController.getInstance(currentAccount).getUser(user.id);
-                    if (wasDrawnOnline != isOnline()) {
-                        invalidate = true;
-                    }
                 }
                 if ((mask & MessagesController.UPDATE_MASK_EMOJI_STATUS) != 0) {
                     long dialogBotVerificationIcon = 0;
@@ -3934,14 +3939,12 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
 
 
             if (drawNameLock) {
-                setDrawableBounds(Theme.dialogs_lockDrawable, nameLockLeft, nameLockTop);
+                int lockTop = shouldHideSubtitle() ? getNameTop() + dp(2.5f) : nameLockTop;
+                setDrawableBounds(Theme.dialogs_lockDrawable, nameLockLeft, lockTop);
                 Theme.dialogs_lockDrawable.draw(canvas);
             }
 
-            int nameTop = dp(useForceThreeLines || SharedConfig.useThreeLinesLayout ? 10 : 14);
-            if ((!(useForceThreeLines || SharedConfig.useThreeLinesLayout) || isForumCell()) && hasTags()) {
-                nameTop -= dp(isForumCell() ? 8 : 9);
-            }
+            int nameTop = getNameTop();
             if (nameLayout != null) {
                 if (nameLayoutEllipsizeByGradient && !nameLayoutFits) {
                     if (nameLayoutEllipsizeLeft && fadePaint == null) {
@@ -4888,41 +4891,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                 canvas.restore();
                 canvas.restore();
             }
-            if (user != null && !MessagesController.isSupportUser(user) && !user.bot) {
-                boolean isOnline = isOnline();
-                wasDrawnOnline = isOnline;
-                if (isOnline || onlineProgress != 0) {
-                    int top = (int) (storyParams.originalAvatarRect.bottom - dp(useForceThreeLines || SharedConfig.useThreeLinesLayout ? 6 : 8));
-                    int left;
-                    if (LocaleController.isRTL) {
-                        left = (int) (storyParams.originalAvatarRect.left + dp(useForceThreeLines || SharedConfig.useThreeLinesLayout ? 10 : 6));
-                    } else {
-                        left = (int) (storyParams.originalAvatarRect.right - dp(useForceThreeLines || SharedConfig.useThreeLinesLayout ? 10 : 6));
-                    }
-
-                    Theme.dialogs_onlineCirclePaint.setColor(Theme.getColor(Theme.key_windowBackgroundWhite, resourcesProvider));
-                    canvas.drawCircle(left, top, dp(7) * onlineProgress, Theme.dialogs_onlineCirclePaint);
-                    Theme.dialogs_onlineCirclePaint.setColor(Theme.getColor(Theme.key_chats_onlineCircle, resourcesProvider));
-                    canvas.drawCircle(left, top, dp(5) * onlineProgress, Theme.dialogs_onlineCirclePaint);
-                    if (isOnline) {
-                        if (onlineProgress < 1.0f) {
-                            onlineProgress += 16f / 150.0f;
-                            if (onlineProgress > 1.0f) {
-                                onlineProgress = 1.0f;
-                            }
-                            needInvalidate = true;
-                        }
-                    } else {
-                        if (onlineProgress > 0.0f) {
-                            onlineProgress -= 16f / 150.0f;
-                            if (onlineProgress < 0.0f) {
-                                onlineProgress = 0.0f;
-                            }
-                            needInvalidate = true;
-                        }
-                    }
-                }
-            } else if (chat != null) {
+            if (chat != null) {
                 hasCall = chat.call_active && chat.call_not_empty;
                 if ((hasCall || chatCallProgress != 0) && rightFragmentOpenedProgress < 1f) {
                     float checkProgress = checkBox != null && checkBox.isChecked() ? 1.0f - checkBox.getProgress() : 1.0f;

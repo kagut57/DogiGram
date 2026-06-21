@@ -8,8 +8,6 @@ import android.os.BatteryManager;
 import android.os.Build;
 
 import androidx.annotation.RequiresApi;
-import androidx.core.math.MathUtils;
-
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.AnimatedEmojiDrawable;
@@ -169,7 +167,7 @@ public class LiteMode {
     public static void setAllFlags(int flags) {
         // in settings it is already handled. would you handle it? 🫵
         // onFlagsUpdate(value, flags);
-        value = flags;
+        value = PRESET_POWER_SAVER;
         savePreference();
     }
 
@@ -200,15 +198,7 @@ public class LiteMode {
     }
 
     public static void loadPreference() {
-        int defaultValue = PRESET_HIGH, batteryDefaultValue = BATTERY_HIGH;
-        if (SharedConfig.getDevicePerformanceClass() == SharedConfig.PERFORMANCE_CLASS_LOW) {
-            defaultValue = PRESET_LOW;
-            batteryDefaultValue = BATTERY_LOW;
-        } else if (SharedConfig.getDevicePerformanceClass() == SharedConfig.PERFORMANCE_CLASS_AVERAGE) {
-            defaultValue = PRESET_MEDIUM;
-            batteryDefaultValue = BATTERY_MEDIUM;
-        }
-
+        int defaultValue = PRESET_POWER_SAVER, batteryDefaultValue = 100;
         final SharedPreferences preferences = MessagesController.getGlobalMainSettings();
         if (!preferences.contains("lite_mode6")) {
             if (preferences.contains("lite_mode5")) {
@@ -277,16 +267,27 @@ public class LiteMode {
         }
 
         int prevValue = value;
-        value = preferences.getInt("lite_mode6", defaultValue);
+        value = PRESET_POWER_SAVER;
         if (loaded) {
             onFlagsUpdate(prevValue, value);
         }
-        powerSaverLevel = preferences.getInt("lite_mode_battery_level", batteryDefaultValue);
+        powerSaverLevel = 100;
+        if (preferences.getInt("lite_mode6", defaultValue) != value || preferences.getInt("lite_mode_battery_level", batteryDefaultValue) != powerSaverLevel) {
+            savePreference();
+        }
         loaded = true;
     }
 
     public static void savePreference() {
-        MessagesController.getGlobalMainSettings().edit().putInt("lite_mode6", value).putInt("lite_mode_battery_level", powerSaverLevel).apply();
+        MessagesController.getGlobalMainSettings().edit()
+            .putInt("lite_mode6", value)
+            .putInt("lite_mode_battery_level", powerSaverLevel)
+            .putBoolean("loopStickers", false)
+            .putBoolean("autoplay_video", false)
+            .putBoolean("autoplay_video_liteforce", false)
+            .putBoolean("autoplay_gif", false)
+            .putBoolean("chatBlur", false)
+            .apply();
     }
 
     public static int getPowerSaverLevel() {
@@ -297,7 +298,7 @@ public class LiteMode {
     }
 
     public static void setPowerSaverLevel(int value) {
-        powerSaverLevel = MathUtils.clamp(value, 0, 100);
+        powerSaverLevel = 100;
         savePreference();
 
         // check power saver applied

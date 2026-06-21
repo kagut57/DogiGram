@@ -456,7 +456,7 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
             }
             nameLockTop = dp(21);
             drawCheck = user.verified;
-            drawPremium = !savedMessages && MessagesController.getInstance(currentAccount).isPremiumUser(user);
+            drawPremium = false;
             updateStatus(drawCheck, user, null, false);
         } else if (contact != null) {
             dialog_id = 0;
@@ -647,18 +647,7 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
                 } else if (UserObject.isService(user.id)) {
                     statusString = getString(R.string.ServiceNotifications);
                 } else {
-                    if (isOnline == null) {
-                        isOnline = new boolean[1];
-                    }
-                    isOnline[0] = false;
-                    statusString = LocaleController.formatUserStatus(currentAccount, user, isOnline);
-                    if (isOnline[0]) {
-                        currentStatusPaint = Theme.dialogs_onlinePaint;
-                    }
-                    if (user != null && (user.id == UserConfig.getInstance(currentAccount).getClientUserId() || user.status != null && user.status.expires > ConnectionsManager.getInstance(currentAccount).getCurrentTime())) {
-                        currentStatusPaint = Theme.dialogs_onlinePaint;
-                        statusString = getString(R.string.Online);
-                    }
+                    statusString = null;
                 }
             }
             if (savedMessages || UserObject.isReplyUser(user)) {
@@ -781,14 +770,8 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
         if (allowEmojiStatus && verified) {
             statusDrawable.set(new CombinedDrawable(Theme.dialogs_verifiedDrawable, Theme.dialogs_verifiedCheckDrawable, 0, 0), animated);
             statusDrawable.setColor(null);
-        } else if (allowEmojiStatus && user != null && !savedMessages && DialogObject.getEmojiStatusDocumentId(user.emoji_status) != 0) {
-            statusDrawable.set(DialogObject.getEmojiStatusDocumentId(user.emoji_status), animated);
-            statusDrawable.setColor(Theme.getColor(Theme.key_chats_verifiedBackground, resourcesProvider));
         } else if (allowEmojiStatus && chat != null && !savedMessages && DialogObject.getEmojiStatusDocumentId(chat.emoji_status) != 0) {
             statusDrawable.set(DialogObject.getEmojiStatusDocumentId(chat.emoji_status), animated);
-            statusDrawable.setColor(Theme.getColor(Theme.key_chats_verifiedBackground, resourcesProvider));
-        } else if (allowEmojiStatus && user != null && !savedMessages && MessagesController.getInstance(currentAccount).isPremiumUser(user)) {
-            statusDrawable.set(PremiumGradient.getInstance().premiumStarDrawableMini, animated);
             statusDrawable.setColor(Theme.getColor(Theme.key_chats_verifiedBackground, resourcesProvider));
         } else {
             statusDrawable.set((Drawable) null, animated);

@@ -74,6 +74,7 @@ public class StoriesUtilities {
     public static final int STATE_HAS_UNREAD = 1;
     public static final int STATE_READ = 2;
     public static final int STATE_PROGRESS = 3;
+    private static boolean HIDE_AVATAR_STORY_INDICATORS = true;
     public static GradientTools[] storiesGradientTools = new GradientTools[2];
     public static GradientTools closeFriendsGradientTools;
     public static GradientTools liveGradientTools;
@@ -95,6 +96,14 @@ public class StoriesUtilities {
     private final static RectF rectTmp = new RectF();
 
     public static void drawAvatarWithStory(long dialogId, Canvas canvas, ImageReceiver avatarImage, AvatarStoryParams params) {
+        if (HIDE_AVATAR_STORY_INDICATORS) {
+            params.drawnLive = false;
+            params.currentState = STATE_EMPTY;
+            params.unreadState = STATE_EMPTY;
+            avatarImage.setImageCoords(params.originalAvatarRect);
+            avatarImage.draw(canvas);
+            return;
+        }
         StoriesController storiesController = MessagesController.getInstance(UserConfig.selectedAccount).getStoriesController();
         boolean hasStories = storiesController.hasStories(dialogId);
         drawAvatarWithStory(dialogId, canvas, avatarImage, UserConfig.getInstance(UserConfig.selectedAccount).getClientUserId() != dialogId && hasStories, params);
@@ -118,6 +127,14 @@ public class StoriesUtilities {
     };
 
     public static void drawAvatarWithStory(long dialogId, Canvas canvas, ImageReceiver avatarImage, boolean hasStories, AvatarStoryParams params) {
+        if (HIDE_AVATAR_STORY_INDICATORS) {
+            params.drawnLive = false;
+            params.currentState = STATE_EMPTY;
+            params.unreadState = STATE_EMPTY;
+            avatarImage.setImageCoords(params.originalAvatarRect);
+            avatarImage.draw(canvas);
+            return;
+        }
         StoriesController storiesController = MessagesController.getInstance(UserConfig.selectedAccount).getStoriesController();
         boolean animated = params.animate;
         if (params.dialogId != dialogId) {
@@ -1279,6 +1296,9 @@ public class StoriesUtilities {
         public View child;
 
         public boolean checkOnTouchEvent(MotionEvent event, View view) {
+            if (HIDE_AVATAR_STORY_INDICATORS) {
+                return false;
+            }
             child = view;
             StoriesController storiesController = MessagesController.getInstance(UserConfig.selectedAccount).getStoriesController();
             if (event.getAction() == MotionEvent.ACTION_DOWN && originalAvatarRect.contains(event.getX(), event.getY())) {

@@ -1216,8 +1216,8 @@ public class ChatAvatarContainer extends FrameLayout implements NotificationCent
                     newStatus = getString(R.string.Bot);
                 } else {
                     isOnline[0] = false;
-                    newStatus = LocaleController.formatUserStatus(currentAccount, user, isOnline, allowShorterStatus ? statusMadeShorter : null);
-                    useOnlineColor = isOnline[0];
+                    newStatus = "";
+                    useOnlineColor = false;
                 }
                 newSubtitle = newStatus;
             } else {
@@ -1258,6 +1258,15 @@ public class ChatAvatarContainer extends FrameLayout implements NotificationCent
             }
             useOnlineColor = true;
             setTypingAnimation(true);
+        }
+        boolean hideEmptyUserSubtitle = user != null && chat == null && parentFragment.getChatMode() == ChatActivity.MODE_DEFAULT && !UserObject.isUserSelf(user) && !UserObject.isReplyUser(user) && user.id != UserObject.VERIFY && !MessagesController.isSupportUser(user) && !user.bot && TextUtils.isEmpty(newSubtitle);
+        View subtitleView = getSubtitleTextView();
+        if (subtitleView != null) {
+            int subtitleVisibility = hideEmptyUserSubtitle ? GONE : VISIBLE;
+            if (subtitleView.getVisibility() != subtitleVisibility) {
+                subtitleView.setVisibility(subtitleVisibility);
+                requestLayout();
+            }
         }
         lastSubtitleColorKey = useOnlineColor ? Theme.key_chat_status : Theme.key_actionBarDefaultSubtitle;
         if (lastSubtitle == null) {

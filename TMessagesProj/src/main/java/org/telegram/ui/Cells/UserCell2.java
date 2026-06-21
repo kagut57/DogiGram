@@ -170,6 +170,15 @@ public class UserCell2 extends FrameLayout {
         statusOnlineColor = onlineColor;
     }
 
+    private void updateNamePositionForStatus() {
+        LayoutParams layoutParams = (LayoutParams) nameTextView.getLayoutParams();
+        int nameTop = statusTextView.getText().length() == 0 ? AndroidUtilities.dp(25) : AndroidUtilities.dp(14.5f);
+        if (layoutParams.topMargin != nameTop) {
+            layoutParams.topMargin = nameTop;
+            nameTextView.setLayoutParams(layoutParams);
+        }
+    }
+
     @Override
     public void invalidate() {
         super.invalidate();
@@ -269,13 +278,8 @@ public class UserCell2 extends FrameLayout {
                     statusTextView.setText(LocaleController.getString(R.string.BotStatusCantRead));
                 }
             } else {
-                if (currentUser.id == UserConfig.getInstance(currentAccount).getClientUserId() || currentUser.status != null && currentUser.status.expires > ConnectionsManager.getInstance(currentAccount).getCurrentTime() || MessagesController.getInstance(currentAccount).onlinePrivacy.containsKey(currentUser.id)) {
-                    statusTextView.setTextColor(statusOnlineColor);
-                    statusTextView.setText(LocaleController.getString(R.string.Online));
-                } else {
-                    statusTextView.setTextColor(statusColor);
-                    statusTextView.setText(LocaleController.formatUserStatus(currentAccount, currentUser));
-                }
+                statusTextView.setTextColor(statusColor);
+                statusTextView.setText("");
             }
             avatarImageView.setForUserOrChat(currentUser, avatarDrawable);
         } else if (currentChat != null) {
@@ -310,6 +314,7 @@ public class UserCell2 extends FrameLayout {
             imageView.setVisibility(currentDrawable == 0 ? GONE : VISIBLE);
             imageView.setImageResource(currentDrawable);
         }
+        updateNamePositionForStatus();
     }
 
     @Override

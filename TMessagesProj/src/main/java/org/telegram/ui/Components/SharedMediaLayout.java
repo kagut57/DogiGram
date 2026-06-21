@@ -11056,6 +11056,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
                 part = chatInfo.participants.participants.get(position);
             }
             if (part != null) {
+                userCell.setHidePremiumStatusIcon(true);
                 String role;
                 final boolean isAdmin, isOwner, canEditAdmin;
                 if (part instanceof TLRPC.TL_chatChannelParticipant) {

@@ -705,7 +705,7 @@ public class ContactAddActivity extends BaseFragment implements NotificationCent
         } else {
             nameTextView.setText(PhoneFormat.getInstance().format("+" + getPhone()));
         }
-        onlineTextView.setText(LocaleController.formatUserStatus(currentAccount, user));
+        onlineTextView.setText("");
         if (avatar == null) {
             avatarImage.setForUserOrChat(user, avatarDrawable = new AvatarDrawable(user));
         }

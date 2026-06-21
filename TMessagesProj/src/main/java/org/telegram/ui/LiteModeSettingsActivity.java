@@ -6,7 +6,6 @@ import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.content.Context;
-import android.content.SharedPreferences;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.PorterDuff;
@@ -121,38 +120,16 @@ public class LiteModeSettingsActivity extends BaseFragment {
             }
             final Item item = items.get(position);
 
-            if (item.viewType == VIEW_TYPE_SWITCH || item.viewType == VIEW_TYPE_CHECKBOX) {
-                if (LiteMode.isPowerSaverApplied()) {
-                    restrictBulletin = BulletinFactory.of(this).createSimpleBulletin(new BatteryDrawable(.1f, Color.WHITE, Theme.getColor(Theme.key_dialogSwipeRemove), 1.3f), LocaleController.getString(R.string.LiteBatteryRestricted)).show();
-                    return;
-                }
-                if (item.viewType == VIEW_TYPE_SWITCH && item.getFlagsCount() > 1 && (LocaleController.isRTL ? x > dp(19 + 37 + 19) : x < view.getMeasuredWidth() - dp(19 + 37 + 19))) {
-                    int index = getExpandedIndex(item.flags);
-                    if (index != -1) {
-                        expanded[index] = !expanded[index];
-                        updateValues();
-                        updateItems();
-                        return;
-                    }
-                }
-                boolean value = LiteMode.isEnabledSetting(item.flags);
-                LiteMode.toggleFlag(item.flags, !value);
+            if (item.viewType == VIEW_TYPE_SWITCH || item.viewType == VIEW_TYPE_CHECKBOX || item.viewType == VIEW_TYPE_SWITCH2) {
                 updateValues();
-            } else if (item.viewType == VIEW_TYPE_SWITCH2) {
-                if (item.type == SWITCH_TYPE_SMOOTH_TRANSITIONS) {
-                    SharedPreferences preferences = MessagesController.getGlobalMainSettings();
-                    boolean animations = preferences.getBoolean("view_animations", true);
-                    SharedPreferences.Editor editor = preferences.edit();
-                    editor.putBoolean("view_animations", !animations);
-                    SharedConfig.setAnimationsEnabled(!animations);
-                    editor.commit();
-                    ((TextCell) view).setChecked(!animations);
-                }
+                return;
             }
         });
 
         fragmentView = contentView;
         FLAGS_CHAT = AndroidUtilities.isTablet() ? (LiteMode.FLAGS_CHAT & ~LiteMode.FLAG_CHAT_FORUM_TWOCOLUMN) : LiteMode.FLAGS_CHAT;
+        MessagesController.getGlobalMainSettings().edit().putBoolean("view_animations", false).apply();
+        SharedConfig.setAnimationsEnabled(false);
 
         updateItems();
 
@@ -408,9 +385,9 @@ public class LiteModeSettingsActivity extends BaseFragment {
             } else if (viewType == VIEW_TYPE_SWITCH2) {
                 TextCell textCell = (TextCell) holder.itemView;
                 if (item.type == SWITCH_TYPE_SMOOTH_TRANSITIONS) {
-                    SharedPreferences preferences = MessagesController.getGlobalMainSettings();
-                    boolean animations = preferences.getBoolean("view_animations", true);
-                    textCell.setTextAndCheck(item.text, animations, false);
+                    textCell.setTextAndCheck(item.text, false, false);
+                    textCell.setEnabled(false);
+                    textCell.setAlpha(.5f);
                 }
             }
         }
@@ -578,7 +555,7 @@ public class LiteModeSettingsActivity extends BaseFragment {
             ((MarginLayoutParams) textViewLayout.getLayoutParams()).rightMargin = AndroidUtilities.dp(item.viewType == VIEW_TYPE_SWITCH ? (LocaleController.isRTL ? 64 : 75) + 4 : 8);
 
             setWillNotDraw(!((needDivider = divider) || needLine));
-            setDisabled(LiteMode.isPowerSaverApplied(), false);
+            setDisabled(true, false);
         }
 
         public void update(Item item) {
@@ -594,7 +571,7 @@ public class LiteModeSettingsActivity extends BaseFragment {
                 checkBoxView.setChecked(LiteMode.isEnabled(item.flags), true);
             }
 
-            setDisabled(LiteMode.isPowerSaverApplied(), true);
+            setDisabled(true, true);
         }
 
         private boolean containing;

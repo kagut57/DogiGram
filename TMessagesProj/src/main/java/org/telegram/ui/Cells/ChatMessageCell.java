@@ -1154,6 +1154,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
     private int pollAddButtonHeight;
     private int factCheckHeight;
     private int factCheckWidth;
+    private boolean hideMessagePreviews;
     private boolean hasLinkPreview;
     private boolean hasOldCaptionPreview;
     private boolean hasGamePreview;
@@ -7359,9 +7360,9 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                         hasInvoicePrice = false;
                     }
                 }
-                hasLinkPreview = !messageObject.isRestrictedMessage && MessageObject.getMedia(messageObject.messageOwner) instanceof TLRPC.TL_messageMediaWebPage && MessageObject.getMedia(messageObject.messageOwner).webpage instanceof TLRPC.TL_webPage;
+                hasLinkPreview = !hideMessagePreviews && !messageObject.isRestrictedMessage && MessageObject.getMedia(messageObject.messageOwner) instanceof TLRPC.TL_messageMediaWebPage && MessageObject.getMedia(messageObject.messageOwner).webpage instanceof TLRPC.TL_webPage;
                 TLRPC.WebPage webpage = hasLinkPreview ? MessageObject.getMedia(messageObject.messageOwner).webpage : null;
-                if (messageObject.isStoryMention()) {
+                if (!hideMessagePreviews && messageObject.isStoryMention()) {
                     hasLinkPreview = true;
                     webpage = messageObject.getStoryMentionWebpage();
                 }
@@ -13254,6 +13255,16 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
 
     public void setIsUpdating(boolean value) {
         isUpdating = true;
+    }
+
+    public void setHideMessagePreviews(boolean value) {
+        if (hideMessagePreviews == value) {
+            return;
+        }
+        hideMessagePreviews = value;
+        if (currentMessageObject != null) {
+            setMessageObject(currentMessageObject, currentMessagesGroup, pinnedBottom, pinnedTop, firstInChat, lastInChatList);
+        }
     }
 
     public void setMessageObject(MessageObject messageObject,

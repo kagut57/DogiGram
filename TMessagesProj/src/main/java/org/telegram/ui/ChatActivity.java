@@ -19292,7 +19292,7 @@ public class ChatActivity extends BaseFragment implements
                     }
                 } else if (threadMessageId > 0) {
                     final TLRPC.User user = getMessagesController().getUser(threadMessageId);
-                    avatarContainer.setTitle(AndroidUtilities.removeRTL(AndroidUtilities.removeDiacritics(UserObject.getUserName(user))), user.scam, user.fake, user.verified, user.premium, user.emoji_status, animated);
+                    avatarContainer.setTitle(AndroidUtilities.removeRTL(AndroidUtilities.removeDiacritics(UserObject.getUserName(user))), user.scam, user.fake, user.verified, false, null, animated);
                 } else {
                     TLRPC.Chat chat = getMessagesController().getChat(-threadMessageId);
                     if (chat == null) chat = currentChat;
@@ -19368,12 +19368,12 @@ public class ChatActivity extends BaseFragment implements
                 avatarContainer.setTitle(LocaleController.getString(R.string.SavedMessages));
             } else if (!MessagesController.isSupportUser(currentUser) && getContactsController().contactsDict.get(currentUser.id) == null && (getContactsController().contactsDict.size() != 0 || !getContactsController().isLoadingContacts())) {
                 if (!TextUtils.isEmpty(currentUser.phone)) {
-                    avatarContainer.setTitle(PhoneFormat.getInstance().format("+" + currentUser.phone), currentUser.scam, currentUser.fake, currentUser.verified, getMessagesController().isPremiumUser(currentUser), currentUser.emoji_status, animated);
+                    avatarContainer.setTitle(PhoneFormat.getInstance().format("+" + currentUser.phone), currentUser.scam, currentUser.fake, currentUser.verified, false, null, animated);
                 } else {
-                    avatarContainer.setTitle(AndroidUtilities.removeRTL(AndroidUtilities.removeDiacritics(UserObject.getUserName(currentUser))), currentUser.scam, currentUser.fake, currentUser.verified, getMessagesController().isPremiumUser(currentUser), currentUser.emoji_status, animated);
+                    avatarContainer.setTitle(AndroidUtilities.removeRTL(AndroidUtilities.removeDiacritics(UserObject.getUserName(currentUser))), currentUser.scam, currentUser.fake, currentUser.verified, false, null, animated);
                 }
             } else {
-                avatarContainer.setTitle(AndroidUtilities.removeRTL(AndroidUtilities.removeDiacritics(UserObject.getUserName(currentUser))), currentUser.scam, currentUser.fake, currentUser.verified, getMessagesController().isPremiumUser(currentUser), !MessagesController.isSupportUser(currentUser) ? currentUser.emoji_status : null, animated);
+                avatarContainer.setTitle(AndroidUtilities.removeRTL(AndroidUtilities.removeDiacritics(UserObject.getUserName(currentUser))), currentUser.scam, currentUser.fake, currentUser.verified, false, null, animated);
             }
         }
         setParentActivityTitle(avatarContainer.getTitleTextView().getText());
@@ -36152,6 +36152,9 @@ public class ChatActivity extends BaseFragment implements
         } catch (Exception e) {
             FileLog.e(e);
         }
+        if (openMessageUrlInSystemBrowserIfNeeded(url)) {
+            return;
+        }
         if (forceAlert || AndroidUtilities.shouldShowUrlInAlert(url)) {
             if (type == 0 || type == 2) {
                 boolean forceNotInternalForApps = false;
@@ -36171,6 +36174,31 @@ public class ChatActivity extends BaseFragment implements
                 Browser.openUrl(getParentActivity(), Uri.parse(url), inlineReturn == 0, !forceNoIV, makeProgressForLink(cell, span));
             }
         }
+    }
+
+    private boolean shouldOpenMessageUrlInSystemBrowser(String url) {
+        if (TextUtils.isEmpty(url)) {
+            return false;
+        }
+        try {
+            Uri uri = Uri.parse(url);
+            String scheme = uri.getScheme();
+            if (!"http".equalsIgnoreCase(scheme) && !"https".equalsIgnoreCase(scheme)) {
+                return false;
+            }
+            return !Browser.isInternalUrl(url, true, null);
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
+        return false;
+    }
+
+    private boolean openMessageUrlInSystemBrowserIfNeeded(String url) {
+        if (!shouldOpenMessageUrlInSystemBrowser(url)) {
+            return false;
+        }
+        Browser.openUrlInSystemBrowser(getParentActivity(), url);
+        return true;
     }
 
     public void logSponsoredClicked(MessageObject messageObject, boolean media, boolean fullscreen) {
@@ -37137,6 +37165,7 @@ public class ChatActivity extends BaseFragment implements
                     messageCell.isSideMenuEnabled = isSideMenuEnabled();
                     messageCell.sideMenuAlpha = getSideMenuAlpha();
                     messageCell.sideMenuWidth = getSideMenuWidth();
+                    messageCell.setHideMessagePreviews(true);
                     boolean pinnedBottom = false;
                     boolean pinnedBottomByGroup = false;
                     boolean pinnedTop = false;
@@ -40917,6 +40946,9 @@ public class ChatActivity extends BaseFragment implements
                 final String url = message.messageOwner.media.webpage.url;
                 final String host = AndroidUtilities.getHostAuthority(url);
                 if (!openLinkInternally(url, cell, null, message.getId(), PROGRESS_INSTANT)) {
+                    if (openMessageUrlInSystemBrowserIfNeeded(url)) {
+                        return;
+                    }
                     if (progressDialogCurrent != null) {
                         progressDialogCurrent.cancel(true);
                     }
@@ -41000,6 +41032,9 @@ public class ChatActivity extends BaseFragment implements
                     if (message.isGif() || message.isPhoto()) {
                         logSponsoredClicked(message, true, false);
                         if (message.sponsoredUrl != null) {
+                            if (openMessageUrlInSystemBrowserIfNeeded(message.sponsoredUrl)) {
+                                return;
+                            }
                             if (progressDialogCurrent != null) {
                                 progressDialogCurrent.cancel(true);
                             }
@@ -41284,11 +41319,16 @@ public class ChatActivity extends BaseFragment implements
                         return;
                     }
                 }
-                Browser.openUrl(getParentActivity(), Uri.parse(webPage.url), true, true, false, progressDialogCurrent, null, false, true, false);
+                if (!openMessageUrlInSystemBrowserIfNeeded(webPage.url)) {
+                    Browser.openUrl(getParentActivity(), Uri.parse(webPage.url), true, true, false, progressDialogCurrent, null, false, true, false);
+                }
             } else {
                 if (messageObject.isSponsored()) {
                     logSponsoredClicked(messageObject, false, false);
                     if (messageObject.sponsoredUrl != null) {
+                        if (openMessageUrlInSystemBrowserIfNeeded(messageObject.sponsoredUrl)) {
+                            return;
+                        }
                         if (progressDialogCurrent != null) {
                             progressDialogCurrent.cancel(true);
                         }
@@ -41333,6 +41373,9 @@ public class ChatActivity extends BaseFragment implements
                         }
                     }
                     if (!openLinkInternally(webPage.url, cell, null, messageObject.getId(), PROGRESS_INSTANT)) {
+                        if (openMessageUrlInSystemBrowserIfNeeded(webPage.url)) {
+                            return;
+                        }
                         if (progressDialogCurrent != null) {
                             progressDialogCurrent.cancel(true);
                         }

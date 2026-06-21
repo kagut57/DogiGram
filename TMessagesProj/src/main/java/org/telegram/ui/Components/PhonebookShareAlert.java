@@ -105,7 +105,7 @@ public class PhonebookShareAlert extends BottomSheet {
                 status = phones.get(0).getValue(true);
                 needPadding = false;
             } else if (currentUser.status != null && currentUser.status.expires != 0) {
-                status = LocaleController.formatUserStatus(currentAccount, currentUser);
+                status = null;
             } else {
                 status = null;
             }

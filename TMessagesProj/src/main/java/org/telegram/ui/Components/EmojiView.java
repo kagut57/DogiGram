@@ -2040,9 +2040,9 @@ public class EmojiView extends FrameLayout implements
                         super.requestLayout();
                     }
                 };*/
-                gifGridView.setClipToPadding(false);
-                gifGridView.setLayoutManager(gifLayoutManager = new GifLayoutManager(context));
-                gifGridView.addItemDecoration(new RecyclerView.ItemDecoration() {
+//                gifGridView.setClipToPadding(false);
+//                gifGridView.setLayoutManager(gifLayoutManager = new GifLayoutManager(context));
+                /*gifGridView.addItemDecoration(new RecyclerView.ItemDecoration() {
                     @Override
                     public void getItemOffsets(@NonNull android.graphics.Rect outRect, @NonNull View view, @NonNull RecyclerView parent, @NonNull RecyclerView.State state) {
                         int position = parent.getChildAdapterPosition(view);
@@ -2065,9 +2065,9 @@ public class EmojiView extends FrameLayout implements
                 gifGridView.setPadding(0, searchFieldHeight, 0, AndroidUtilities.dp(44) + bottomInset);
                 gifGridView.setOverScrollMode(RecyclerListView.OVER_SCROLL_NEVER);
                 ((SimpleItemAnimator) gifGridView.getItemAnimator()).setSupportsChangeAnimations(false);
-                gifGridView.setAdapter(gifAdapter = new GifAdapter(context, true));
+                gifGridView.setAdapter(gifAdapter = new GifAdapter(context, true));*/
                 gifSearchAdapter = new GifAdapter(context);
-                gifGridView.setOnScrollListener(new TypedScrollListener(Type.GIFS) {
+                /*gifGridView.setOnScrollListener(new TypedScrollListener(Type.GIFS) {
                     @Override
                     public void onScrolled(RecyclerView recyclerView, int dx, int dy) {
                         super.onScrolled(recyclerView, dx, dy);
@@ -2076,9 +2076,9 @@ public class EmojiView extends FrameLayout implements
                             invalidateBlurCaptures();
                         }
                     }
-                });
-                gifGridView.setOnTouchListener((v, event) -> ContentPreviewViewer.getInstance().onTouch(event, gifGridView, 0, gifOnItemClickListener, contentPreviewViewerDelegate, resourcesProvider));
-                gifOnItemClickListener = (view, position) -> {
+                });*/
+//                gifGridView.setOnTouchListener((v, event) -> ContentPreviewViewer.getInstance().onTouch(event, gifGridView, 0, gifOnItemClickListener, contentPreviewViewerDelegate, resourcesProvider));
+                /*gifOnItemClickListener = (view, position) -> {
                     if (delegate == null) {
                         return;
                     }
@@ -2121,20 +2121,20 @@ public class EmojiView extends FrameLayout implements
                             gifContainer.invalidate();
                         }
                     }
-                };
+                };*/
 //                gifSearchField.setVisibility(INVISIBLE);
-                gifContainer.addView(gifSearchField, new FrameLayout.LayoutParams(LayoutHelper.MATCH_PARENT, searchFieldHeight + AndroidUtilities.getShadowHeight()));
-
-                gifTabs = new DraggableScrollSlidingTabStrip(context, resourcesProvider);
+                /*gifContainer.addView(gifSearchField, new FrameLayout.LayoutParams(LayoutHelper.MATCH_PARENT, searchFieldHeight + AndroidUtilities.getShadowHeight()));
+*/
+                /*gifTabs = new DraggableScrollSlidingTabStrip(context, resourcesProvider);
                 gifTabs.setType(ScrollSlidingTabStrip.Type.TAB);
                 gifTabs.setUnderlineHeight(AndroidUtilities.getShadowHeight());
                 gifTabs.setIndicatorColor(getThemedColor(Theme.key_chat_emojiPanelStickerPackSelectorLine));
                 gifTabs.setUnderlineColor(getThemedColor(Theme.key_chat_emojiPanelShadowLine));
-                gifTabs.setBackgroundColor(getThemedColor(Theme.key_chat_emojiPanelBackground));
+                gifTabs.setBackgroundColor(getThemedColor(Theme.key_chat_emojiPanelBackground));*/
 //                gifContainer.addView(gifTabs, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, StickerTabView.SMALL_HEIGHT, Gravity.LEFT | Gravity.TOP));
-                updateGifTabs();
+//                updateGifTabs();
 
-                gifTabs.setDelegate(page -> {
+                /*gifTabs.setDelegate(page -> {
                     if (page == gifTrendingTabNum && gifAdapter.results.isEmpty()) {
                         return;
                     }
@@ -2166,7 +2166,7 @@ public class EmojiView extends FrameLayout implements
                     resetTabsY(Type.GIFS);
                 });
 
-                gifAdapter.loadTrendingGifs();
+                gifAdapter.loadTrendingGifs();*/
             }
 
             stickersContainer = new FrameLayout(context) {

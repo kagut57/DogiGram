@@ -1445,7 +1445,7 @@ public class LimitReachedBottomSheet extends BottomSheetWithRecyclerListView imp
                             if (premiumBlocked) {
                                 signature = getString(R.string.InvitePremiumBlockedUser);
                             } else {
-                                signature = LocaleController.formatUserStatus(currentAccount, user, null, null);
+                                signature = "";
                             }
                             cell.setObject(user, ContactsController.formatName(user.first_name, user.last_name), signature, position != chatEndRow - 1f);
                             cell.setChecked(selectedChats.contains(user), false);

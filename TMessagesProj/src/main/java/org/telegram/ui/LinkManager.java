@@ -16,7 +16,6 @@ import org.telegram.messenger.BirthdayController;
 import org.telegram.messenger.BuildVars;
 import org.telegram.messenger.ContactsController;
 import org.telegram.messenger.FileLog;
-import org.telegram.messenger.LiteMode;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MediaDataController;
 import org.telegram.messenger.MessagesController;
@@ -1142,25 +1141,7 @@ public class LinkManager {
         }
 
         if ("power-saving".equalsIgnoreCase(first)) {
-            final LiteModeSettingsActivity f = new LiteModeSettingsActivity();
-            presentFragment(f);
-            if ("videos".equalsIgnoreCase(second))
-                f.scrollToFlags(LiteMode.FLAG_AUTOPLAY_VIDEOS);
-            if ("gifs".equalsIgnoreCase(second))
-                f.scrollToFlags(LiteMode.FLAG_AUTOPLAY_GIFS);
-            if ("stickers".equalsIgnoreCase(second))
-                f.scrollToFlags(LiteMode.FLAGS_ANIMATED_STICKERS);
-            if ("emoji".equalsIgnoreCase(second))
-                f.scrollToFlags(LiteMode.FLAGS_ANIMATED_EMOJI);
-            if ("effects".equalsIgnoreCase(second))
-                f.scrollToFlags(LiteMode.FLAGS_CHAT);
-            if ("call-animations".equalsIgnoreCase(second))
-                f.scrollToFlags(LiteMode.FLAG_CALLS_ANIMATIONS);
-            if ("particles".equalsIgnoreCase(second))
-                f.scrollToFlags(LiteMode.FLAG_PARTICLES);
-            if ("transitions".equalsIgnoreCase(second))
-                f.scrollToType(LiteModeSettingsActivity.SWITCH_TYPE_SMOOTH_TRANSITIONS);
-            return true;
+            return false;
         }
 
         if ("stars".equalsIgnoreCase(first)) {

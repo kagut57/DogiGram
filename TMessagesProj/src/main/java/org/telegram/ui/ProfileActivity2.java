@@ -742,7 +742,7 @@ public class ProfileActivity2 extends BaseFragment implements
                     subtitle.setText(getString(R.string.Bot));
                 }
             } else {
-                subtitle.setText(LocaleController.formatUserStatus(currentAccount, user, isOnline, null));
+                subtitle.setText("");
             }
         } else if (chat != null) {
             title.setText(chat.title);

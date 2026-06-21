@@ -211,7 +211,7 @@ public class DialogObject {
     @NonNull
     public static String getStatus(int currentAccount, TLObject obj) {
         if (obj instanceof TLRPC.User) {
-            return LocaleController.formatUserStatus(currentAccount, (TLRPC.User) obj, null, null);
+            return "";
         } else if (obj instanceof TLRPC.Chat) {
             final TLRPC.Chat chat = (TLRPC.Chat) obj;
             if (chat.participants_count > 1) {

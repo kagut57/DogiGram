@@ -195,6 +195,18 @@ public class GroupCreateUserCell extends FrameLayout {
         update(0);
     }
 
+    private void updateNamePositionForStatus() {
+        if (currentObject instanceof String) {
+            return;
+        }
+        LayoutParams layoutParams = (LayoutParams) nameTextView.getLayoutParams();
+        int nameTop = TextUtils.isEmpty(statusTextView.getText()) ? AndroidUtilities.dp(19) : AndroidUtilities.dp(10);
+        if (layoutParams.topMargin != nameTop) {
+            layoutParams.topMargin = nameTop;
+            nameTextView.setLayoutParams(layoutParams);
+        }
+    }
+
     public void setPremium() {
         currentPremium = true;
         currentObject = "premium";
@@ -462,15 +474,9 @@ public class GroupCreateUserCell extends FrameLayout {
                         statusTextView.setTextColor(Theme.getColor(forceDarkTheme ? Theme.key_voipgroup_lastSeenText : Theme.key_windowBackgroundWhiteGrayText, resourcesProvider));
                         statusTextView.setText(LocaleController.getString(R.string.Bot));
                     } else {
-                        if (currentUser.id == UserConfig.getInstance(currentAccount).getClientUserId() || currentUser.status != null && currentUser.status.expires > ConnectionsManager.getInstance(currentAccount).getCurrentTime() || MessagesController.getInstance(currentAccount).onlinePrivacy.containsKey(currentUser.id)) {
-                            statusTextView.setTag(Theme.key_windowBackgroundWhiteBlueText);
-                            statusTextView.setTextColor(Theme.getColor(forceDarkTheme ? Theme.key_voipgroup_listeningText : Theme.key_windowBackgroundWhiteBlueText, resourcesProvider));
-                            statusTextView.setText(LocaleController.getString(R.string.Online));
-                        } else {
-                            statusTextView.setTag(Theme.key_windowBackgroundWhiteGrayText);
-                            statusTextView.setTextColor(Theme.getColor(forceDarkTheme ? Theme.key_voipgroup_lastSeenText : Theme.key_windowBackgroundWhiteGrayText, resourcesProvider));
-                            statusTextView.setText(LocaleController.formatUserStatus(currentAccount, currentUser));
-                        }
+                        statusTextView.setTag(Theme.key_windowBackgroundWhiteGrayText);
+                        statusTextView.setTextColor(Theme.getColor(forceDarkTheme ? Theme.key_voipgroup_lastSeenText : Theme.key_windowBackgroundWhiteGrayText, resourcesProvider));
+                        statusTextView.setText("");
                     }
                     statusTextView.setEmojiColor(statusTextView.getTextColor());
                 }
@@ -547,6 +553,7 @@ public class GroupCreateUserCell extends FrameLayout {
             statusTextView.setTextColor(Theme.getColor(forceDarkTheme ? Theme.key_voipgroup_lastSeenText : Theme.key_windowBackgroundWhiteGrayText, resourcesProvider));
             statusTextView.setEmojiColor(statusTextView.getTextColor());
         }
+        updateNamePositionForStatus();
 
         updatePremiumBlocked(false);
     }

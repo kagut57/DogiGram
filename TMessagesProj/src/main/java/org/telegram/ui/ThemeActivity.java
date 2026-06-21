@@ -682,7 +682,6 @@ public class ThemeActivity extends BaseFragment implements NotificationCenter.No
 
             nightThemeRow = rowCount++;
             browserRow = rowCount++;
-            liteModeRow = rowCount++;
             stickersRow = rowCount++;
             stickersSectionRow = rowCount++;
 
@@ -1487,8 +1486,6 @@ public class ThemeActivity extends BaseFragment implements NotificationCenter.No
                 editTheme();
             } else if (position == stickersRow) {
                 presentFragment(new StickersActivity(MediaDataController.TYPE_IMAGE, null));
-            } else if (position == liteModeRow) {
-                presentFragment(new LiteModeSettingsActivity());
             }
         });
         if (currentType == THEME_TYPE_BASIC) {

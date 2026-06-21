@@ -88,6 +88,7 @@ public class UserCell extends FrameLayout implements NotificationCenter.Notifica
     private int currentDrawable;
 
     private boolean selfAsSavedMessages;
+    private boolean hidePremiumStatusIcon = true;
 
     private String query;
     private String lastName;
@@ -316,8 +317,32 @@ public class UserCell extends FrameLayout implements NotificationCenter.Notifica
         if (bottom) statusTextView.setPadding(LocaleController.isRTL ? pad : 0, 0, !LocaleController.isRTL ? pad : 0, 0);
     }
 
+    private void updateNamePositionForStatus() {
+        int nameTop = TextUtils.isEmpty(statusTextView.getText()) ? dp(callCellStyle ? 18 : 19) : dp(10);
+        LayoutParams nameLayoutParams = (LayoutParams) nameTextView.getLayoutParams();
+        if (nameLayoutParams.topMargin != nameTop) {
+            nameLayoutParams.topMargin = nameTop;
+            nameTextView.setLayoutParams(nameLayoutParams);
+        }
+        if (adminTextView != null) {
+            LayoutParams adminLayoutParams = (LayoutParams) adminTextView.getLayoutParams();
+            if (adminLayoutParams.topMargin != nameTop) {
+                adminLayoutParams.topMargin = nameTop;
+                adminTextView.setLayoutParams(adminLayoutParams);
+            }
+        }
+    }
+
     public CharSequence getName() {
         return nameTextView.getText();
+    }
+
+    public void setHidePremiumStatusIcon(boolean hidePremiumStatusIcon) {
+        if (this.hidePremiumStatusIcon == hidePremiumStatusIcon) {
+            return;
+        }
+        this.hidePremiumStatusIcon = hidePremiumStatusIcon;
+        update(0);
     }
 
     public void setData(Object object, CharSequence name, CharSequence status, int resId) {
@@ -560,7 +585,6 @@ public class UserCell extends FrameLayout implements NotificationCenter.Notifica
         }
 
         if (currentObject instanceof String) {
-            ((LayoutParams) nameTextView.getLayoutParams()).topMargin = dp(19);
             String str = (String) currentObject;
             switch (str) {
                 case "contacts":
@@ -667,7 +691,7 @@ public class UserCell extends FrameLayout implements NotificationCenter.Notifica
             botVerification.setColor(Theme.getColor(Theme.key_chats_verifiedBackground, resourcesProvider));
             nameTextView.setLeftDrawable(botVerification);
         }
-        if (currentUser != null && MessagesController.getInstance(currentAccount).isPremiumUser(currentUser) && !MessagesController.getInstance(currentAccount).premiumFeaturesBlocked()) {
+        if (!hidePremiumStatusIcon && currentUser != null && MessagesController.getInstance(currentAccount).isPremiumUser(currentUser) && !MessagesController.getInstance(currentAccount).premiumFeaturesBlocked()) {
             if (DialogObject.getEmojiStatusDocumentId(currentUser.emoji_status) != 0) {
                 emojiStatus.set(DialogObject.getEmojiStatusDocumentId(currentUser.emoji_status), false);
                 emojiStatus.setColor(Theme.getColor(Theme.key_chats_verifiedBackground, resourcesProvider));
@@ -709,13 +733,8 @@ public class UserCell extends FrameLayout implements NotificationCenter.Notifica
                     statusTextView.setText(getString(R.string.BotStatusCantRead));
                 }
             } else {
-                if (currentUser.id == UserConfig.getInstance(currentAccount).getClientUserId() || currentUser.status != null && currentUser.status.expires > ConnectionsManager.getInstance(currentAccount).getCurrentTime() || MessagesController.getInstance(currentAccount).onlinePrivacy.containsKey(currentUser.id)) {
-                    statusTextView.setTextColor(statusOnlineColor);
-                    statusTextView.setText(getString(R.string.Online));
-                } else {
-                    statusTextView.setTextColor(statusColor);
-                    statusTextView.setText(LocaleController.formatUserStatus(currentAccount, currentUser));
-                }
+                statusTextView.setTextColor(statusColor);
+                statusTextView.setText("");
             }
         }
 
@@ -736,6 +755,7 @@ public class UserCell extends FrameLayout implements NotificationCenter.Notifica
         avatarImageView.setRoundRadius(currentChat != null && currentChat.forum ? dp(14) : dp(24));
 
         nameTextView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourcesProvider));
+        updateNamePositionForStatus();
     }
 
     public void setSelfAsSavedMessages(boolean value) {
