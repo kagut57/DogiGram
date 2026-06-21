@@ -630,7 +630,10 @@ public class SharedConfig {
             noSoundHintShowed = preferences.getBoolean("noSoundHintShowed", false);
             directShareHash = preferences.getString("directShareHash2", null);
             useThreeLinesLayout = preferences.getBoolean("useThreeLinesLayout", false);
-            archiveHidden = preferences.getBoolean("archiveHidden", false);
+            archiveHidden = true;
+            if (!preferences.getBoolean("archiveHidden", true)) {
+                preferences.edit().putBoolean("archiveHidden", true).apply();
+            }
             distanceSystemType = preferences.getInt("distanceSystemType", 0);
             keepMedia = preferences.getInt("keep_media", CacheByChatsController.KEEP_MEDIA_ONE_MONTH);
             debugWebView = preferences.getBoolean("debugWebView", false);
@@ -1201,7 +1204,7 @@ public class SharedConfig {
     }
 
     public static void toggleArchiveHidden() {
-        archiveHidden = !archiveHidden;
+        archiveHidden = true;
         SharedPreferences preferences = MessagesController.getGlobalMainSettings();
         SharedPreferences.Editor editor = preferences.edit();
         editor.putBoolean("archiveHidden", archiveHidden);

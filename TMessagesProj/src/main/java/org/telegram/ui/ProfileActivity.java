@@ -5650,6 +5650,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         avatarContainer2.addView(storyView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
         giftsView = new ProfileGiftsView(context, currentAccount, getDialogId(), avatarContainer, avatarImage, resourcesProvider);
         avatarContainer2.addView(giftsView, 0, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
+        giftsView.setVisibility(View.GONE);
         updateProfileData(true);
 
         writeButton = new RLottieImageView(context);
@@ -8094,7 +8095,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
     private void checkStarRatingVisible() {
         if (ratingView != null) {
-            ratingView.setVisibility(!mediaHeaderVisible && isStarRatingVisible1);
+            ratingView.setVisibility(false);
         }
     }
 

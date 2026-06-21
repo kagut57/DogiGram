@@ -8263,28 +8263,21 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         try {
             view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
         } catch (Exception ignored) {}
-        BottomSheet.Builder builder = new BottomSheet.Builder(getParentActivity());
         final boolean hasUnread = getMessagesStorage().getArchiveUnreadCount() != 0;
+        if (!hasUnread) {
+            return;
+        }
+        BottomSheet.Builder builder = new BottomSheet.Builder(getParentActivity());
 
         int[] icons = new int[]{
-                hasUnread ? R.drawable.msg_markread : 0,
-                SharedConfig.archiveHidden ? R.drawable.chats_pin : R.drawable.chats_unpin,
+                R.drawable.msg_markread,
         };
         CharSequence[] items = new CharSequence[]{
-                hasUnread ? LocaleController.getString(R.string.MarkAllAsRead) : null,
-                SharedConfig.archiveHidden ? LocaleController.getString(R.string.PinInTheList) : LocaleController.getString(R.string.HideAboveTheList)
+                LocaleController.getString(R.string.MarkAllAsRead),
         };
         builder.setItems(items, icons, (d, which) -> {
             if (which == 0) {
                 getMessagesStorage().readAllDialogs(1);
-            } else if (which == 1 && viewPages != null) {
-                for (int a = 0; a < viewPages.length; a++) {
-                    if (viewPages[a].dialogsType != 0 || viewPages[a].getVisibility() != View.VISIBLE) {
-                        continue;
-                    }
-                    DialogCell dialogCell = findArchiveDialogCell(viewPages[a]);
-                    viewPages[a].listView.toggleArchiveHidden(true, dialogCell);
-                }
             }
         });
         showDialog(builder.create());
