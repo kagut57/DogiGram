@@ -84,7 +84,7 @@ public class ApplicationLoader extends Application {
         } catch (Exception e) {
             FileLog.e(e);
         }
-        return new File("/data/data/org.telegram.messenger/files");
+        return new File("/data/data/com.dogigram.app/files");
     }
 
     public static void postInitApplication() {
