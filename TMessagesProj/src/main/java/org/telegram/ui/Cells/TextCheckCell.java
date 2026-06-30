@@ -452,4 +452,40 @@ public class TextCheckCell extends FrameLayout {
         imageView.setColorFilter(new PorterDuffColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN));
         imageView.setBackground(Theme.createRoundRectDrawable(AndroidUtilities.dp(9), color));
     }
+
+    // DogiGram: a plain side-menu icon (no filled rounded-rect background), tinted to match the
+    // other drawer rows' line icons instead of a white glyph on a coloured square.
+    public void setPlainMenuIcon(int resId, int color) {
+        setColorfullIcon(color, resId);
+        imageView.setColorFilter(new PorterDuffColorFilter(color, PorterDuff.Mode.SRC_IN));
+        imageView.setBackground(null);
+        imageView.setPadding(0, 0, 0, 0);
+    }
+
+    // DogiGram: style this check row so its icon and text line up with (and look identical to) the
+    // bold action rows in the side menu (DrawerActionCell): a 24dp line icon at a 19dp inset and
+    // 15dp bold text starting at 72dp. Used for the "Show Phone Number" / "Screenshot Mode" toggles.
+    public void setDrawerMenuStyle(int resId, int color) {
+        if (imageView == null) {
+            imageView = new RLottieImageView(getContext());
+            imageView.setScaleType(ImageView.ScaleType.CENTER);
+            addView(imageView, LayoutHelper.createFrame(24, 24, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.CENTER_VERTICAL, 19, 0, 19, 0));
+        } else {
+            LayoutParams params = (LayoutParams) imageView.getLayoutParams();
+            params.width = AndroidUtilities.dp(24);
+            params.height = AndroidUtilities.dp(24);
+            params.gravity = (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.CENTER_VERTICAL;
+            imageView.setLayoutParams(params);
+        }
+        padding = AndroidUtilities.dp(72);
+        ((MarginLayoutParams) textView.getLayoutParams()).leftMargin = LocaleController.isRTL ? AndroidUtilities.dp(70) : padding;
+        ((MarginLayoutParams) textView.getLayoutParams()).rightMargin = LocaleController.isRTL ? padding : AndroidUtilities.dp(70);
+        imageView.setVisibility(VISIBLE);
+        imageView.setPadding(0, 0, 0, 0);
+        imageView.setImageResource(resId);
+        imageView.setColorFilter(new PorterDuffColorFilter(color, PorterDuff.Mode.SRC_IN));
+        imageView.setBackground(null);
+        textView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
+        textView.setTypeface(AndroidUtilities.bold());
+    }
 }

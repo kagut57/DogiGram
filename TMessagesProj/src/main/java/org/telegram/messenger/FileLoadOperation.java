@@ -286,10 +286,12 @@ public class FileLoadOperation {
     }
 
     private void updateParams() {
-        if ((preloadPrefixSize > 0 || MessagesController.getInstance(currentAccount).getfileExperimentalParams) && !forceSmallChunk) {
+        // DogiGram: download boost lifts chunk size and parallel request count for faster downloads.
+        boolean boost = DogiConfig.isUploadDownloadBoost();
+        if ((preloadPrefixSize > 0 || MessagesController.getInstance(currentAccount).getfileExperimentalParams || boost) && !forceSmallChunk) {
             downloadChunkSizeBig = 1024 * 512;
-            maxDownloadRequests = 8;
-            maxDownloadRequestsBig = 8;
+            maxDownloadRequests = boost ? 12 : 8;
+            maxDownloadRequestsBig = boost ? 12 : 8;
         } else {
             downloadChunkSizeBig = 1024 * 128;
             maxDownloadRequests = 4;

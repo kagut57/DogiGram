@@ -2914,6 +2914,13 @@ public class LocaleController {
     }
 
     public static String formatShortNumber(int number, int[] rounded) {
+        if (DogiConfig.isDisableNumberRounding()) {
+            // DogiGram: show the exact count (e.g. 4777) instead of the rounded "4.8K".
+            if (rounded != null) {
+                rounded[0] = number;
+            }
+            return String.format(Locale.US, "%d", number);
+        }
         StringBuilder K = new StringBuilder();
         int lastDec = 0;
         int KCount = 0;

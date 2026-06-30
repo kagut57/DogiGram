@@ -317,7 +317,12 @@ public class FileUploadOperation {
                     }
                     uploadChunkSize = chunkSize;
                 }
-                maxRequestsCount = Math.max(1, (slowNetwork ? maxUploadingSlowNetworkKBytes : maxUploadingKBytes) / uploadChunkSize);
+                // DogiGram: upload boost raises the in-flight byte budget for more parallel upload requests.
+                int uploadingKBytes = slowNetwork ? maxUploadingSlowNetworkKBytes : maxUploadingKBytes;
+                if (!slowNetwork && DogiConfig.isUploadDownloadBoost()) {
+                    uploadingKBytes *= 2;
+                }
+                maxRequestsCount = Math.max(1, uploadingKBytes / uploadChunkSize);
 
                 if (isEncrypted) {
                     freeRequestIvs = new ArrayList<>(maxRequestsCount);

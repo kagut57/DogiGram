@@ -163,10 +163,23 @@ import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.BottomSheetTabs;
 import org.telegram.ui.ActionBar.BottomSheetTabsOverlay;
 import org.telegram.ui.ActionBar.DrawerLayoutContainer;
+// DogiGram: restored hamburger drawer
+import android.graphics.Point;
+import androidx.recyclerview.widget.ItemTouchHelper;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
+import org.telegram.ui.ActionBar.DrawerContainer;
+import org.telegram.ui.Adapters.DrawerLayoutAdapter;
+import org.telegram.ui.Cells.DrawerProfileCell;
+import org.telegram.ui.Cells.DrawerUserCell;
+import org.telegram.ui.Cells.DrawerAddCell;
+import org.telegram.ui.Components.RecyclerListView;
+import org.telegram.ui.Components.SideMenultItemAnimator;
 import org.telegram.ui.ActionBar.INavigationLayout;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Cells.ChatMessageCell;
 import org.telegram.ui.Cells.LanguageCell;
+import org.telegram.ui.Cells.TextCheckCell;
 import org.telegram.ui.Components.AlertsCreator;
 import org.telegram.ui.Components.AppIconBulletinLayout;
 import org.telegram.ui.Components.AttachBotIntroTopView;
@@ -307,6 +320,11 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
     private FireworksOverlay fireworksOverlay;
     private BottomSheetTabsOverlay bottomSheetTabsOverlay;
     public DrawerLayoutContainer drawerLayoutContainer;
+    // DogiGram: restored hamburger drawer
+    private DrawerLayoutAdapter drawerLayoutAdapter;
+    private RecyclerListView sideMenu;
+    private FrameLayout sideMenuContainer;
+    private SideMenultItemAnimator itemAnimator;
     private PasscodeViewDialog passcodeDialog;
     private List<PasscodeView> overlayPasscodeViews = new ArrayList<>();
     private TermsOfServiceView termsOfServiceView;
@@ -551,6 +569,196 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
             }
         });
         setupActionBarLayout();
+
+        // DogiGram: restored hamburger account drawer (slide from the left edge to open).
+        sideMenuContainer = new DrawerContainer(this);
+        sideMenu = new RecyclerListView(this);
+        itemAnimator = new SideMenultItemAnimator(sideMenu);
+        sideMenu.setItemAnimator(itemAnimator);
+        sideMenu.setClipToPadding(false);
+        sideMenu.setBackgroundColor(Theme.getColor(Theme.key_chats_menuBackground));
+        sideMenuContainer.setBackgroundColor(Theme.getColor(Theme.key_chats_menuBackground));
+        sideMenu.setLayoutManager(new LinearLayoutManager(this, LinearLayoutManager.VERTICAL, false));
+        sideMenu.setAllowItemsInteractionDuringAnimation(false);
+        sideMenu.setAdapter(drawerLayoutAdapter = new DrawerLayoutAdapter(this, itemAnimator, drawerLayoutContainer));
+        // DogiGram: long-press an account in the drawer to drag it and reorder the account list.
+        ItemTouchHelper sideMenuTouchHelper = new ItemTouchHelper(new ItemTouchHelper.Callback() {
+            @Override
+            public boolean isLongPressDragEnabled() {
+                return true;
+            }
+
+            @Override
+            public int getMovementFlags(@NonNull RecyclerView recyclerView, @NonNull RecyclerView.ViewHolder viewHolder) {
+                if (viewHolder.getItemViewType() != 4) { // 4 = DrawerUserCell (account row)
+                    return makeMovementFlags(0, 0);
+                }
+                return makeMovementFlags(ItemTouchHelper.UP | ItemTouchHelper.DOWN, 0);
+            }
+
+            @Override
+            public boolean onMove(@NonNull RecyclerView recyclerView, @NonNull RecyclerView.ViewHolder source, @NonNull RecyclerView.ViewHolder target) {
+                if (source.getItemViewType() != 4 || target.getItemViewType() != 4) {
+                    return false;
+                }
+                drawerLayoutAdapter.swapElements(source.getAdapterPosition(), target.getAdapterPosition());
+                return true;
+            }
+
+            @Override
+            public boolean canDropOver(@NonNull RecyclerView recyclerView, @NonNull RecyclerView.ViewHolder current, @NonNull RecyclerView.ViewHolder target) {
+                return target.getItemViewType() == 4;
+            }
+
+            @Override
+            public void onSwiped(@NonNull RecyclerView.ViewHolder viewHolder, int direction) {
+            }
+
+            @Override
+            public void onSelectedChanged(RecyclerView.ViewHolder viewHolder, int actionState) {
+                super.onSelectedChanged(viewHolder, actionState);
+                if (viewHolder != null && actionState == ItemTouchHelper.ACTION_STATE_DRAG) {
+                    try {
+                        viewHolder.itemView.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
+                    } catch (Exception ignore) {}
+                }
+            }
+        });
+        sideMenuTouchHelper.attachToRecyclerView(sideMenu);
+        sideMenuContainer.addView(sideMenu, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
+        drawerLayoutContainer.setDrawerLayout(sideMenuContainer, sideMenu);
+        // DogiGram: never open the side drawer with a swipe gesture (it conflicts with folder swiping);
+        // the drawer can still be opened from the menu (hamburger) button.
+        drawerLayoutContainer.setAllowOpenDrawerBySwipe(false);
+        FrameLayout.LayoutParams sideMenuLayoutParams = (FrameLayout.LayoutParams) sideMenuContainer.getLayoutParams();
+        Point screenSize = AndroidUtilities.getRealScreenSize();
+        sideMenuLayoutParams.width = AndroidUtilities.isTablet() ? AndroidUtilities.dp(320) : Math.min(AndroidUtilities.dp(320), Math.min(screenSize.x, screenSize.y) - AndroidUtilities.dp(56));
+        sideMenuLayoutParams.height = LayoutHelper.MATCH_PARENT;
+        sideMenuContainer.setLayoutParams(sideMenuLayoutParams);
+        sideMenu.setOnItemClickListener((view, position, x, y) -> {
+            if (drawerLayoutAdapter.click(view, position)) {
+                drawerLayoutContainer.closeDrawer(false);
+                return;
+            }
+            if (position == 0) {
+                DrawerProfileCell profileCell = (DrawerProfileCell) view;
+                if (profileCell.isInAvatar(x, y)) {
+                    openSettings(profileCell.hasAvatar());
+                } else {
+                    drawerLayoutAdapter.setAccountsShown(!drawerLayoutAdapter.isAccountsShown(), true);
+                }
+            } else if (view instanceof DrawerUserCell) {
+                switchToAccount(((DrawerUserCell) view).getAccountNumber(), true);
+                drawerLayoutContainer.closeDrawer(false);
+            } else if (view instanceof DrawerAddCell) {
+                int availableAccount = -1;
+                for (int a = UserConfig.MAX_ACCOUNT_COUNT - 1; a >= 0; a--) {
+                    if (!UserConfig.getInstance(a).isClientActivated()) {
+                        availableAccount = a;
+                    }
+                }
+                if (availableAccount >= 0) {
+                    presentFragment(new LoginActivity(availableAccount));
+                    drawerLayoutContainer.closeDrawer(false);
+                }
+            } else {
+                int id = drawerLayoutAdapter.getId(position);
+                if (id == 2) {
+                    presentFragment(new GroupCreateActivity(new Bundle()));
+                    drawerLayoutContainer.closeDrawer(false);
+                } else if (id == 3) {
+                    Bundle args = new Bundle();
+                    args.putBoolean("onlyUsers", true);
+                    args.putBoolean("destroyAfterSelect", true);
+                    args.putBoolean("createSecretChat", true);
+                    args.putBoolean("allowBots", false);
+                    args.putBoolean("allowSelf", false);
+                    presentFragment(new ContactsActivity(args));
+                    drawerLayoutContainer.closeDrawer(false);
+                } else if (id == 4) {
+                    presentFragment(new ActionIntroActivity(ActionIntroActivity.ACTION_TYPE_CHANNEL_CREATE));
+                    drawerLayoutContainer.closeDrawer(false);
+                } else if (id == 5) {
+                    Bundle args = new Bundle();
+                    args.putInt("chatType", ChatObject.CHAT_TYPE_MEGAGROUP);
+                    presentFragment(new GroupCreateActivity(args));
+                    drawerLayoutContainer.closeDrawer(false);
+                } else if (id == 6) {
+                    Bundle args = new Bundle();
+                    args.putBoolean("needFinishFragment", false);
+                    presentFragment(new ContactsActivity(args));
+                    drawerLayoutContainer.closeDrawer(false);
+                } else if (id == 7) {
+                    presentFragment(new InviteContactsActivity());
+                    drawerLayoutContainer.closeDrawer(false);
+                } else if (id == 8) {
+                    // DogiGram: open the Settings screen directly (not the profile).
+                    presentFragment(new SettingsActivity());
+                    drawerLayoutContainer.closeDrawer(false);
+                } else if (id == 9) {
+                    Browser.openUrl(LaunchActivity.this, LocaleController.getString(R.string.TelegramFaqUrl));
+                    drawerLayoutContainer.closeDrawer(false);
+                } else if (id == 10) {
+                    presentFragment(new CallLogActivity());
+                    drawerLayoutContainer.closeDrawer(false);
+                } else if (id == 11) {
+                    Bundle args = new Bundle();
+                    args.putLong("user_id", UserConfig.getInstance(UserConfig.selectedAccount).getClientUserId());
+                    presentFragment(new ChatActivity(args));
+                    drawerLayoutContainer.closeDrawer(false);
+                } else if (id == 13) {
+                    Browser.openUrl(LaunchActivity.this, LocaleController.getString(R.string.TelegramFeaturesUrl));
+                    drawerLayoutContainer.closeDrawer(false);
+                } else if (id == 15) {
+                    // DogiGram: "Set/Change Emoji Status" drawer item (premium users) -> open the
+                    // emoji-status picker anchored to the chats screen. Close the drawer first, then
+                    // post the popup so it shows above the (now closed) drawer.
+                    drawerLayoutContainer.closeDrawer(false);
+                    AndroidUtilities.runOnUIThread(() -> {
+                        for (int i = mainFragmentsStack.size() - 1; i >= 0; i--) {
+                            BaseFragment fragment = mainFragmentsStack.get(i);
+                            if (fragment instanceof DialogsActivity) {
+                                ((DialogsActivity) fragment).showSelectStatusDialog();
+                                break;
+                            }
+                        }
+                    }, 200);
+                } else if (id == 16) {
+                    // DogiGram: "My Profile" drawer item -> open own profile.
+                    openSettings(false);
+                } else if (id == 100) {
+                    // DogiGram: custom settings screen.
+                    presentFragment(new DogiGramSettingsActivity());
+                    drawerLayoutContainer.closeDrawer(false);
+                } else if (id == 102) {
+                    SharedPreferences preferences = DogiGramSettingsActivity.prefs();
+                    boolean enabled = !preferences.getBoolean("show_phone", true);
+                    preferences.edit().putBoolean("show_phone", enabled).apply();
+                    if (view instanceof TextCheckCell) {
+                        ((TextCheckCell) view).setChecked(enabled);
+                    }
+                    drawerLayoutAdapter.notifyDataSetChanged();
+                } else if (id == 103) {
+                    SharedPreferences preferences = DogiGramSettingsActivity.prefs();
+                    boolean enabled = !preferences.getBoolean("screenshot_mode", false);
+                    preferences.edit().putBoolean("screenshot_mode", enabled).apply();
+                    if (view instanceof TextCheckCell) {
+                        ((TextCheckCell) view).setChecked(enabled);
+                    }
+                    if (enabled) {
+                        getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
+                    } else {
+                        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);
+                    }
+                    drawerLayoutAdapter.notifyDataSetChanged();
+                }
+            }
+        });
+
+        // DogiGram: enable the drawer (default is disabled). It only opens by swipe when the main
+        // fragment is the only one on the stack (see DrawerLayoutContainer.onTouchEvent).
+        drawerLayoutContainer.setAllowOpenDrawer(true, false);
+
         drawerLayoutContainer.setParentActionBarLayout(actionBarLayout);
         actionBarLayout.setDrawerLayoutContainer(drawerLayoutContainer);
         actionBarLayout.setFragmentStack(mainFragmentsStack);
@@ -590,8 +798,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
             if (!UserConfig.getInstance(currentAccount).isClientActivated()) {
                 actionBarLayout.addFragmentToStack(getClientNotActivatedFragment());
             } else {
-                MainTabsActivity mainTabsActivity = new MainTabsActivity();
-                actionBarLayout.addFragmentToStack(mainTabsActivity);
+                actionBarLayout.addFragmentToStack(createMainFragment());
             }
 
             try {
@@ -903,9 +1110,25 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
             ArticleViewer.getInstance().updateThemeColors(progress);
         }
         drawerLayoutContainer.setBehindKeyboardColor(Theme.getColor(Theme.key_windowBackgroundWhite));
+        if (sideMenu != null) {
+            sideMenu.setBackgroundColor(Theme.getColor(Theme.key_chats_menuBackground));
+            sideMenuContainer.setBackgroundColor(Theme.getColor(Theme.key_chats_menuBackground));
+            drawerLayoutAdapter.notifyDataSetChanged();
+        }
         if (PhotoViewer.hasInstance()) {
             PhotoViewer.getInstance().updateColors();
         }
+    }
+
+    // DogiGram: open own profile / settings from the drawer header.
+    private void openSettings(boolean expanded) {
+        Bundle args = new Bundle();
+        args.putLong("user_id", UserConfig.getInstance(UserConfig.selectedAccount).clientUserId);
+        if (expanded) {
+            args.putBoolean("expandPhoto", true);
+        }
+        presentFragment(new ProfileActivity(args));
+        drawerLayoutContainer.closeDrawer(false);
     }
 
     private void setupActionBarLayout() {
@@ -1190,12 +1413,33 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         return frameLayout;
     }
 
-    private boolean switchingAccount;
-    public void switchToAccount(int account, boolean removeAll) {
-        switchToAccount(account, removeAll, obj -> new MainTabsActivity());
+    // DogiGram: build the main screen depending on the UI-style setting (old drawer vs new tabs).
+    public BaseFragment createMainFragment(String searchQuery) {
+        if (DogiGramSettingsActivity.isDrawerUi()) {
+            DialogsActivity dialogsActivity = new DialogsActivity(null);
+            if (searchQuery != null) {
+                dialogsActivity.setInitialSearchString(searchQuery);
+            }
+            return dialogsActivity;
+        }
+        MainTabsActivity mainTabsActivity = new MainTabsActivity();
+        if (searchQuery != null) {
+            DialogsActivity dialogsActivity = mainTabsActivity.prepareDialogsActivity(null);
+            dialogsActivity.setInitialSearchString(searchQuery);
+        }
+        return mainTabsActivity;
     }
 
-    public void switchToAccount(int account, boolean removeAll, GenericProvider<Void, MainTabsActivity> dialogsActivityProvider) {
+    public BaseFragment createMainFragment() {
+        return createMainFragment(null);
+    }
+
+    private boolean switchingAccount;
+    public void switchToAccount(int account, boolean removeAll) {
+        switchToAccount(account, removeAll, obj -> createMainFragment());
+    }
+
+    public void switchToAccount(int account, boolean removeAll, GenericProvider<Void, BaseFragment> dialogsActivityProvider) {
         if (account == UserConfig.selectedAccount || !UserConfig.isValidAccount(account)) {
             return;
         }
@@ -1224,7 +1468,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         } else {
             actionBarLayout.removeFragmentFromStack(0);
         }
-        MainTabsActivity mainTabsActivity = dialogsActivityProvider.provide(null);
+        BaseFragment mainTabsActivity = dialogsActivityProvider.provide(null);
         actionBarLayout.addFragmentToStack(mainTabsActivity, INavigationLayout.FORCE_ATTACH_VIEW_AS_FIRST);
         actionBarLayout.rebuildFragments(INavigationLayout.REBUILD_FLAG_REBUILD_LAST);
         if (AndroidUtilities.isTablet()) {
@@ -1238,6 +1482,12 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
             showTosActivity(account, UserConfig.getInstance(account).unacceptedTermsOfService);
         }
         updateCurrentConnectionState(currentAccount);
+
+        // DogiGram: refresh the side drawer so the account list and the selected-account check mark
+        // immediately reflect the account we just switched to (and any newly added account).
+        if (drawerLayoutAdapter != null) {
+            drawerLayoutAdapter.notifyDataSetChanged();
+        }
 
         switchingAccount = false;
     }
@@ -3313,12 +3563,8 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                     }
                 } else {
                     if (actionBarLayout.getFragmentStack().isEmpty()) {
-                        MainTabsActivity mainTabsActivity = new MainTabsActivity();
-                        DialogsActivity dialogsActivity = mainTabsActivity.prepareDialogsActivity(null);
-                        if (searchQuery != null) {
-                            dialogsActivity.setInitialSearchString(searchQuery);
-                        }
-                        actionBarLayout.addFragmentToStack(mainTabsActivity, INavigationLayout.FORCE_NOT_ATTACH_VIEW);
+                        BaseFragment mainFragment = createMainFragment(searchQuery);
+                        actionBarLayout.addFragmentToStack(mainFragment, INavigationLayout.FORCE_NOT_ATTACH_VIEW);
                     }
                 }
             } else {
@@ -3326,12 +3572,8 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                     if (!UserConfig.getInstance(currentAccount).isClientActivated()) {
                         actionBarLayout.addFragmentToStack(getClientNotActivatedFragment(), INavigationLayout.FORCE_NOT_ATTACH_VIEW);
                     } else {
-                        MainTabsActivity mainTabsActivity = new MainTabsActivity();
-                        DialogsActivity dialogsActivity = mainTabsActivity.prepareDialogsActivity(null);
-                        if (searchQuery != null) {
-                            dialogsActivity.setInitialSearchString(searchQuery);
-                        }
-                        actionBarLayout.addFragmentToStack(mainTabsActivity, INavigationLayout.FORCE_NOT_ATTACH_VIEW);
+                        BaseFragment mainFragment = createMainFragment(searchQuery);
+                        actionBarLayout.addFragmentToStack(mainFragment, INavigationLayout.FORCE_NOT_ATTACH_VIEW);
                     }
                 }
             }
@@ -7212,7 +7454,12 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                 updateCurrentConnectionState(account);
             }
         } else if (id == NotificationCenter.mainUserInfoChanged) {
-
+            // DogiGram: after a fresh login the account has just become activated. Rebuild the
+            // drawer so it immediately shows the full menu (New Group, Contacts, Settings, ...)
+            // instead of only "Add Account" until the next app restart.
+            if (drawerLayoutAdapter != null) {
+                drawerLayoutAdapter.notifyDataSetChanged();
+            }
         } else if (id == NotificationCenter.attachMenuBotsDidLoad) {
 
         } else if (id == NotificationCenter.needShowAlert) {
@@ -7375,6 +7622,11 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                 }
             }
             drawerLayoutContainer.setBehindKeyboardColor(Theme.getColor(Theme.key_windowBackgroundWhite));
+            if (sideMenu != null) {
+                sideMenu.setBackgroundColor(Theme.getColor(Theme.key_chats_menuBackground));
+                sideMenuContainer.setBackgroundColor(Theme.getColor(Theme.key_chats_menuBackground));
+                drawerLayoutAdapter.notifyDataSetChanged();
+            }
             boolean checkNavigationBarColor = true;
             if (args.length > 1) {
                 checkNavigationBarColor = (boolean) args[1];
@@ -7456,7 +7708,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                             if (!toDark && darkThemeView != null) {
                                 darkThemeView.setVisibility(View.VISIBLE);
                             }
-                            DialogsActivity.switchingTheme = false;
+                            DialogsActivity.switchingTheme = false; DrawerProfileCell.switchingTheme = false;
                         }
                     });
                     if (rippleAbove != null) {
@@ -7478,13 +7730,13 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                     try {
                         themeSwitchImageView.setImageDrawable(null);
                         frameLayout.removeView(themeSwitchImageView);
-                        DialogsActivity.switchingTheme = false;
+                        DialogsActivity.switchingTheme = false; DrawerProfileCell.switchingTheme = false;
                     } catch (Exception e2) {
                         FileLog.e(e2);
                     }
                 }
             } else {
-                DialogsActivity.switchingTheme = false;
+                DialogsActivity.switchingTheme = false; DrawerProfileCell.switchingTheme = false;
             }
             Theme.ThemeInfo theme = (Theme.ThemeInfo) args[0];
             boolean nightTheme = (Boolean) args[1];

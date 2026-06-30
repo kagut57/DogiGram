@@ -4070,6 +4070,10 @@ public class AndroidUtilities {
         if (v == 0) {
             return "0";
         }
+        if (DogiConfig.isDisableNumberRounding()) {
+            // DogiGram: show the exact count instead of the rounded "4.8K" form.
+            return formatCount(v);
+        }
         float num_ = v;
         int count = 0;
         if (dif == 0) dif = v;

@@ -166,6 +166,7 @@ import org.telegram.messenger.BuildVars;
 import org.telegram.messenger.ChatObject;
 import org.telegram.messenger.ContactsController;
 import org.telegram.messenger.DialogObject;
+import org.telegram.messenger.DogiConfig;
 import org.telegram.messenger.DownloadController;
 import org.telegram.messenger.Emoji;
 import org.telegram.messenger.FileLoader;
@@ -897,7 +898,27 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
     private ActionBarMenuItem menuItem;
     private ActionBarMenuItem videoItem;
     private ActionBarMenuSubItem allMediaItem;
+    // DogiGram: audio / subtitle track selection for the video player.
+    private ActionBarMenuSubItem audioTrackItem;
+    private ActionBarMenuSubItem subtitleTrackItem;
+    private ActionBarMenuSubItem aspectItem; // DogiGram: VLC-style video size / aspect selector
+    // DogiGram: VLC-style video sizing modes for the in-app player.
+    private static final int VIDEO_ASPECT_BEST_FIT = 0;  // best size, keep aspect ratio (default)
+    private static final int VIDEO_ASPECT_FIT_SCREEN = 1; // whole video inside the screen, may letterbox
+    private static final int VIDEO_ASPECT_FILL = 2;       // fill screen, crop the overflow
+    private static final int VIDEO_ASPECT_16_9 = 3;       // force 16:9
+    private static final int VIDEO_ASPECT_4_3 = 4;        // force 4:3
+    private static final int VIDEO_ASPECT_ORIGINAL = 5;   // native pixel size
+    private static final int VIDEO_ASPECT_STRETCH = 6;    // stretch to fill, ignore aspect ratio
+    private int videoAspectMode = VIDEO_ASPECT_BEST_FIT;
+    private float videoNativeAspectRatio; // DogiGram: width/height reported by the player
+    private int videoRotationDegrees;     // DogiGram: unapplied rotation reported by the player
+    private TextView videoSubtitleView;
     private ActionBarMenuSlider.SpeedSlider speedItem;
+    // DogiGram: speed lives in its own swipe-back submenu so the main video menu stays compact.
+    private ActionBarPopupWindow.ActionBarPopupWindowLayout speedSubMenu;
+    private ActionBarMenuSubItem speedMenuItem;
+    private TextView speedStepperValue;
     private ActionBarMenuSubItem loopItem;
     private ActionBarMenuSubItem galleryButton;
     private ActionBarPopupWindow.GapView galleryGap;
@@ -2192,6 +2213,9 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
     private final static int gallery_menu_chromecast = 24;
     private final static int gallery_menu_create_sticker = 25;
     private final static int gallery_menu_delete2 = 26;
+    private final static int gallery_menu_audio = 27; // DogiGram: audio track picker
+    private final static int gallery_menu_subtitles = 28; // DogiGram: subtitle track picker
+    private final static int gallery_menu_aspect = 29; // DogiGram: Fit / Fill toggle
 
     private final static int ads_sponsor_info = 101;
     private final static int ads_about = 102;
@@ -3291,6 +3315,24 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
 
             notifyHeightChanged();
             updateExclusionRects();
+        }
+
+        @Override
+        protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+            super.onSizeChanged(w, h, oldw, oldh);
+            // DogiGram: the container changed size (e.g. rotating into/out of fullscreen). The active video
+            // size mode was computed for the old dimensions, so Fit Screen stayed cropped until the user
+            // dragged. The toggleActionBar re-apply runs before the rotation actually re-lays-out, so do it
+            // here too - once the new size is real - to fit the whole video immediately.
+            if ((w != oldw || h != oldh) && videoAspectMode != VIDEO_ASPECT_BEST_FIT
+                    && aspectRatioFrameLayout != null && aspectRatioFrameLayout.getVisibility() == VISIBLE && videoSizeSet) {
+                post(() -> {
+                    if (videoAspectMode != VIDEO_ASPECT_BEST_FIT && aspectRatioFrameLayout != null
+                            && aspectRatioFrameLayout.getVisibility() == VISIBLE && videoSizeSet) {
+                        applyVideoAspectMode(true);
+                    }
+                });
+            }
         }
 
         private ArrayList<Rect> exclusionRects;
@@ -4651,6 +4693,155 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         updateMinMax(scale);
     }
 
+    // DogiGram: VLC-style video size labels, indexed by VIDEO_ASPECT_* constant.
+    private static String videoAspectModeName(int mode) {
+        switch (mode) {
+            case VIDEO_ASPECT_FIT_SCREEN: return "Fit Screen";
+            case VIDEO_ASPECT_FILL:      return "Fill";
+            case VIDEO_ASPECT_16_9:      return "16:9";
+            case VIDEO_ASPECT_4_3:       return "4:3";
+            case VIDEO_ASPECT_ORIGINAL:  return "Original";
+            case VIDEO_ASPECT_STRETCH:   return "Stretch";
+            case VIDEO_ASPECT_BEST_FIT:
+            default:                     return "Best Fit";
+        }
+    }
+
+    // DogiGram: present the VLC-style list of video sizes and apply the picked one.
+    private void showVideoAspectSelector() {
+        if (parentActivity == null) {
+            return;
+        }
+        final int[] modes = {
+            VIDEO_ASPECT_BEST_FIT, VIDEO_ASPECT_FIT_SCREEN, VIDEO_ASPECT_FILL,
+            VIDEO_ASPECT_16_9, VIDEO_ASPECT_4_3, VIDEO_ASPECT_ORIGINAL, VIDEO_ASPECT_STRETCH
+        };
+        CharSequence[] items = new CharSequence[modes.length];
+        for (int i = 0; i < modes.length; i++) {
+            items[i] = (modes[i] == videoAspectMode ? "✓  " : "       ") + videoAspectModeName(modes[i]);
+        }
+        AlertDialog.Builder builder = new AlertDialog.Builder(parentActivity, new DarkThemeResourceProvider());
+        builder.setTitle("Video size");
+        builder.setItems(items, (dialog, which) -> setVideoAspectMode(modes[which]));
+        builder.setNegativeButton(LocaleController.getString(R.string.Cancel), null);
+        showAlertDialog(builder);
+    }
+
+    // DogiGram: apply a VLC-style sizing mode to the playing video. Forced aspect ratios (16:9, 4:3,
+    // Stretch) are done by retargeting the player's AspectRatioFrameLayout, which stretches the frame
+    // to the requested ratio; Fill and Original use the player's own zoom transform so they compose
+    // cleanly with pinch-to-zoom.
+    private void setVideoAspectMode(int mode) {
+        videoAspectMode = mode;
+        applyVideoAspectMode(true);
+    }
+
+    private void applyVideoAspectMode() {
+        applyVideoAspectMode(true);
+    }
+
+    private void applyVideoAspectMode(boolean animated) {
+        if (aspectRatioFrameLayout == null) {
+            updateVideoAspectItem();
+            return;
+        }
+        float nativeRatio = videoNativeAspectRatio > 0 ? videoNativeAspectRatio : aspectRatioFrameLayout.getAspectRatio();
+        if (nativeRatio <= 0) {
+            nativeRatio = 1f;
+        }
+        final float containerWidth = getContainerViewWidth();
+        final float containerHeight = getContainerViewHeight();
+        float targetRatio = nativeRatio;
+        float zoomScale = 1f;
+        float translationY = 0f;
+        switch (videoAspectMode) {
+            case VIDEO_ASPECT_FILL:
+                zoomScale = coverScaleForRatio(nativeRatio, containerWidth, containerHeight);
+                break;
+            case VIDEO_ASPECT_FIT_SCREEN: {
+                // DogiGram: fit the WHOLE video inside the actually-visible viewport. In fullscreen the
+                // video is otherwise centered in a container that extends behind the hidden navigation
+                // bar, so its bottom (and any burned-in subtitles) get cut. Shrink it to the visible
+                // height and shift it up into the visible center using the player's own zoom transform.
+                int visibleHeight = containerView != null ? containerView.getMeasuredHeight() : 0;
+                if (videoWidth > 0 && videoHeight > 0 && visibleHeight > 0 && (isActionBarVisible || containerHeight > visibleHeight + 1)) {
+                    float fitBase = Math.min(containerWidth / videoWidth, containerHeight / videoHeight);
+                    float fitVisible = Math.min(containerWidth / videoWidth, visibleHeight / (float) videoHeight);
+                    if (fitBase > 0) {
+                        zoomScale = fitVisible / fitBase;
+                    }
+                    translationY = -(containerHeight - visibleHeight) / 2f;
+                }
+                break;
+            }
+            case VIDEO_ASPECT_16_9:
+                targetRatio = 16f / 9f;
+                break;
+            case VIDEO_ASPECT_4_3:
+                targetRatio = 4f / 3f;
+                break;
+            case VIDEO_ASPECT_ORIGINAL:
+                zoomScale = originalScaleForRatio(nativeRatio, containerWidth, containerHeight);
+                break;
+            case VIDEO_ASPECT_STRETCH:
+                targetRatio = containerHeight > 0 ? containerWidth / containerHeight : nativeRatio;
+                break;
+            case VIDEO_ASPECT_BEST_FIT:
+            default:
+                break;
+        }
+        aspectRatioFrameLayout.setAspectRatio(targetRatio, videoRotationDegrees);
+        if (animated) {
+            animateTo(zoomScale, 0, translationY, true);
+        } else {
+            scale = zoomScale;
+            translationX = 0;
+            // DogiGram: assign the FIELD (the local 'translationY' above shadows it); without this the
+            // non-animated path never applied the Fit Screen recenter, leaving the video cropped.
+            this.translationY = translationY;
+            updateMinMax(scale);
+            containerView.invalidate();
+        }
+        updateVideoAspectItem();
+    }
+
+    // DogiGram: extra zoom (over the fit baseline) needed to crop-fill the screen for a video of the
+    // given width/height ratio.
+    private static float coverScaleForRatio(float ratio, float cw, float ch) {
+        if (ratio <= 0 || cw <= 0 || ch <= 0) {
+            return 1f;
+        }
+        float fitW, fitH;
+        if (ratio > cw / ch) {
+            fitW = cw;
+            fitH = cw / ratio;
+        } else {
+            fitH = ch;
+            fitW = ch * ratio;
+        }
+        return Math.max(cw / fitW, ch / fitH);
+    }
+
+    // DogiGram: zoom needed to show the video at its native pixel resolution.
+    private float originalScaleForRatio(float ratio, float cw, float ch) {
+        if (videoWidth <= 0 || ratio <= 0 || cw <= 0 || ch <= 0) {
+            return 1f;
+        }
+        float fitW;
+        if (ratio > cw / ch) {
+            fitW = cw;
+        } else {
+            fitW = ch * ratio;
+        }
+        return fitW > 0 ? videoWidth / fitW : 1f;
+    }
+
+    private void updateVideoAspectItem() {
+        if (aspectItem != null) {
+            aspectItem.setText("Video size: " + videoAspectModeName(videoAspectMode));
+        }
+    }
+
     public void setParentAlert(ChatAttachAlert alert) {
         parentAlert = alert;
         if (parentAlertWindowVisibilityController != null) {
@@ -5962,6 +6153,12 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                     }
                     loopItem.setEnabledByColor(playerLooping, 0xFFFFFFFF, 0xFF73B4EC);
                     loopItem.setSelectorColor(playerLooping ? 0x0F73B4EC : 0x0fffffff);
+                } else if (id == gallery_menu_audio) {
+                    showAudioTrackSelector();
+                } else if (id == gallery_menu_subtitles) {
+                    showSubtitleTrackSelector();
+                } else if (id == gallery_menu_aspect) {
+                    showVideoAspectSelector();
                 } else if (id == gallery_menu_report) {
                     TLRPC.Photo photo = null;
                     if (currentFileLocation != null && currentFileLocation.photo != null) {
@@ -6011,6 +6208,38 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         videoItem.getPopupLayout().setFitItems(true);
         videoItem.setMenuXOffset(dp(3));
 
+        // DogiGram: build the speed controls inside a swipe-back submenu so the main video menu only
+        // shows a single compact "Speed" entry. The submenu has a -/+ stepper (0.1x-10x, step 0.1),
+        // the quick slider and the preset buttons.
+        speedSubMenu = new ActionBarPopupWindow.ActionBarPopupWindowLayout(activityContext, 0, resourcesProvider);
+        speedSubMenu.setFitItems(true);
+
+        ActionBarMenuSubItem speedBackItem = ActionBarMenuItem.addItem(speedSubMenu, R.drawable.msg_arrow_back, LocaleController.getString(R.string.Back), false, null);
+        speedBackItem.setColors(0xfffafafa, 0xfffafafa);
+        speedBackItem.setSelectorColor(0x0fffffff);
+        speedBackItem.setOnClickListener(v -> {
+            if (videoItem != null && videoItem.getPopupLayout().getSwipeBack() != null) {
+                videoItem.getPopupLayout().getSwipeBack().closeForeground();
+            }
+        });
+
+        LinearLayout speedStepper = new LinearLayout(activityContext);
+        speedStepper.setOrientation(LinearLayout.HORIZONTAL);
+        speedStepper.setMinimumWidth(dp(196));
+        speedStepper.setBackgroundColor(0xff222222);
+        TextView speedMinusButton = createSpeedStepButton("−", () -> stepVideoSpeed(-0.1f));
+        speedStepperValue = new TextView(activityContext);
+        speedStepperValue.setTextColor(0xffffffff);
+        speedStepperValue.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
+        speedStepperValue.setGravity(Gravity.CENTER);
+        speedStepperValue.setTypeface(AndroidUtilities.bold());
+        speedStepperValue.setText("1.0x");
+        TextView speedPlusButton = createSpeedStepButton("+", () -> stepVideoSpeed(0.1f));
+        speedStepper.addView(speedMinusButton, LayoutHelper.createLinear(48, 44));
+        speedStepper.addView(speedStepperValue, LayoutHelper.createLinear(0, 44, 1f));
+        speedStepper.addView(speedPlusButton, LayoutHelper.createLinear(48, 44));
+        speedSubMenu.addView(speedStepper, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 44));
+
         speedItem = new ActionBarMenuSlider.SpeedSlider(activityContext, resourcesProvider);
         speedItem.setStops(new float[]{0.5f, 1.0f, 1.5f, 2.0f, 2.5f});
         speedItem.setMinimumWidth(AndroidUtilities.dp(196));
@@ -6022,15 +6251,37 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
             final float speed = ActionBarMenuSlider.SpeedSlider.MIN_SPEED + (ActionBarMenuSlider.SpeedSlider.MAX_SPEED - ActionBarMenuSlider.SpeedSlider.MIN_SPEED) * value;
             chooseSpeed(speed, isFinal, false);
         });
-        videoItem.getPopupLayout().addView(speedItem, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 44));
+        speedSubMenu.addView(speedItem, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 44));
+
+        // DogiGram: the -/+ stepper (0.1x-10x) and the slider cover the whole speed range, so the
+        // submenu is kept to Back + stepper + slider. Keeping it shorter than the main video menu is
+        // also what stops the popup background from undershooting the last main item (Chromecast).
+        // chooseSpeedLayout is still created so the existing speed-state updates keep working.
+        chooseSpeedLayout = new SpeedButtonsLayout(activityContext, this::chooseSpeed);
+
+        speedMenuItem = videoItem.addSwipeBackItem(R.drawable.msg_speed, null, LocaleController.getString(R.string.VideoPlayerSpeed), speedSubMenu);
+        speedMenuItem.setColors(0xfffafafa, 0xfffafafa);
+        speedMenuItem.setSelectorColor(0x0fffffff);
         speedGap = videoItem.addColoredGap();
         speedGap.setColor(0xff181818);
-        videoItem.getPopupLayout().addView(chooseSpeedLayout = new SpeedButtonsLayout(activityContext, this::chooseSpeed));
         videoQualityLayout = new LinearLayout(activityContext);
         videoQualityLayout.setOrientation(LinearLayout.VERTICAL);
         videoItem.getPopupLayout().addView(videoQualityLayout);
         loopItem = videoItem.addSubItem(gallery_menu_loop, R.drawable.menu_video_loop, LocaleController.getString(R.string.VideoPlayerLoop));
         loopItem.setSelectorColor(0x0fffffff);
+        // DogiGram: audio / subtitle track pickers (hidden unless the current video has tracks to pick).
+        audioTrackItem = videoItem.addSubItem(gallery_menu_audio, R.drawable.files_music, LocaleController.getString(R.string.DogiAudioTrack));
+        audioTrackItem.setColors(0xfffafafa, 0xfffafafa);
+        audioTrackItem.setSelectorColor(0x0fffffff);
+        audioTrackItem.setVisibility(View.GONE);
+        subtitleTrackItem = videoItem.addSubItem(gallery_menu_subtitles, R.drawable.msg_translate, LocaleController.getString(R.string.DogiSubtitles));
+        subtitleTrackItem.setColors(0xfffafafa, 0xfffafafa);
+        subtitleTrackItem.setSelectorColor(0x0fffffff);
+        subtitleTrackItem.setVisibility(View.GONE);
+        // DogiGram: VLC-style video size picker (Best Fit / Fit Screen / Fill / 16:9 / 4:3 / Original / Stretch).
+        aspectItem = videoItem.addSubItem(gallery_menu_aspect, R.drawable.msg_maxvideo, "Video size: Best Fit");
+        aspectItem.setColors(0xfffafafa, 0xfffafafa);
+        aspectItem.setSelectorColor(0x0fffffff);
         castItemButton = new CastMediaRouteButton(activityContext) {
             @Override
             public void stateUpdated(boolean connected) {
@@ -8699,6 +8950,9 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         }
         speedItem.setSpeed(currentVideoSpeed, animated);
         chooseSpeedLayout.update(currentVideoSpeed, isFinal);
+        if (speedStepperValue != null) {
+            speedStepperValue.setText(SpeedIconDrawable.formatNumber(currentVideoSpeed) + "x");
+        }
     }
 
     private void chooseQuality(int qualityIndex) {
@@ -8738,7 +8992,9 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         }
         galleryButton.setRightIcon(R.drawable.msg_arrowright);
 //        videoItem.setVisibility(View.VISIBLE);
-        chooseSpeedLayout.setVisibility(View.GONE);
+        // DogiGram: speed presets now live in their own submenu, so they no longer get hidden when the
+        // main menu switches to the quality list.
+        chooseSpeedLayout.setVisibility(View.VISIBLE);
         videoQualityLayout.setVisibility(View.VISIBLE);
         final VideoPlayer.Quality currentQuality = videoPlayer.getCurrentQuality();
         final int qualityIndexSelected = videoPlayer.getCurrentQualityIndex();
@@ -9793,6 +10049,16 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
     }
 
     private void createVideoControlsInterface() {
+        // DogiGram: overlay that renders the selected subtitle track over the video.
+        videoSubtitleView = new TextView(containerView.getContext());
+        videoSubtitleView.setTextColor(0xffffffff);
+        videoSubtitleView.setTextSize(16);
+        videoSubtitleView.setGravity(Gravity.CENTER);
+        videoSubtitleView.setShadowLayer(AndroidUtilities.dp(2), 0, AndroidUtilities.dp(1), 0x99000000);
+        videoSubtitleView.setPadding(AndroidUtilities.dp(10), AndroidUtilities.dp(4), AndroidUtilities.dp(10), AndroidUtilities.dp(4));
+        videoSubtitleView.setVisibility(View.GONE);
+        containerView.addView(videoSubtitleView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL, 16, 0, 16, 80));
+
         videoPlayerControlFrameLayout = new VideoPlayerControlFrameLayout(containerView.getContext());
         containerView.addView(videoPlayerControlFrameLayout, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 48, Gravity.BOTTOM | Gravity.LEFT));
 
@@ -10552,6 +10818,11 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         if (parentActivity == null) {
             return;
         }
+        // DogiGram: each new video starts in Best Fit mode (its zoom is reset on switch).
+        if (!preview) {
+            videoAspectMode = VIDEO_ASPECT_FIT_SCREEN;
+            updateVideoAspectItem();
+        }
         streamingAlertShown = false;
         startedPlayTime = SystemClock.elapsedRealtime();
         currentVideoFinishedLoading = false;
@@ -10712,10 +10983,25 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                 private boolean firstState = true;
 
                 @Override
+                public void onSubtitleUpdate(CharSequence text) {
+                    if (videoSubtitleView == null) {
+                        return;
+                    }
+                    if (TextUtils.isEmpty(text)) {
+                        videoSubtitleView.setText("");
+                        videoSubtitleView.setVisibility(View.GONE);
+                    } else {
+                        videoSubtitleView.setText(text);
+                        videoSubtitleView.setVisibility(View.VISIBLE);
+                    }
+                }
+
+                @Override
                 public void onStateChanged(boolean playWhenReady, int playbackState) {
                     if (videoPlayer != null) {
                         videoPlayer.setMute(CastSync.isActive() || muteVideo);
                     }
+                    updateVideoTrackMenu();
                     if (firstState && videoPlayer != null && videoPlayer.getDuration() != C.TIME_UNSET) {
                         firstState = false;
                         if (imagesArr.isEmpty() && secureDocuments.isEmpty() && imagesArrLocations.isEmpty() && !imagesArrLocals.isEmpty() && switchingToIndex >= 0 && switchingToIndex < imagesArrLocals.size()) {
@@ -10772,7 +11058,14 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                             pipSource.setContentRatio(videoWidth, videoHeight);
                         }
 
-                        aspectRatioFrameLayout.setAspectRatio(height == 0 ? 1 : (width * pixelWidthHeightRatio) / height, unappliedRotationDegrees);
+                        // DogiGram: remember the native ratio / rotation so the VLC-style size menu can
+                        // restore them, then apply whichever sizing mode the user has chosen.
+                        videoNativeAspectRatio = height == 0 ? 1 : (width * pixelWidthHeightRatio) / height;
+                        videoRotationDegrees = unappliedRotationDegrees;
+                        aspectRatioFrameLayout.setAspectRatio(videoNativeAspectRatio, unappliedRotationDegrees);
+                        if (videoAspectMode != VIDEO_ASPECT_BEST_FIT) {
+                            applyVideoAspectMode(false);
+                        }
                         if (videoTextureView instanceof VideoEditTextureView) {
                             StoryEntry.HDRInfo hdrInfo = videoPlayer.getHDRStaticInfo(null);
                             ((VideoEditTextureView) videoTextureView).setHDRInfo(hdrInfo);
@@ -10782,6 +11075,9 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                             }
                         }
                         videoSizeSet = true;
+                        // DogiGram: now that the real size is known, refresh the rotate-to-fullscreen
+                        // button (it depends on the video being landscape on a portrait screen).
+                        checkFullscreenButton();
                     }
                 }
 
@@ -11014,11 +11310,23 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                 for (int a = 0, N = document.attributes.size(); a < N; a++) {
                     TLRPC.DocumentAttribute attribute = document.attributes.get(a);
                     if (attribute instanceof TLRPC.TL_documentAttributeVideo) {
-                        w = attribute.w;
-                        h = attribute.h;
+                        // DogiGram: a video sent as a plain document has no real w/h in its (synthetic)
+                        // video attribute, so keep the measured texture size instead of zeroing it out -
+                        // otherwise the fullscreen/rotate button never shows for doc videos.
+                        if (attribute.w > 0 && attribute.h > 0) {
+                            w = attribute.w;
+                            h = attribute.h;
+                        }
                         break;
                     }
                 }
+            }
+            // DogiGram: for the current video prefer the real decoded size reported by the player. It is
+            // reliable regardless of layout timing or whether the document carried real w/h, so a
+            // landscape video sent as a plain document still gets the rotate-to-fullscreen button.
+            if (b == 0 && !isYouTube && videoWidth > 0 && videoHeight > 0) {
+                w = videoWidth;
+                h = videoHeight;
             }
             if (AndroidUtilities.displaySize.y > AndroidUtilities.displaySize.x && w > h) {
                 if (fullscreenButton[b].getVisibility() != View.VISIBLE) {
@@ -11327,6 +11635,82 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         } catch (Exception e) {
             FileLog.e(e);
         }
+    }
+
+    // DogiGram: show/hide the audio & subtitle track pickers based on what the current video offers.
+    private void updateVideoTrackMenu() {
+        if (audioTrackItem == null || subtitleTrackItem == null) {
+            return;
+        }
+        int audioCount = videoPlayer != null ? videoPlayer.getAudioTracks().size() : 0;
+        int subCount = videoPlayer != null ? videoPlayer.getSubtitleTracks().size() : 0;
+        audioTrackItem.setVisibility(audioCount > 1 ? View.VISIBLE : View.GONE);
+        subtitleTrackItem.setVisibility(subCount > 0 ? View.VISIBLE : View.GONE);
+        if (subCount == 0 && videoSubtitleView != null) {
+            videoSubtitleView.setText("");
+            videoSubtitleView.setVisibility(View.GONE);
+        }
+    }
+
+    private void showAudioTrackSelector() {
+        if (videoPlayer == null || parentActivity == null) {
+            return;
+        }
+        final ArrayList<VideoPlayer.TrackInfo> tracks = videoPlayer.getAudioTracks();
+        if (tracks.isEmpty()) {
+            return;
+        }
+        CharSequence[] items = new CharSequence[tracks.size()];
+        for (int i = 0; i < tracks.size(); i++) {
+            VideoPlayer.TrackInfo t = tracks.get(i);
+            items[i] = (t.selected ? "✓  " : "       ") + t.label;
+        }
+        AlertDialog.Builder builder = new AlertDialog.Builder(parentActivity, new DarkThemeResourceProvider());
+        builder.setTitle(LocaleController.getString(R.string.DogiAudioTrack));
+        builder.setItems(items, (dialog, which) -> {
+            if (videoPlayer != null) {
+                videoPlayer.selectTrack(tracks.get(which));
+            }
+        });
+        builder.setNegativeButton(LocaleController.getString(R.string.Cancel), null);
+        showAlertDialog(builder);
+    }
+
+    private void showSubtitleTrackSelector() {
+        if (videoPlayer == null || parentActivity == null) {
+            return;
+        }
+        final ArrayList<VideoPlayer.TrackInfo> tracks = videoPlayer.getSubtitleTracks();
+        final boolean enabled = videoPlayer.isSubtitlesEnabled();
+        CharSequence[] items = new CharSequence[tracks.size() + 1];
+        boolean anySelected = false;
+        for (int i = 0; i < tracks.size(); i++) {
+            VideoPlayer.TrackInfo t = tracks.get(i);
+            boolean sel = enabled && t.selected;
+            if (sel) {
+                anySelected = true;
+            }
+            items[i + 1] = (sel ? "✓  " : "       ") + t.label;
+        }
+        items[0] = (!anySelected ? "✓  " : "       ") + LocaleController.getString(R.string.DogiSubtitlesOff);
+        AlertDialog.Builder builder = new AlertDialog.Builder(parentActivity, new DarkThemeResourceProvider());
+        builder.setTitle(LocaleController.getString(R.string.DogiSubtitles));
+        builder.setItems(items, (dialog, which) -> {
+            if (videoPlayer == null) {
+                return;
+            }
+            if (which == 0) {
+                videoPlayer.setSubtitlesEnabled(false);
+                if (videoSubtitleView != null) {
+                    videoSubtitleView.setText("");
+                    videoSubtitleView.setVisibility(View.GONE);
+                }
+            } else {
+                videoPlayer.selectTrack(tracks.get(which - 1));
+            }
+        });
+        builder.setNegativeButton(LocaleController.getString(R.string.Cancel), null);
+        showAlertDialog(builder);
     }
 
     private static final int thumbSize = 512;
@@ -13524,6 +13908,9 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
             }
         }
         isActionBarVisible = show;
+        if (isCurrentVideo) {
+            applyVideoAspectMode(true);
+        }
 
         if (photoViewerWebView != null) {
             photoViewerWebView.setTouchDisabled(isActionBarVisible);
@@ -18969,6 +19356,11 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         if (videoPlayer != null && playerLooping) {
             videoPlayer.setLooping(allowLoopingOnPause());
         }
+        // DogiGram: pause playback when leaving the app (lock screen / switch to background),
+        // unless we are entering picture-in-picture mode where playback should continue.
+        if (DogiConfig.isAutoPauseVideo() && !AndroidUtilities.isInPictureInPictureMode(parentActivity)) {
+            pauseVideoOrWeb();
+        }
     }
 
     private boolean allowLoopingOnPause() {
@@ -18980,6 +19372,14 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
     }
 
     private void updateMinMax(float scale) {
+        float offset = 0;
+        if (isCurrentVideo && videoAspectMode == VIDEO_ASPECT_FIT_SCREEN) {
+            int visibleHeight = containerView != null ? containerView.getMeasuredHeight() : 0;
+            int containerHeight = getContainerViewHeight();
+            if (containerHeight > visibleHeight + 1) {
+                offset = -(containerHeight - visibleHeight) / 2f;
+            }
+        }
         if (aspectRatioFrameLayout != null && aspectRatioFrameLayout.getVisibility() == View.VISIBLE && textureUploaded) {
             View view = usedSurfaceView ? videoSurfaceView : videoTextureView;
             scale *= Math.min(getContainerViewWidth() / (float) view.getMeasuredWidth(), getContainerViewHeight() / (float) view.getMeasuredHeight());
@@ -18999,10 +19399,10 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
             minX = maxX = 0;
         }
         if (maxH > 0) {
-            minY = -maxH;
-            maxY = maxH;
+            minY = -maxH + offset;
+            maxY = maxH + offset;
         } else {
-            minY = maxY = 0;
+            minY = maxY = offset;
         }
         if (photoPaintView != null) {
             photoPaintView.updateZoom(scale <= 1.1f);
@@ -19371,7 +19771,9 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
             maskPaintViewTouched = 0;
             if (zooming) {
                 invalidCoords = true;
-                float maxScale = sendPhotoType == SELECT_TYPE_STICKER ? 10.0f : 3.0f;
+                // DogiGram: allow videos to be pinch-zoomed further and keep that zoom (VLC-like), so a
+                // user-set zoom level stays put instead of snapping back at 3x.
+                float maxScale = sendPhotoType == SELECT_TYPE_STICKER ? 10.0f : (isCurrentVideo ? 8.0f : 3.0f);
                 float minScale = sendPhotoType == SELECT_TYPE_STICKER ? 0.33f : 1f;
                 if (scale < minScale) {
                     updateMinMax(minScale);
@@ -23360,6 +23762,31 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                 Browser.openUrl(LaunchActivity.instance != null ? LaunchActivity.instance : activityContext, Uri.parse(currentMessageObject.sponsoredUrl), true, false, false, null, null, false, MessagesController.getInstance(currentAccount).sponsoredLinksInappAllow, false);
             }
         });
+    }
+
+    // DogiGram: a round-ripple text button ("−" / "+") for the speed stepper.
+    private TextView createSpeedStepButton(String label, Runnable onClick) {
+        TextView tv = new TextView(activityContext);
+        tv.setText(label);
+        tv.setTextColor(0xffffffff);
+        tv.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 22);
+        tv.setGravity(Gravity.CENTER);
+        tv.setTypeface(AndroidUtilities.bold());
+        tv.setBackground(Theme.createSelectorDrawable(0x1fffffff));
+        tv.setOnClickListener(v -> onClick.run());
+        return tv;
+    }
+
+    // DogiGram: nudge the playback speed by delta, snapped to 0.1 and clamped to 0.1x-10x. The submenu
+    // stays open so the user can keep tapping -/+.
+    private void stepVideoSpeed(float delta) {
+        float speed = Math.round((currentVideoSpeed + delta) * 10f) / 10f;
+        if (speed < 0.1f) {
+            speed = 0.1f;
+        } else if (speed > 10f) {
+            speed = 10f;
+        }
+        chooseSpeed(speed, true, false);
     }
 
     private void chooseSpeed(float speed, boolean isFinal, boolean closeMenu) {

@@ -24,6 +24,7 @@ import android.opengl.EGLContext;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.text.SpannableStringBuilder;
 import android.text.TextUtils;
 import android.util.Base64;
 import android.util.LongSparseArray;
@@ -46,6 +47,8 @@ import com.google.android.exoplayer2.PlaybackParameters;
 import com.google.android.exoplayer2.Player;
 import com.google.android.exoplayer2.SeekParameters;
 import com.google.android.exoplayer2.Tracks;
+import com.google.android.exoplayer2.text.Cue;
+import com.google.android.exoplayer2.text.CueGroup;
 import com.google.android.exoplayer2.analytics.AnalyticsListener;
 import com.google.android.exoplayer2.audio.AudioAttributes;
 import com.google.android.exoplayer2.audio.AudioCapabilities;
@@ -83,6 +86,7 @@ import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.DispatchQueue;
 import org.telegram.messenger.FileLoader;
 import org.telegram.messenger.FileLog;
+import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.FourierTransform;
 import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.MessagesController;
@@ -107,6 +111,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 @SuppressLint("NewApi")
@@ -137,6 +142,10 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
 
         }
         default void onSeekFinished(AnalyticsListener.EventTime eventTime) {
+
+        }
+        // DogiGram: current subtitle text (null/empty when there is no active cue).
+        default void onSubtitleUpdate(CharSequence text) {
 
         }
     }
@@ -704,6 +713,139 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
         if (onQualityChangeListener != null) {
             AndroidUtilities.runOnUIThread(onQualityChangeListener);
         }
+    }
+
+    // DogiGram: audio / subtitle track selection.
+    public static class TrackInfo {
+        public TrackGroup group;
+        public int trackIndex;
+        public int type; // C.TRACK_TYPE_AUDIO or C.TRACK_TYPE_TEXT
+        public String label;
+        public boolean selected;
+    }
+
+    private String trackLabel(Format format, int fallbackIndex) {
+        if (format != null && !TextUtils.isEmpty(format.label)) {
+            return format.label;
+        }
+        if (format != null && !TextUtils.isEmpty(format.language) && !"und".equals(format.language)) {
+            try {
+                String display = new Locale(format.language).getDisplayLanguage();
+                if (!TextUtils.isEmpty(display)) {
+                    return display.substring(0, 1).toUpperCase() + display.substring(1);
+                }
+            } catch (Exception ignore) {}
+            return format.language;
+        }
+        return LocaleController.getString(R.string.DogiTrack) + " " + (fallbackIndex + 1);
+    }
+
+    private ArrayList<TrackInfo> getTracks(int trackType) {
+        ArrayList<TrackInfo> result = new ArrayList<>();
+        if (player == null) {
+            return result;
+        }
+        try {
+            Tracks tracks = player.getCurrentTracks();
+            int counter = 0;
+            for (Tracks.Group group : tracks.getGroups()) {
+                if (group.getType() != trackType) {
+                    continue;
+                }
+                for (int i = 0; i < group.length; i++) {
+                    TrackInfo info = new TrackInfo();
+                    info.group = group.getMediaTrackGroup();
+                    info.trackIndex = i;
+                    info.type = trackType;
+                    info.label = trackLabel(group.getTrackFormat(i), counter);
+                    info.selected = group.isTrackSelected(i);
+                    result.add(info);
+                    counter++;
+                }
+            }
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
+        return result;
+    }
+
+    public ArrayList<TrackInfo> getAudioTracks() {
+        return getTracks(C.TRACK_TYPE_AUDIO);
+    }
+
+    public ArrayList<TrackInfo> getSubtitleTracks() {
+        return getTracks(C.TRACK_TYPE_TEXT);
+    }
+
+    public boolean isSubtitlesEnabled() {
+        if (player == null) {
+            return false;
+        }
+        try {
+            return !player.getTrackSelectionParameters().disabledTrackTypes.contains(C.TRACK_TYPE_TEXT);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    public void selectTrack(TrackInfo info) {
+        if (player == null || info == null || info.group == null) {
+            return;
+        }
+        try {
+            TrackSelectionParameters.Builder builder = player.getTrackSelectionParameters().buildUpon();
+            builder.setTrackTypeDisabled(info.type, false);
+            builder.setOverrideForType(new TrackSelectionOverride(info.group, info.trackIndex));
+            player.setTrackSelectionParameters(builder.build());
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
+    }
+
+    public void setSubtitlesEnabled(boolean enabled) {
+        if (player == null) {
+            return;
+        }
+        try {
+            TrackSelectionParameters.Builder builder = player.getTrackSelectionParameters().buildUpon();
+            builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !enabled);
+            if (!enabled) {
+                builder.clearOverridesOfType(C.TRACK_TYPE_TEXT);
+            }
+            player.setTrackSelectionParameters(builder.build());
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
+    }
+
+    @Override
+    public void onCues(CueGroup cueGroup) {
+        if (delegate == null) {
+            return;
+        }
+        CharSequence text = null;
+        try {
+            if (cueGroup != null && cueGroup.cues != null && !cueGroup.cues.isEmpty()) {
+                SpannableStringBuilder sb = new SpannableStringBuilder();
+                for (Cue cue : cueGroup.cues) {
+                    if (cue != null && !TextUtils.isEmpty(cue.text)) {
+                        if (sb.length() > 0) {
+                            sb.append('\n');
+                        }
+                        sb.append(cue.text);
+                    }
+                }
+                text = sb;
+            }
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
+        final CharSequence finalText = text;
+        AndroidUtilities.runOnUIThread(() -> {
+            if (delegate != null) {
+                delegate.onSubtitleUpdate(finalText);
+            }
+        });
     }
 
     private long fallbackDuration = C.TIME_UNSET;

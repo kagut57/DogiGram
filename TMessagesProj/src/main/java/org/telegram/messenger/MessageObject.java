@@ -57,6 +57,7 @@ import org.telegram.messenger.utils.tlutils.AmountUtils;
 import org.telegram.messenger.utils.tlutils.TlUtils;
 import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.SerializedData;
+import org.telegram.tgnet.NativeByteBuffer;
 import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.tgnet.tl.TL_iv;
@@ -10305,6 +10306,102 @@ public class MessageObject {
             isVideo = true;
         }
         return isVideo && !isAnimated;
+    }
+
+    // DogiGram: video containers that the built-in player (ExoPlayer) can attempt to play but that
+    // are often sent as plain documents without a video attribute. These are NOT treated as videos
+    // for rendering (the message keeps looking like a file); they are only used to decide that a
+    // tapped document should open in the in-app player instead of an external app.
+    // "webm" is intentionally left out because it is reused by animated stickers.
+    private static final HashSet<String> PLAYABLE_VIDEO_EXTENSIONS = new HashSet<>(Arrays.asList(
+            "mp4", "m4v", "mov", "qt", "mkv", "avi", "wmv", "flv", "mpeg", "mpg", "mpe",
+            "m2v", "3gp", "3g2", "mts", "m2ts", "ts", "vob", "ogv", "divx", "xvid",
+            "asf", "rm", "rmvb", "amv", "mxf"
+    ));
+
+    public static boolean isPlayableVideoFile(String mimeType, String fileName) {
+        if (mimeType != null) {
+            String mime = mimeType.toLowerCase();
+            // video/webm is reused by animated stickers, so don't treat it as a playable video here.
+            if (mime.startsWith("video/") && !mime.equals("video/webm")) {
+                return true;
+            }
+        }
+        if (fileName != null) {
+            int index = fileName.lastIndexOf('.');
+            if (index >= 0) {
+                return PLAYABLE_VIDEO_EXTENSIONS.contains(fileName.substring(index + 1).toLowerCase());
+            }
+        }
+        return false;
+    }
+
+    // DogiGram: a document message that is a video file but is rendered (and stored) as a plain file
+    // because it lacks a video attribute. Used to route a tap to the in-app player.
+    public boolean isPlayableVideoFileDocument() {
+        if (type != TYPE_FILE && type != TYPE_TEXT) {
+            return false;
+        }
+        TLRPC.Document document = getDocument();
+        if (document == null) {
+            return false;
+        }
+        return isPlayableVideoFile(document.mime_type, getDocumentName());
+    }
+
+    // DogiGram: build a throwaway copy of a document message tagged as a video, so a video file that
+    // was sent as a plain document can be played in the in-app player (PhotoViewer) without changing
+    // how the original message renders (it keeps looking like a file). The document is cloned so the
+    // injected video attribute never leaks back into the original message. localPath must point at the
+    // already-downloaded file: the copy plays from that local path (no streaming), which is reliable
+    // even though the cloned document is synthetic.
+    public static MessageObject makePlayableVideoCopy(int currentAccount, MessageObject source, String localPath) {
+        if (source == null || source.messageOwner == null || TextUtils.isEmpty(localPath)) {
+            return null;
+        }
+        TLRPC.Document src = source.getDocument();
+        if (src == null) {
+            return null;
+        }
+        TLRPC.Document doc = null;
+        try {
+            NativeByteBuffer buffer = new NativeByteBuffer(src.getObjectSize());
+            src.serializeToStream(buffer);
+            buffer.position(0);
+            doc = TLRPC.Document.TLdeserialize(buffer, buffer.readInt32(false), false);
+            buffer.reuse();
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
+        if (doc == null) {
+            return null;
+        }
+        boolean hasVideo = false;
+        for (int a = 0; a < doc.attributes.size(); a++) {
+            if (doc.attributes.get(a) instanceof TLRPC.TL_documentAttributeVideo) {
+                hasVideo = true;
+                break;
+            }
+        }
+        if (!hasVideo) {
+            // No streaming: the file is already local, so the player reads it straight from attachPath.
+            doc.attributes.add(new TLRPC.TL_documentAttributeVideo());
+        }
+        final TLRPC.Message omsg = source.messageOwner;
+        final TLRPC.TL_message msg = new TLRPC.TL_message();
+        msg.id = omsg.id;
+        msg.peer_id = omsg.peer_id;
+        msg.from_id = omsg.from_id;
+        msg.date = omsg.date;
+        msg.out = omsg.out;
+        msg.dialog_id = source.getDialogId();
+        msg.attachPath = localPath;
+        final TLRPC.TL_messageMediaDocument media = new TLRPC.TL_messageMediaDocument();
+        media.flags |= 1;
+        media.document = doc;
+        msg.media = media;
+        msg.flags |= 512; // MESSAGE_FLAG_HAS_MEDIA
+        return new MessageObject(currentAccount, msg, false, true);
     }
 
     public static boolean isV(String ext) {

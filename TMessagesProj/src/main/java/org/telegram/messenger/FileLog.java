@@ -230,6 +230,26 @@ public class FileLog {
         }
     }
 
+    // DogiGram: pretty-printed JSON of a TLObject/value, reusing the safe exclusion strategy above.
+    private static Gson prettyGson;
+    public static String toJsonPretty(Object object) {
+        try {
+            checkGson();
+            if (prettyGson == null) {
+                prettyGson = new GsonBuilder()
+                    .setPrettyPrinting()
+                    .addSerializationExclusionStrategy(exclusionStrategy)
+                    .registerTypeAdapter(byte[].class, new ByteArrayHexAdapter())
+                    .registerTypeAdapterFactory(RuntimeClassNameTypeAdapterFactory.of(TLObject.class, "type_", exclusionStrategy))
+                    .registerTypeHierarchyAdapter(TLObject.class, new TLObjectDeserializer())
+                    .create();
+            }
+            return prettyGson.toJson(object);
+        } catch (Throwable e) {
+            return null;
+        }
+    }
+
     public static class ByteArrayHexAdapter extends TypeAdapter<byte[]> {
 
         @Override

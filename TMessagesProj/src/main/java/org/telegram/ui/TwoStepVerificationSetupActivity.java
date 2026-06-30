@@ -1313,9 +1313,7 @@ public class TwoStepVerificationSetupActivity extends BaseFragment {
                 } else if (fromRegistration) {
                     final Bundle args = new Bundle();
                     args.putBoolean("afterSignup", true);
-                    MainTabsActivity mainTabsActivity = new MainTabsActivity();
-                    mainTabsActivity.prepareDialogsActivity(args);
-                    presentFragment(mainTabsActivity, true);
+                    presentFragment(DogiGramSettingsActivity.createMainFragment(args), true);
                 } else {
                     TwoStepVerificationActivity fragment = new TwoStepVerificationActivity();
                     fragment.setCurrentPasswordParams(currentPassword, currentPasswordHash, currentSecretId, currentSecret);
@@ -2152,9 +2150,7 @@ public class TwoStepVerificationSetupActivity extends BaseFragment {
         if (otherwiseReloginDays >= 0 && parentLayout.getFragmentStack().size() == 1) {
             final Bundle args = new Bundle();
             args.putBoolean("afterSignup", true);
-            MainTabsActivity mainTabsActivity = new MainTabsActivity();
-            mainTabsActivity.prepareDialogsActivity(args);
-            presentFragment(mainTabsActivity, true);
+            presentFragment(DogiGramSettingsActivity.createMainFragment(args), true);
         } else {
             super.finishFragment();
         }
