@@ -27,7 +27,12 @@
 #define DOWNLOAD_CONNECTIONS_COUNT 2
 #define UPLOAD_CONNECTIONS_COUNT 4
 #define CONNECTION_BACKGROUND_KEEP_TIME 10000
-#define MAX_ACCOUNT_COUNT 5
+// DogiGram: must stay >= UserConfig.MAX_ACCOUNT_COUNT on the Java side (currently 10).
+// This sizes jniEnv[] and is the upper bound of ConnectionsManager::getInstance(), both of
+// which are indexed by the Java account number. If it is smaller than the Java limit, the
+// native code indexes jniEnv[] out of bounds for the extra accounts and aborts under CheckJNI
+// ("using JNIEnv* from thread ..."). Kept one above the Java limit, mirroring upstream (4 -> 5).
+#define MAX_ACCOUNT_COUNT 11
 #define USE_DELEGATE_HOST_RESOLVE
 
 #define USE_IPV4_ONLY 0

@@ -127,6 +127,7 @@ import org.telegram.PhoneFormat.PhoneFormat;
 import org.telegram.messenger.AccountInstance;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
+import org.telegram.messenger.DogiConfig;
 import org.telegram.messenger.AuthTokensHelper;
 import org.telegram.messenger.BillingController;
 import org.telegram.messenger.BirthdayController;
@@ -646,6 +647,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     private int infoHeaderRowEmpty;
     private int infoEndRowEmpty;
     private int phoneRow;
+    private int idRow;
     private int noteRow;
     private int locationRow;
     private int userInfoRow;
@@ -7250,6 +7252,48 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         presentFragment(fragment);
     }
 
+    // DogiGram: copy arbitrary text to the clipboard with the standard "copied" bulletin.
+    private void copyToClipboard(String text) {
+        try {
+            android.content.ClipboardManager clipboard = (android.content.ClipboardManager) ApplicationLoader.applicationContext.getSystemService(Context.CLIPBOARD_SERVICE);
+            BulletinFactory.of(this).createCopyBulletin(LocaleController.getString(R.string.TextCopied), resourcesProvider).show();
+            android.content.ClipData clip = android.content.ClipData.newPlainText("label", text);
+            clipboard.setPrimaryClip(clip);
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
+    }
+
+
+    // DogiGram: the id shown on the profile. Users keep their plain id; channels/supergroups use
+    // the -100... peer form (e.g. -1001882635094) and basic groups the -id form, matching the
+    // dialog id you'd copy elsewhere.
+    private long getProfileDisplayId() {
+        if (userId != 0) {
+            return userId;
+        }
+        if (currentChat != null && ChatObject.isChannel(currentChat)) {
+            return -1000000000000L - chatId;
+        }
+        return -chatId;
+    }
+
+    // DogiGram: the data-center the profile photo is hosted on (0 when unknown).
+    private int getProfileDcId() {
+        if (userId != 0) {
+            final TLRPC.User user = getMessagesController().getUser(userId);
+            if (user != null && user.photo != null) {
+                return user.photo.dc_id;
+            }
+        } else if (currentChat != null) {
+            final TLRPC.Chat chat = getMessagesController().getChat(chatId);
+            if (chat != null && chat.photo != null) {
+                return chat.photo.dc_id;
+            }
+        }
+        return 0;
+    }
+
     private boolean processOnClickOrPress(final int position, final View view, final float x, final float y) {
         if (position == usernameRow || position == setUsernameRow) {
             final String username;
@@ -7365,6 +7409,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             return true;
         } else if (position == noteRow) {
 
+        } else if (position == idRow) {
+            copyToClipboard(String.valueOf(getProfileDisplayId()));
+            return true;
         } else if (position == phoneRow || position == numberRow) {
             if (editRow(view, position)) return true;
 
@@ -10425,6 +10472,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         infoHeaderRowEmpty = -1;
         infoEndRowEmpty = -1;
         phoneRow = -1;
+        idRow = -1;
         noteRow = -1;
         userInfoRow = -1;
         locationRow = -1;
@@ -10622,6 +10670,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 if (user != null && username != null) {
                     usernameRow = rowCount++;
                 }
+                // DogiGram: show the user/bot ID (tap to copy), plus the DC when known, when enabled.
+                if (userId != 0 && DogiConfig.isShowId()) {
+                    idRow = rowCount++;
+                }
                 if (userInfo != null) {
                     if (userInfo.birthday != null) {
                         birthdayRow = rowCount++;
@@ -10752,7 +10804,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 sharedMediaRow = rowCount++;
             }
         } else if (chatId != 0) {
-            if (chatInfo != null && (!TextUtils.isEmpty(chatInfo.about) || chatInfo.location instanceof TLRPC.TL_channelLocation) || ChatObject.isPublic(currentChat)) {
+            // DogiGram: render the info block for any chat/channel so the ID/DC are always visible,
+            // not only when there is a description, location or public username.
+            if (chatInfo != null && (!TextUtils.isEmpty(chatInfo.about) || chatInfo.location instanceof TLRPC.TL_channelLocation) || ChatObject.isPublic(currentChat) || currentChat != null) {
                 if (emptyRow < 0 && emptyRow2 < 0) {
                     if (hasMusic || peerColor != null || actionsView == null) {
                         emptyRow2 = rowCount++;
@@ -10774,6 +10828,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 }
                 if (ChatObject.isPublic(currentChat)) {
                     usernameRow = rowCount++;
+                }
+                // DogiGram: show the chat/channel ID (tap to copy) when enabled.
+                if (currentChat != null && DogiConfig.isShowId()) {
+                    idRow = rowCount++;
                 }
             }
             if (emptyRow < 0 && emptyRow2 < 0) {
@@ -13370,6 +13428,14 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         }
                         isFragmentPhoneNumber = phoneNumber != null && phoneNumber.matches("888\\d{8}");
                         detailCell.setTextAndValue(text, LocaleController.getString(isFragmentPhoneNumber ? R.string.AnonymousNumber : R.string.PhoneMobile), false);
+                    } else if (position == idRow) {
+                        // DogiGram: show ID, optionally suffixed with the data-center.
+                        String idLabel = "ID";
+                        int dcId = getProfileDcId();
+                        if (DogiConfig.isShowDcId() && dcId > 0) {
+                            idLabel = "ID · DC" + dcId;
+                        }
+                        detailCell.setTextAndValue(String.valueOf(getProfileDisplayId()), idLabel, true);
                     } else if (position == noteRow) {
                         final TLRPC.UserFull userInfo = getMessagesController().getUserFull(userId);
                         if (userInfo == null) return;
@@ -14146,7 +14212,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         position == clearLogsRow || position == switchBackendRow || position == setAvatarRow ||
                         position == addToGroupButtonRow || position == premiumRow || position == premiumGiftingRow ||
                         position == businessRow || position == liteModeRow || position == birthdayRow || position == channelRow ||
-                        position == starsRow || position == tonRow;
+                        position == starsRow || position == tonRow || position == idRow;
             }
             if (holder.itemView instanceof UserCell) {
                 UserCell userCell = (UserCell) holder.itemView;
@@ -14174,7 +14240,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             if (position == infoHeaderRow || position == membersHeaderRow || position == settingsSectionRow2 ||
                     position == numberSectionRow || position == helpHeaderRow || position == debugHeaderRow || position == botPermissionsHeader) {
                 return VIEW_TYPE_HEADER;
-            } else if (position == phoneRow || position == locationRow || position == numberRow || position == birthdayRow) {
+            } else if (position == phoneRow || position == locationRow || position == numberRow || position == birthdayRow || position == idRow) {
                 return VIEW_TYPE_TEXT_DETAIL;
             } else if (position == usernameRow || position == setUsernameRow) {
                 return VIEW_TYPE_TEXT_DETAIL_MULTILINE;

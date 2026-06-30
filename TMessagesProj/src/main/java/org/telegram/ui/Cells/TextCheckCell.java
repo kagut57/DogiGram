@@ -452,4 +452,13 @@ public class TextCheckCell extends FrameLayout {
         imageView.setColorFilter(new PorterDuffColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN));
         imageView.setBackground(Theme.createRoundRectDrawable(AndroidUtilities.dp(9), color));
     }
+
+    // DogiGram: a plain side-menu icon (no filled rounded-rect background), tinted to match the
+    // other drawer rows' line icons instead of a white glyph on a coloured square.
+    public void setPlainMenuIcon(int resId, int color) {
+        setColorfullIcon(color, resId);
+        imageView.setColorFilter(new PorterDuffColorFilter(color, PorterDuff.Mode.SRC_IN));
+        imageView.setBackground(null);
+        imageView.setPadding(0, 0, 0, 0);
+    }
 }

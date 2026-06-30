@@ -1,7 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="AppName">DogiGram</string>
-    <string name="AppNameBeta">DogiGram Beta</string>
+    <string name="AppNameBeta">DogiGram</string>
+    <string name="DogiSelectBetween">Select between</string>
+    <string name="DogiSelectBetweenLimit">You can select up to 100 messages.</string>
+    <string name="DogiUploadDownloadBoost">Upload &amp; download boost</string>
+    <string name="DogiShowId">Show ID</string>
+    <string name="DogiShowDcId">Show DC ID</string>
+    <string name="DogiNoQuote">Noquote</string>
+    <string name="DogiDoubleTapAction">Double-tap action</string>
+    <string name="DogiDoubleTapNone">None</string>
+    <string name="DogiDoubleTapReaction">Send reaction</string>
+    <string name="DogiDoubleTapReply">Reply</string>
+    <string name="DogiDoubleTapSave">Save to Saved Messages</string>
+    <string name="DogiDoubleTapEdit">Edit</string>
+    <string name="DogiDoubleTapTranslate">Translate</string>
     <string name="LanguageName">English</string>
     <string name="English">English</string>
     <string name="LanguageNameInEnglish">English</string>

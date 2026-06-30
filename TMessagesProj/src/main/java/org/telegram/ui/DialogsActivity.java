@@ -3437,6 +3437,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         } else {
             if (searchString != null || folderId != 0) {
                 actionBar.setBackButtonDrawable(backDrawable = new BackDrawable(false));
+            } else {
+                // DogiGram: hamburger button on the main chats screen that opens the account drawer.
+                actionBar.setBackButtonDrawable(new MenuDrawable());
             }
             if (folderId != 0) {
                 actionBar.setTitle(getString(R.string.ArchivedChats));
@@ -3446,8 +3449,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 logoDrawable = context.getResources().getDrawable(R.drawable.telegram_logo_2).mutate();
                 logoDrawable.setBounds(0, dp(2), logoDrawable.getIntrinsicWidth(), dp(2) + logoDrawable.getIntrinsicHeight());
                 logoDrawable.setColorFilter(getThemedColor(Theme.key_telegram_color_dialogsLogo), PorterDuff.Mode.MULTIPLY);
-                SpannableStringBuilder ssb = new SpannableStringBuilder(getString(R.string.AppName));
-                ssb.setSpan(new ImageSpan(logoDrawable), 0, ssb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                // DogiGram: show the brand name as plain text. Hardcoded (not getString/AppName)
+                // because Telegram's cloud language pack can override AppName back to "Telegram".
+                SpannableStringBuilder ssb = new SpannableStringBuilder("DogiGram");
                 actionBar.setTitle(ssb, statusDrawable);
                 updateStatus(UserConfig.getInstance(currentAccount).getCurrentUser(), false);
             }
@@ -3800,6 +3804,12 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                     return;
                 }
                 if (id == -1) {
+                    // DogiGram: tapping the hamburger on the main screen opens the account drawer.
+                    if (actionBar.getBackButton() != null && actionBar.getBackButton().getDrawable() instanceof MenuDrawable
+                            && !actionBar.isActionModeShowed() && getParentActivity() instanceof LaunchActivity) {
+                        ((LaunchActivity) getParentActivity()).drawerLayoutContainer.openDrawer(false);
+                        return;
+                    }
                     if (rightSlidingDialogContainer != null && rightSlidingDialogContainer.hasFragment()) {
                         if (actionBar.isActionModeShowed()) {
                             if (searchViewPager != null && searchViewPager.getVisibility() == View.VISIBLE && searchViewPager.actionModeShowing()) {

@@ -136,6 +136,7 @@ import org.telegram.PhoneFormat.PhoneFormat;
 import org.telegram.messenger.AccountInstance;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
+import org.telegram.messenger.DogiConfig;
 import org.telegram.messenger.BotForumHelper;
 import org.telegram.messenger.BotInlineKeyboard;
 import org.telegram.messenger.BotWebViewVibrationEffect;
@@ -836,6 +837,7 @@ public class ChatActivity extends BaseFragment implements
     private int cantDeleteMessagesCount;
     private int cantForwardMessagesCount;
     private int canForwardMessagesCount;
+    private boolean noQuoteForwarding; // DogiGram: next forward should be sent as a copy (no sender name)
     private int canEditMessagesCount;
     private int cantSaveMessagesCount;
     private int canSaveMusicCount;
@@ -1625,6 +1627,8 @@ public class ChatActivity extends BaseFragment implements
     private final static int change_colors = 27;
     private final static int tag_message = 28;
     private final static int boost_group = 29;
+    private final static int select_between = 90; // DogiGram: select all messages between two selected
+    private final static int noquote = 91; // DogiGram: forward selected messages as a copy (no sender name)
 
     private final static int bot_help = 30;
     private final static int bot_settings = 31;
@@ -1908,6 +1912,39 @@ public class ChatActivity extends BaseFragment implements
                     return;
                 }
             } else {
+                return;
+            }
+            // DogiGram: configurable double-tap action (Chat > DogiGram Settings).
+            final int doubleTapAction = DogiConfig.getDoubleTapAction();
+            if (doubleTapAction == DogiConfig.DOUBLE_TAP_NONE) {
+                return;
+            }
+            if (doubleTapAction != DogiConfig.DOUBLE_TAP_REACTION) {
+                if (messageObject == null || messageObject.isSending() || messageObject.isSendError() || actionBar.isActionModeShowed()) {
+                    return;
+                }
+                switch (doubleTapAction) {
+                    case DogiConfig.DOUBLE_TAP_REPLY:
+                        showFieldPanelForReply(messageObject);
+                        break;
+                    case DogiConfig.DOUBLE_TAP_SAVE: {
+                        ArrayList<MessageObject> toSave = new ArrayList<>();
+                        toSave.add(messageObject);
+                        getSendMessagesHelper().sendMessage(toSave, getUserConfig().getClientUserId(), false, false, true, 0, 0);
+                        if (getUndoView() != null) {
+                            getUndoView().showWithAction(getUserConfig().getClientUserId(), UndoView.ACTION_FWD_MESSAGES, 1);
+                        }
+                        break;
+                    }
+                    case DogiConfig.DOUBLE_TAP_EDIT:
+                        if (messageObject.canEditMessage(currentChat)) {
+                            startEditingMessageObject(messageObject);
+                        }
+                        break;
+                    case DogiConfig.DOUBLE_TAP_TRANSLATE:
+                        translateMessageObject(messageObject);
+                        break;
+                }
                 return;
             }
             if (messageObject.isSecret() || !messageObject.canSetReaction() || messageObject.isExpiredStory() || messageObject.type == MessageObject.TYPE_JOINED_CHANNEL) {
@@ -3731,12 +3768,19 @@ public class ChatActivity extends BaseFragment implements
                         undoView.showWithAction(0, UndoView.ACTION_TEXT_COPIED, null);
                     }
                     clearSelectionMode();
+                } else if (id == select_between) {
+                    selectMessagesBetween();
                 } else if (id == delete) {
                     if (getParentActivity() == null) {
                         return;
                     }
                     createDeleteMessagesAlert(null, null);
                 } else if (id == forward) {
+                    noQuoteForwarding = false;
+                    openForward(true);
+                } else if (id == noquote) {
+                    // DogiGram: forward the selection as a copy (hide sender name).
+                    noQuoteForwarding = true;
                     openForward(true);
                 } else if (id == share) {
                     share();
@@ -10180,6 +10224,8 @@ public class ChatActivity extends BaseFragment implements
 
         if (currentEncryptedChat == null) {
             final boolean isSavedMessages = getDialogId() == getUserConfig().getClientUserId() && (chatMode == 0 || chatMode == MODE_SAVED);
+            // DogiGram: select all messages between the two selected ones.
+            actionModeViews.add(actionMode.addItemWithWidth(select_between, R.drawable.msg_select, dp(48), LocaleController.getString(R.string.DogiSelectBetween)));
             actionModeViews.add(actionMode.addItemWithWidth(save_to, R.drawable.msg_download, dp(48), LocaleController.getString(R.string.SaveToMusic)));
             actionModeViews.add(actionMode.addItemWithWidth(edit, R.drawable.msg_edit, dp(48), LocaleController.getString(R.string.Edit)));
             if (isSavedMessages) {
@@ -10189,15 +10235,21 @@ public class ChatActivity extends BaseFragment implements
             actionModeViews.add(actionMode.addItemWithWidth(copy, R.drawable.msg_copy, dp(48), LocaleController.getString(R.string.Copy)));
             if (!isSavedMessages && getDialogId() != UserObject.VERIFY) {
                 actionModeViews.add(actionMode.addItemWithWidth(forward, R.drawable.msg_forward, dp(48), LocaleController.getString(R.string.Forward)));
+                // DogiGram: Noquote forwards the selection as a copy (no sender name).
+                actionModeViews.add(actionMode.addItemWithWidth(noquote, R.drawable.msg_forward_replace, dp(48), LocaleController.getString(R.string.DogiNoQuote)));
             }
             actionModeViews.add(actionMode.addItemWithWidth(share, R.drawable.msg_shareout, dp(48), LocaleController.getString(R.string.ShareFile)));
             actionModeViews.add(actionMode.addItemWithWidth(delete, R.drawable.msg_delete, dp(48), LocaleController.getString(R.string.Delete)));
         } else {
+            // DogiGram: select all messages between the two selected ones.
+            actionModeViews.add(actionMode.addItemWithWidth(select_between, R.drawable.msg_select, dp(48), LocaleController.getString(R.string.DogiSelectBetween)));
             actionModeViews.add(actionMode.addItemWithWidth(edit, R.drawable.msg_edit, dp(48), LocaleController.getString(R.string.Edit)));
             actionModeViews.add(actionMode.addItemWithWidth(star, R.drawable.msg_fave, dp(48), LocaleController.getString(R.string.AddToFavorites)));
             actionModeViews.add(actionMode.addItemWithWidth(copy, R.drawable.msg_copy, dp(48), LocaleController.getString(R.string.Copy)));
             actionModeViews.add(actionMode.addItemWithWidth(delete, R.drawable.msg_delete, dp(48), LocaleController.getString(R.string.Delete)));
         }
+        actionMode.setItemVisibility(select_between, selectedMessagesIds[0].size() + selectedMessagesIds[1].size() >= 2 ? View.VISIBLE : View.GONE);
+        actionMode.setItemVisibility(noquote, View.GONE);
         actionMode.setItemVisibility(edit, canEditMessagesCount == 1 && selectedMessagesIds[0].size() + selectedMessagesIds[1].size() == 1 ? View.VISIBLE : View.GONE);
         actionMode.setItemVisibility(copy, !isPeerNoForwards() && selectedMessagesCanCopyIds[0].size() + selectedMessagesCanCopyIds[1].size() != 0 ? View.VISIBLE : View.GONE);
         actionMode.setItemVisibility(star, selectedMessagesCanStarIds[0].size() + selectedMessagesCanStarIds[1].size() != 0 ? View.VISIBLE : View.GONE);
@@ -12285,6 +12337,32 @@ public class ChatActivity extends BaseFragment implements
         return groupedMessages;
     }
 
+    // DogiGram: open the translate sheet for a single message (used by the double-tap action).
+    private void translateMessageObject(MessageObject message) {
+        if (message == null || getParentActivity() == null) {
+            return;
+        }
+        MessageObject.GroupedMessages group = getValidGroupedMessage(message);
+        int[] messageIdToTranslate = new int[]{message.getId()};
+        CharSequence text = message.getMessageTextToTranslate(group, messageIdToTranslate);
+        if (TextUtils.isEmpty(text)) {
+            return;
+        }
+        String toLangDefault = LocaleController.getInstance().getCurrentLocale().getLanguage();
+        String toLang = TranslateAlert2.getToLanguage();
+        String fromLang = message.messageOwner != null ? message.messageOwner.originalLanguage : null;
+        String toLangValue = fromLang != null && fromLang.equals(toLang) ? toLangDefault : toLang;
+        TLRPC.InputPeer inputPeer = (message.isPoll() || message.isVoiceTranscriptionOpen() || message.isSponsored() || message.scheduled || chatMode == MODE_QUICK_REPLIES) ? null : getMessagesController().getInputPeer(dialog_id);
+        ArrayList<TLRPC.MessageEntity> entities = message.messageOwner != null ? message.messageOwner.entities : null;
+        boolean noforwards = isPeerNoForwards() || (message.messageOwner != null && message.messageOwner.noforwards) || message.type == MessageObject.TYPE_PAID_MEDIA;
+        Utilities.CallbackReturn<URLSpan, Boolean> onLinkPress = (link) -> {
+            didPressMessageUrl(link, false, message, null);
+            return true;
+        };
+        TranslateAlert2 alert = TranslateAlert2.showAlert(getParentActivity(), this, currentAccount, inputPeer, messageIdToTranslate[0], message.summarized, fromLang, toLangValue, text, entities, noforwards, onLinkPress, () -> dimBehindView(false));
+        alert.setDimBehind(false);
+    }
+
     public void jumpToDate(int date) {
         if (messages.isEmpty()) {
             return;
@@ -14234,7 +14312,10 @@ public class ChatActivity extends BaseFragment implements
                 chatAdapter.checkRemoveBotForumRowsStartThreadRow(true);
             }
         }
-        int result = getSendMessagesHelper().sendMessage(arrayList, dialog_id, fromMyName, hideCaption, notify, scheduleDate, 0, getThreadMessage(), -1, payStars, getSendMonoForumPeerId(), getSendMessageSuggestionParams());
+        // DogiGram: Noquote forwards as a copy (no sender name / quote).
+        boolean noQuote = noQuoteForwarding;
+        noQuoteForwarding = false;
+        int result = getSendMessagesHelper().sendMessage(arrayList, dialog_id, fromMyName || noQuote, hideCaption, notify, scheduleDate, 0, getThreadMessage(), -1, payStars, getSendMonoForumPeerId(), getSendMessageSuggestionParams());
         AlertsCreator.showSendMediaAlert(result, this, themeDelegate);
         if (result != 0) {
             AndroidUtilities.runOnUIThread(() -> {
@@ -18883,6 +18964,52 @@ public class ChatActivity extends BaseFragment implements
         addToSelectedMessages(messageObject, outside, true);
     }
 
+    // DogiGram: select every message between the two currently selected ones (capped at 100 total).
+    private void selectMessagesBetween() {
+        if (selectedMessagesIds[0].size() + selectedMessagesIds[1].size() != 2) {
+            return;
+        }
+        int firstIndex = -1;
+        int lastIndex = -1;
+        for (int i = 0; i < messages.size(); i++) {
+            MessageObject messageObject = messages.get(i);
+            if (messageObject == null) {
+                continue;
+            }
+            if (selectedMessagesIds[0].indexOfKey(messageObject.getId()) >= 0 || selectedMessagesIds[1].indexOfKey(messageObject.getId()) >= 0) {
+                if (firstIndex == -1) {
+                    firstIndex = i;
+                }
+                lastIndex = i;
+            }
+        }
+        if (firstIndex < 0 || lastIndex < 0 || firstIndex == lastIndex) {
+            return;
+        }
+        int lo = Math.min(firstIndex, lastIndex);
+        int hi = Math.max(firstIndex, lastIndex);
+        boolean reachedLimit = false;
+        for (int i = lo; i <= hi; i++) {
+            if (selectedMessagesIds[0].size() + selectedMessagesIds[1].size() >= 100) {
+                reachedLimit = true;
+                break;
+            }
+            MessageObject messageObject = messages.get(i);
+            if (messageObject == null || messageObject.contentType != 0) {
+                continue;
+            }
+            if (selectedMessagesIds[0].indexOfKey(messageObject.getId()) >= 0 || selectedMessagesIds[1].indexOfKey(messageObject.getId()) >= 0) {
+                continue;
+            }
+            addToSelectedMessages(messageObject, false);
+        }
+        updateActionModeTitle();
+        updateVisibleRows();
+        if (reachedLimit) {
+            BulletinFactory.of(this).createErrorBulletin(LocaleController.getString(R.string.DogiSelectBetweenLimit)).show();
+        }
+    }
+
     private void addToSelectedMessages(MessageObject messageObject, boolean outside, boolean last) {
         int prevCantForwardCount = cantForwardMessagesCount;
         if (messageObject != null) {
@@ -19065,6 +19192,14 @@ public class ChatActivity extends BaseFragment implements
 
                 if (deleteItem != null) {
                     deleteItem.setVisibility(cantDeleteMessagesCount == 0 ? View.VISIBLE : View.GONE);
+                }
+                ActionBarMenuItem selectBetweenItem = actionBar.createActionMode().getItem(select_between);
+                if (selectBetweenItem != null) {
+                    selectBetweenItem.setVisibility(selectedCount >= 2 ? View.VISIBLE : View.GONE);
+                }
+                ActionBarMenuItem noQuoteItem = actionBar.createActionMode().getItem(noquote);
+                if (noQuoteItem != null) {
+                    noQuoteItem.setVisibility(currentEncryptedChat == null && !noforwards && canForwardMessagesCount > 0 && cantForwardMessagesCount == 0 ? View.VISIBLE : View.GONE);
                 }
                 hasUnfavedSelected = false;
                 for (int a = 0; a < 2; a++) {
@@ -33016,6 +33151,7 @@ public class ChatActivity extends BaseFragment implements
                     selectedObjectGroup = null;
                     return;
                 }
+                noQuoteForwarding = false;
                 forwardingMessage = selectedObject;
                 forwardingMessageGroup = selectedObjectGroup;
                 Bundle args = new Bundle();
@@ -34075,8 +34211,9 @@ public class ChatActivity extends BaseFragment implements
                         params.suggestionParams = messageSuggestionParams;
                         getSendMessagesHelper().sendMessage(params);
                     }
-                    getSendMessagesHelper().sendMessage(fmessages, did, false, false, notify, scheduleDate, scheduleRepeatPeriod, null, -1, price == null ? 0 : price, getSendMonoForumPeerId(), getSendMessageSuggestionParams());
+                    getSendMessagesHelper().sendMessage(fmessages, did, noQuoteForwarding, false, notify, scheduleDate, scheduleRepeatPeriod, null, -1, price == null ? 0 : price, getSendMonoForumPeerId(), getSendMessageSuggestionParams());
                 }
+                noQuoteForwarding = false;
                 fragment.finishFragment();
                 createUndoView();
                 if (undoView != null) {

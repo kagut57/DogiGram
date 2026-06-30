@@ -698,6 +698,11 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
 
         items.add(UItem.asShadow(null));
 
+        // DogiGram: its own section (like the screenshot's Neko Settings card), with the paw logo.
+        items.add(SettingCell.Factory.of(100, IconBackgroundColors.PURPLE.top, IconBackgroundColors.PURPLE.bottom, R.drawable.dogi_paw, "DogiGram Settings"));
+
+        items.add(UItem.asShadow(null));
+
         if (!getMessagesController().premiumFeaturesBlocked()) {
             items.add(SettingCell.Factory.of(11, 0xFFB659FF, 0xFF617CFF, R.drawable.settings_premium, getString(R.string.TelegramPremium)));
         }
@@ -833,6 +838,9 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                 break;
             case 10:
                 presentSettingFragment(new LanguageSelectActivity());
+                break;
+            case 100:
+                presentSettingFragment(new DogiGramSettingsActivity());
                 break;
 
             case 11:

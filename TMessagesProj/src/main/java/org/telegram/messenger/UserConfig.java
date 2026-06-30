@@ -25,7 +25,9 @@ public class UserConfig extends BaseController {
 
     public static int selectedAccount;
     public final static int MAX_ACCOUNT_DEFAULT_COUNT = 3;
-    public final static int MAX_ACCOUNT_COUNT = 4;
+    // DogiGram: allow up to 10 logged-in accounts (Telegram default is 4). This value sizes
+    // every per-account instance array, so changing it here raises the limit everywhere.
+    public final static int MAX_ACCOUNT_COUNT = 10;
 
     private final Object sync = new Object();
     private volatile boolean configLoaded;
