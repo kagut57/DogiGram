@@ -13,7 +13,7 @@ This folder serves two purposes:
 | `index.html` | Landing page — what the app is, features, and download/releases links. |
 | `privacy.html` | Privacy Policy (suitable for the Google Play listing). |
 | `delete-account.html` | Account &amp; data deletion instructions (required by Google Play). |
-| `assets/style.css` | Shared dark + violet stylesheet. |
+| `assets/style.css` | Shared dark + violet stylesheet (Inter typography, inline SVG icons — no emoji). |
 | `.nojekyll` | Tells GitHub Pages to serve files as-is (no Jekyll processing). |
 
 ### Enabling GitHub Pages
@@ -23,12 +23,12 @@ This folder serves two purposes:
 3. Under **Build and deployment**, set **Source** to *Deploy from a branch*, choose the
    `master` branch and the **`/docs`** folder, then **Save**.
 4. After a minute the site is live at
-   `https://kagut57.github.io/dogigram-official/`.
+   `https://kagut57.github.io/DogiGram/`.
 
 Use these URLs in the Google Play Console:
 
-- Privacy policy: `https://kagut57.github.io/dogigram-official/privacy.html`
-- Account deletion: `https://kagut57.github.io/dogigram-official/delete-account.html`
+- Privacy policy: `https://kagut57.github.io/DogiGram/privacy.html`
+- Account deletion: `https://kagut57.github.io/DogiGram/delete-account.html`
 
 ## Brand assets
 
