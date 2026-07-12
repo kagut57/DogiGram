@@ -150,9 +150,29 @@ ConnectionsManager& ConnectionsManager::getInstance(int32_t instanceNum) {
             static ConnectionsManager instance3(3);
             return instance3;
         case 4:
-        default:
             static ConnectionsManager instance4(4);
             return instance4;
+        case 5:
+            static ConnectionsManager instance5(5);
+            return instance5;
+        case 6:
+            static ConnectionsManager instance6(6);
+            return instance6;
+        case 7:
+            static ConnectionsManager instance7(7);
+            return instance7;
+        case 8:
+            static ConnectionsManager instance8(8);
+            return instance8;
+        case 9:
+            static ConnectionsManager instance9(9);
+            return instance9;
+        case 10:
+        default:
+            // DogiGram: distinct native instance per Java account (UserConfig.MAX_ACCOUNT_COUNT
+            // accounts, ids 0..9) plus this fallback at id 10. Must cover every id < MAX_ACCOUNT_COUNT.
+            static ConnectionsManager instance10(10);
+            return instance10;
     }
 }
 

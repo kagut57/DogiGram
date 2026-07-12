@@ -153,11 +153,10 @@ public class IntroActivity extends BaseFragment implements NotificationCenter.No
 
     @Override
     public View createView(Context context) {
-        logoDrawable = context.getResources().getDrawable(R.drawable.telegram_logo).mutate();
-        logoDrawable.setBounds(0, dp(8.666f), dp(115), dp(35));
-        SpannableStringBuilder ssb = new SpannableStringBuilder(LocaleController.getString(R.string.Page1Title));
-        ssb.setSpan(new ImageSpan(logoDrawable), 0, ssb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        titles[0] = ssb;
+        // DogiGram: show the app name as the first intro page headline instead of the
+        // Telegram wordmark (R.drawable.telegram_logo). logoDrawable stays null and its
+        // theme tinting in updateColors() is guarded for null accordingly.
+        titles[0] = "DogiGram";
 
 
         actionBar.setAddToContainer(false);
@@ -801,14 +800,18 @@ public class IntroActivity extends BaseFragment implements NotificationCenter.No
             loadTexture(R.drawable.intro_powerful_star, 18);
             loadTexture(R.drawable.intro_private_door, 19);
             loadTexture(R.drawable.intro_private_screw, 20);
-            loadTexture(R.drawable.intro_tg_plane, 21);
+            // DogiGram: hide the small foreground "plane" texture; the logo is drawn full size as
+            // the big circle texture (22) below so it isn't tiny on the intro screen.
+            loadTexture(v -> Bitmap.createBitmap(dp(ICON_WIDTH_DP), dp(ICON_HEIGHT_DP), Bitmap.Config.ARGB_8888), 21);
             loadTexture(v -> {
-                Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-                paint.setColor(ThemeColors.TELEGRAM_COLOR); // It's logo color, it should not be colored by the theme
+                // DogiGram: draw the DogiGram logo at the full circle size (instead of a flat
+                // backing circle) so the brand logo appears large and round on the intro screen.
                 int size = dp(ICON_HEIGHT_DP);
                 Bitmap bm = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
                 Canvas c = new Canvas(bm);
-                c.drawCircle(size / 2f, size / 2f, size / 2f, paint);
+                android.graphics.drawable.Drawable logo = ApplicationLoader.applicationContext.getResources().getDrawable(R.drawable.intro_tg_plane).mutate();
+                logo.setBounds(0, 0, size, size);
+                logo.draw(c);
                 return bm;
             }, 22);
             loadTexture(telegramMaskProvider, 23);
@@ -973,7 +976,9 @@ public class IntroActivity extends BaseFragment implements NotificationCenter.No
 
     private void updateColors(boolean fromTheme) {
         startMessagingButtonBackground.setColors(new int[]{getThemedColor(Theme.key_featuredStickers_addButton), getThemedColor(Theme.key_featuredStickers_addButton2)});
-        logoDrawable.setColorFilter(Theme.multAlpha(getThemedColor(Theme.key_actionBarDefaultTitle), 0.9f), PorterDuff.Mode.MULTIPLY);
+        if (logoDrawable != null) {
+            logoDrawable.setColorFilter(Theme.multAlpha(getThemedColor(Theme.key_actionBarDefaultTitle), 0.9f), PorterDuff.Mode.MULTIPLY);
+        }
         fragmentView.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
         switchLanguageTextView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlueText4));
         startMessagingButton.setTextColor(Theme.getColor(Theme.key_featuredStickers_buttonText));

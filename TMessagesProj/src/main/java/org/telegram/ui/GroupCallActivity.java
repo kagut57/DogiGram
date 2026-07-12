@@ -94,6 +94,7 @@ import androidx.viewpager.widget.ViewPager;
 
 import org.telegram.messenger.AccountInstance;
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.WindowColorsCompat;
 import org.telegram.messenger.BotWebViewVibrationEffect;
 import org.telegram.messenger.BuildVars;
 import org.telegram.messenger.ChatObject;
@@ -1916,7 +1917,7 @@ public class GroupCallActivity extends BottomSheet implements NotificationCenter
         drawDoubleNavigationBar = true;
         drawNavigationBar = true;
         if (Build.VERSION.SDK_INT >= 30) {
-            getWindow().setNavigationBarColor(0xff000000);
+            WindowColorsCompat.setNavigationBarColor(getWindow(), 0xff000000);
         }
         scrollNavBar = true;
         navBarColorKey = -1;

@@ -1,0 +1,31 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- DogiGram: "No Forward Tag" = forward WITHOUT the "forwarded from" sender name.
+         The forward arrow stays clean; the slash strikes only the small name-tag badge,
+         so the icon reads "forward, minus the tag" instead of "don't forward". -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M3.5,14.5 C3.5,9.5 7.6,7.8 11.6,7.8" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M10.8,4.2 L16.6,7.8 L10.8,11.4 Z" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.6"
+        android:strokeLineJoin="round"
+        android:pathData="M12.5,14.8 h7.2 a1.5,1.5 0 0 1 1.5,1.5 v2.4 a1.5,1.5 0 0 1 -1.5,1.5 h-7.2 a1.5,1.5 0 0 1 -1.5,-1.5 v-2.4 a1.5,1.5 0 0 1 1.5,-1.5 z" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:pathData="M11.4,21.6 L20.8,13.6" />
+</vector>

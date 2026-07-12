@@ -42,6 +42,7 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.WindowColorsCompat;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.NotificationCenter;
@@ -425,7 +426,7 @@ public class FloatingDebugView extends FrameLayout implements NotificationCenter
 
         Window window = ((Activity) getContext()).getWindow();
         if (show && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            wasStatusBar = window.getStatusBarColor();
+            wasStatusBar = WindowColorsCompat.getStatusBarColor(window);
         }
         float startX = floatingButtonContainer.getTranslationX();
         float startY = floatingButtonContainer.getTranslationY();
@@ -455,7 +456,7 @@ public class FloatingDebugView extends FrameLayout implements NotificationCenter
                     floatingButtonContainer.setAlpha(1f - value);
 
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                        window.setStatusBarColor(ColorUtils.blendARGB(wasStatusBar, 0x7A000000, value));
+                        WindowColorsCompat.setStatusBarColor(window, ColorUtils.blendARGB(wasStatusBar, 0x7A000000, value));
                     }
 
                     invalidate();

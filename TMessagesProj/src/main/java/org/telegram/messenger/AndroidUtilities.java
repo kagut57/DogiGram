@@ -4070,6 +4070,10 @@ public class AndroidUtilities {
         if (v == 0) {
             return "0";
         }
+        if (DogiConfig.isDisableNumberRounding()) {
+            // DogiGram: show the exact count instead of the rounded "4.8K" form.
+            return formatCount(v);
+        }
         float num_ = v;
         int count = 0;
         if (dif == 0) dif = v;
@@ -4303,6 +4307,12 @@ public class AndroidUtilities {
                 }
             } else {
                 activity.startActivityForResult(intent, 500);
+            }
+            // DogiGram: remember an externally-opened PDF so relaunching the app from its launcher icon
+            // (which clears the viewer activity off our singleTask stack) can bring the document back.
+            // Only for the main activity — LaunchActivity's lifecycle is what drives the reopening.
+            if ("application/pdf".equals(realMimeType) && activity instanceof LaunchActivity) {
+                LaunchActivity.dogiRememberOpenedDocument(f, fileName, realMimeType);
             }
             return true;
         }
@@ -5381,8 +5391,8 @@ public class AndroidUtilities {
             } else {
                 statusBarColor = Color.TRANSPARENT;
             }
-            if (window.getStatusBarColor() != statusBarColor) {
-                window.setStatusBarColor(statusBarColor);
+            if (WindowColorsCompat.getStatusBarColor(window) != statusBarColor) {
+                WindowColorsCompat.setStatusBarColor(window, statusBarColor);
             }
         }
     }
@@ -5487,18 +5497,18 @@ public class AndroidUtilities {
                 onUpdate.run(color);
             }
             try {
-                window.setNavigationBarColor(color);
+                WindowColorsCompat.setNavigationBarColor(window, color);
             } catch (Exception ignore) {
             }
         } else {
-            ValueAnimator animator = ValueAnimator.ofArgb(window.getNavigationBarColor(), color);
+            ValueAnimator animator = ValueAnimator.ofArgb(WindowColorsCompat.getNavigationBarColor(window), color);
             animator.addUpdateListener(a -> {
                 int tcolor = (int) a.getAnimatedValue();
                 if (onUpdate != null) {
                     onUpdate.run(tcolor);
                 }
                 try {
-                    window.setNavigationBarColor(tcolor);
+                    WindowColorsCompat.setNavigationBarColor(window, tcolor);
                 } catch (Exception ignore) {
                 }
             });
@@ -6830,8 +6840,8 @@ public class AndroidUtilities {
         window.getDecorView();
 
         WindowCompat.setDecorFitsSystemWindows(window, false);
-        window.setStatusBarColor(Color.TRANSPARENT);
-        window.setNavigationBarColor(Color.TRANSPARENT);
+        WindowColorsCompat.setStatusBarColor(window, Color.TRANSPARENT);
+        WindowColorsCompat.setNavigationBarColor(window, Color.TRANSPARENT);
         if (Build.VERSION.SDK_INT >= 28) {
             final int newMode = Build.VERSION.SDK_INT >= 30
                     ? WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
