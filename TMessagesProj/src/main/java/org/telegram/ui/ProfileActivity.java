@@ -126,7 +126,10 @@ import androidx.viewpager.widget.ViewPager;
 import org.telegram.PhoneFormat.PhoneFormat;
 import org.telegram.messenger.AccountInstance;
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.WindowColorsCompat;
 import org.telegram.messenger.ApplicationLoader;
+import org.telegram.messenger.AccountAge;
+import org.telegram.messenger.DogiConfig;
 import org.telegram.messenger.AuthTokensHelper;
 import org.telegram.messenger.BillingController;
 import org.telegram.messenger.BirthdayController;
@@ -646,6 +649,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     private int infoHeaderRowEmpty;
     private int infoEndRowEmpty;
     private int phoneRow;
+    private int idRow;
     private int noteRow;
     private int locationRow;
     private int userInfoRow;
@@ -734,6 +738,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     private long reportReactionFromDialogId = 0;
 
     private boolean isFragmentPhoneNumber;
+    // DogiGram: in Screenshot Mode the phone number is masked until the user taps it to reveal.
+    private boolean screenshotPhoneRevealed;
 
     private boolean showAddToContacts;
     private String vcardPhone;
@@ -4293,6 +4299,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 return;
             }
             listView.stopScroll();
+            if (maybeRevealScreenshotPhone(position)) {
+                return;
+            }
             if (position == affiliateRow) {
                 TLRPC.User user = getMessagesController().getUser(userId);
                 if (userInfo != null && userInfo.starref_program != null) {
@@ -5520,6 +5529,18 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             if (a == 1) {
                 nameTextView[a].setScrollNonFitText(true);
                 nameTextView[a].setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+                // DogiGram: long-pressing the profile title copies the channel/group/user name.
+                final SimpleTextView titleView = nameTextView[a];
+                titleView.setOnLongClickListener(v -> {
+                    CharSequence title = titleView.getText();
+                    if (TextUtils.isEmpty(title)) {
+                        return false;
+                    }
+                    if (AndroidUtilities.addToClipboard(title.toString())) {
+                        BulletinFactory.of(ProfileActivity.this).createCopyBulletin(getString(R.string.TextCopied), resourcesProvider).show();
+                    }
+                    return true;
+                });
             }
             nameTextView[a].setFocusable(a == 0);
             nameTextView[a].setEllipsizeByGradient(true);
@@ -7250,7 +7271,78 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         presentFragment(fragment);
     }
 
+    // DogiGram: copy arbitrary text to the clipboard with the standard "copied" bulletin.
+    private void copyToClipboard(String text) {
+        try {
+            android.content.ClipboardManager clipboard = (android.content.ClipboardManager) ApplicationLoader.applicationContext.getSystemService(Context.CLIPBOARD_SERVICE);
+            BulletinFactory.of(this).createCopyBulletin(LocaleController.getString(R.string.TextCopied), resourcesProvider).show();
+            android.content.ClipData clip = android.content.ClipData.newPlainText("label", text);
+            clipboard.setPrimaryClip(clip);
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
+    }
+
+
+    // DogiGram: the id shown on the profile. Users keep their plain id; channels/supergroups use
+    // the -100... peer form (e.g. -1001882635094) and basic groups the -id form, matching the
+    // dialog id you'd copy elsewhere.
+    private long getProfileDisplayId() {
+        if (userId != 0) {
+            return userId;
+        }
+        if (currentChat != null && ChatObject.isChannel(currentChat)) {
+            return -1000000000000L - chatId;
+        }
+        return -chatId;
+    }
+
+    // DogiGram: the data-center the profile photo is hosted on (0 when unknown).
+    private int getProfileDcId() {
+        if (userId != 0) {
+            final TLRPC.User user = getMessagesController().getUser(userId);
+            if (user != null && user.photo != null) {
+                return user.photo.dc_id;
+            }
+        } else if (currentChat != null) {
+            final TLRPC.Chat chat = getMessagesController().getChat(chatId);
+            if (chat != null && chat.photo != null) {
+                return chat.photo.dc_id;
+            }
+        }
+        return 0;
+    }
+
+    // DogiGram: while Screenshot Mode is on, the first tap on the phone/number row reveals the
+    // masked number instead of running the normal action. Returns true when it handled the tap.
+    private boolean maybeRevealScreenshotPhone(int position) {
+        if ((position == phoneRow || position == numberRow) && DogiGramSettingsActivity.isScreenshotMode() && !screenshotPhoneRevealed) {
+            screenshotPhoneRevealed = true;
+            if (listAdapter != null) {
+                listAdapter.notifyItemChanged(position);
+            }
+            return true;
+        }
+        return false;
+    }
+
+    // DogiGram: replace every digit with a bullet so the number reads as blurred/hidden.
+    private static String maskPhone(String formatted) {
+        if (formatted == null) {
+            return null;
+        }
+        StringBuilder sb = new StringBuilder(formatted.length());
+        for (int i = 0; i < formatted.length(); i++) {
+            char c = formatted.charAt(i);
+            sb.append(Character.isDigit(c) ? '•' : c);
+        }
+        return sb.toString();
+    }
+
     private boolean processOnClickOrPress(final int position, final View view, final float x, final float y) {
+        if (maybeRevealScreenshotPhone(position)) {
+            return true;
+        }
         if (position == usernameRow || position == setUsernameRow) {
             final String username;
             final TLRPC.TL_username usernameObj;
@@ -7365,6 +7457,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             return true;
         } else if (position == noteRow) {
 
+        } else if (position == idRow) {
+            copyToClipboard(String.valueOf(getProfileDisplayId()));
+            return true;
         } else if (position == phoneRow || position == numberRow) {
             if (editRow(view, position)) return true;
 
@@ -9656,7 +9751,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 transitionIndex = getNotificationCenter().setAnimationInProgress(transitionIndex, new int[]{NotificationCenter.dialogsNeedReload, NotificationCenter.closeChats, NotificationCenter.mediaCountDidLoad, NotificationCenter.mediaCountsDidLoad, NotificationCenter.needCheckSystemBarColors});
             }
             if (!backward && getParentActivity() != null) {
-                navigationBarAnimationColorFrom = getParentActivity().getWindow().getNavigationBarColor();
+                navigationBarAnimationColorFrom = WindowColorsCompat.getNavigationBarColor(getParentActivity().getWindow());
             }
         }
         transitionAnimationInProress = true;
@@ -10425,6 +10520,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         infoHeaderRowEmpty = -1;
         infoEndRowEmpty = -1;
         phoneRow = -1;
+        idRow = -1;
         noteRow = -1;
         userInfoRow = -1;
         locationRow = -1;
@@ -10622,6 +10718,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 if (user != null && username != null) {
                     usernameRow = rowCount++;
                 }
+                // DogiGram: show the user/bot ID (tap to copy), plus the DC when known, when enabled.
+                if (userId != 0 && DogiConfig.isShowId()) {
+                    idRow = rowCount++;
+                }
                 if (userInfo != null) {
                     if (userInfo.birthday != null) {
                         birthdayRow = rowCount++;
@@ -10752,7 +10852,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 sharedMediaRow = rowCount++;
             }
         } else if (chatId != 0) {
-            if (chatInfo != null && (!TextUtils.isEmpty(chatInfo.about) || chatInfo.location instanceof TLRPC.TL_channelLocation) || ChatObject.isPublic(currentChat)) {
+            // DogiGram: render the info block for any chat/channel so the ID/DC are always visible,
+            // not only when there is a description, location or public username.
+            if (chatInfo != null && (!TextUtils.isEmpty(chatInfo.about) || chatInfo.location instanceof TLRPC.TL_channelLocation) || ChatObject.isPublic(currentChat) || currentChat != null) {
                 if (emptyRow < 0 && emptyRow2 < 0) {
                     if (hasMusic || peerColor != null || actionsView == null) {
                         emptyRow2 = rowCount++;
@@ -10774,6 +10876,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 }
                 if (ChatObject.isPublic(currentChat)) {
                     usernameRow = rowCount++;
+                }
+                // DogiGram: show the chat/channel ID (tap to copy) when enabled.
+                if (currentChat != null && DogiConfig.isShowId()) {
+                    idRow = rowCount++;
                 }
             }
             if (emptyRow < 0 && emptyRow2 < 0) {
@@ -13327,6 +13433,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     TextDetailCell detailCell = (TextDetailCell) holder.itemView;
                     boolean containsQr = false;
                     boolean containsGift = false;
+                    boolean containsRegDate = false;
                     if (position == birthdayRow) {
                         TLRPC.UserFull userFull = getMessagesController().getUserFull(userId);
                         if (userFull != null && userFull.birthday != null) {
@@ -13369,7 +13476,22 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                             phoneNumber = null;
                         }
                         isFragmentPhoneNumber = phoneNumber != null && phoneNumber.matches("888\\d{8}");
+                        // DogiGram: blur (mask) the number in Screenshot Mode until it is revealed.
+                        if (phoneNumber != null && DogiGramSettingsActivity.isScreenshotMode() && !screenshotPhoneRevealed) {
+                            text = maskPhone(text);
+                        }
                         detailCell.setTextAndValue(text, LocaleController.getString(isFragmentPhoneNumber ? R.string.AnonymousNumber : R.string.PhoneMobile), false);
+                    } else if (position == idRow) {
+                        // DogiGram: show ID, optionally suffixed with the data-center.
+                        String idLabel = "ID";
+                        int dcId = getProfileDcId();
+                        if (DogiConfig.isShowDcId() && dcId > 0) {
+                            idLabel = "ID · DC" + dcId;
+                        }
+                        detailCell.setTextAndValue(String.valueOf(getProfileDisplayId()), idLabel, true);
+                        // DogiGram: for real users, show a small badge next to the ID that reveals the
+                        // (estimated) account registration date. Hidden in Screenshot Mode where the id is faked.
+                        containsRegDate = userId != 0 && !DogiGramSettingsActivity.isScreenshotMode();
                     } else if (position == noteRow) {
                         final TLRPC.UserFull userInfo = getMessagesController().getUserFull(userId);
                         if (userInfo == null) return;
@@ -13457,6 +13579,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         String value;
                         if (user != null && user.phone != null && user.phone.length() != 0) {
                             value = PhoneFormat.getInstance().format("+" + user.phone);
+                            // DogiGram: blur (mask) the number in Screenshot Mode until it is revealed.
+                            if (DogiGramSettingsActivity.isScreenshotMode() && !screenshotPhoneRevealed) {
+                                value = maskPhone(value);
+                            }
                         } else {
                             value = LocaleController.getString(R.string.NumberUnknown);
                         }
@@ -13510,6 +13636,12 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         drawable.setColorFilter(new PorterDuffColorFilter(dontApplyPeerColor(getThemedColor(Theme.key_actionBarDefaultIcon), false), PorterDuff.Mode.MULTIPLY));
                         detailCell.setImage(drawable, LocaleController.getString(R.string.GetQRCode));
                         detailCell.setImageClickListener(ProfileActivity.this::onTextDetailCellImageClicked);
+                    } else if (containsRegDate) {
+                        Drawable drawable = ContextCompat.getDrawable(detailCell.getContext(), R.drawable.msg_calendar2);
+                        drawable.setColorFilter(new PorterDuffColorFilter(dontApplyPeerColor(getThemedColor(Theme.key_switch2TrackChecked), false), PorterDuff.Mode.MULTIPLY));
+                        detailCell.setImage(drawable, "Registration date");
+                        final long regUserId = userId;
+                        detailCell.setImageClickListener(v -> showRegistrationDate(regUserId));
                     } else {
                         detailCell.setImage(null);
                         detailCell.setImageClickListener(null);
@@ -14146,7 +14278,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         position == clearLogsRow || position == switchBackendRow || position == setAvatarRow ||
                         position == addToGroupButtonRow || position == premiumRow || position == premiumGiftingRow ||
                         position == businessRow || position == liteModeRow || position == birthdayRow || position == channelRow ||
-                        position == starsRow || position == tonRow;
+                        position == starsRow || position == tonRow || position == idRow;
             }
             if (holder.itemView instanceof UserCell) {
                 UserCell userCell = (UserCell) holder.itemView;
@@ -14174,7 +14306,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             if (position == infoHeaderRow || position == membersHeaderRow || position == settingsSectionRow2 ||
                     position == numberSectionRow || position == helpHeaderRow || position == debugHeaderRow || position == botPermissionsHeader) {
                 return VIEW_TYPE_HEADER;
-            } else if (position == phoneRow || position == locationRow || position == numberRow || position == birthdayRow) {
+            } else if (position == phoneRow || position == locationRow || position == numberRow || position == birthdayRow || position == idRow) {
                 return VIEW_TYPE_TEXT_DETAIL;
             } else if (position == usernameRow || position == setUsernameRow) {
                 return VIEW_TYPE_TEXT_DETAIL_MULTILINE;
@@ -15390,6 +15522,25 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             }
             showDialog(new GiftSheet(getContext(), currentAccount, userId, null, null));
         }
+    }
+
+    // DogiGram: show the estimated account registration date derived from the user id.
+    private void showRegistrationDate(long uid) {
+        if (getParentActivity() == null) {
+            return;
+        }
+        long seconds = AccountAge.estimateUnixTime(uid);
+        if (seconds <= 0) {
+            return;
+        }
+        java.text.DateFormat df = java.text.DateFormat.getDateInstance(java.text.DateFormat.LONG, LocaleController.getInstance().getCurrentLocale());
+        String dateStr = df.format(new java.util.Date(seconds * 1000L));
+        String prefix = AccountAge.isBeyondTable(uid) ? "after " : "around ";
+        AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
+        builder.setTitle("Registration date");
+        builder.setMessage("This account was registered " + prefix + dateStr + ".\n\nThis is an estimate based on the account ID — Telegram does not publish exact registration dates.");
+        builder.setPositiveButton(LocaleController.getString(R.string.OK), null);
+        showDialog(builder.create());
     }
 
     private boolean fullyVisible;

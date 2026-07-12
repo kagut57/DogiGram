@@ -8,6 +8,8 @@
 
 package org.telegram.ui.Cells;
 
+import org.telegram.ui.DogiGramSettingsActivity;
+
 import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.AndroidUtilities.dpf2;
 import static org.telegram.messenger.LocaleController.getString;
@@ -2109,7 +2111,11 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                             nameString = AndroidUtilities.escape(chat.title);
                         }
                     } else {
-                        nameString = AndroidUtilities.escape(chat.title);
+                        if (DogiGramSettingsActivity.isScreenshotMode()) {
+                            nameString = DogiGramSettingsActivity.screenshotChatName(chat.id);
+                        } else {
+                            nameString = AndroidUtilities.escape(chat.title);
+                        }
                     }
                 } else if (user != null) {
                     if (UserObject.isReplyUser(user)) {
@@ -2134,7 +2140,11 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                         topicIconInName[0] = null;
                         nameString = showTopicIconInName ? ForumUtilities.getTopicSpannedName(forumTopic, Theme.dialogs_namePaint[paintIndex], topicIconInName, false) : AndroidUtilities.escape(forumTopic.title);
                     } else {
-                        nameString = AndroidUtilities.escape(UserObject.getUserName(user));
+                        if (DogiGramSettingsActivity.isScreenshotMode()) {
+                            nameString = DogiGramSettingsActivity.screenshotUserName(user.id, user.bot);
+                        } else {
+                            nameString = AndroidUtilities.escape(UserObject.getUserName(user));
+                        }
                     }
                 }
                 if (nameString != null && nameString.length() == 0) {
@@ -3423,6 +3433,9 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                     } else if (UserObject.isUserSelf(user) && !useMeForMyMessages && !isMonoForumTopicDialog) {
                         avatarDrawable.setAvatarType(AvatarDrawable.AVATAR_TYPE_SAVED);
                         avatarImage.setImage(null, null, avatarDrawable, null, user, 0);
+                    } else if (DogiGramSettingsActivity.isScreenshotMode()) {
+                        // DogiGram: hide the real photo, show only the letter avatar.
+                        avatarImage.setImage(null, null, avatarDrawable, null, user, 0);
                     } else {
                         avatarImage.setForUserOrChat(user, avatarDrawable, null, true, VectorAvatarThumbDrawable.TYPE_SMALL, false);
                     }
@@ -3433,7 +3446,12 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                         avatarDrawable.setScaleSize(1f);
                     } else {
                         avatarDrawable.setInfo(currentAccount, chat);
-                        avatarImage.setForUserOrChat(chat, avatarDrawable);
+                        if (DogiGramSettingsActivity.isScreenshotMode()) {
+                            // DogiGram: hide the real photo, show only the letter avatar.
+                            avatarImage.setImage(null, null, avatarDrawable, null, chat, 0);
+                        } else {
+                            avatarImage.setForUserOrChat(chat, avatarDrawable);
+                        }
                     }
                 }
             }

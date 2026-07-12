@@ -62,7 +62,6 @@ android {
             debuggable true
             jniDebuggable true
             signingConfig signingConfigs.debug
-            applicationIdSuffix ".beta"
             minifyEnabled false
             shrinkResources false
             multiDexEnabled true
@@ -74,7 +73,6 @@ android {
             debuggable false
             jniDebuggable false
             signingConfig signingConfigs.release
-            applicationIdSuffix ".web"
             minifyEnabled true
             shrinkResources false
             multiDexEnabled true
@@ -175,6 +173,14 @@ android {
         targetSdkVersion 35
         versionName APP_VERSION_NAME
         ndkVersion "27.2.12479018"
+
+        // Google Maps API key. Override it in gradle.properties (MAPS_API_KEY) or via
+        // -PMAPS_API_KEY=... The key must be created in Google Cloud Console for the
+        // "Maps SDK for Android" and restricted to this app's package + signing SHA-1,
+        // otherwise the map will not render.
+        manifestPlaceholders = [
+                MAPS_API_KEY: (project.hasProperty('MAPS_API_KEY') ? project.property('MAPS_API_KEY') : "")
+        ]
 
         multiDexEnabled true
 

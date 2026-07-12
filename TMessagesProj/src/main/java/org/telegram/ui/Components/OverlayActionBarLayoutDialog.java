@@ -17,6 +17,7 @@ import androidx.annotation.NonNull;
 import androidx.core.graphics.ColorUtils;
 
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.WindowColorsCompat;
 import org.telegram.messenger.R;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.INavigationLayout;
@@ -114,7 +115,7 @@ public class OverlayActionBarLayoutDialog extends Dialog implements INavigationL
         window.setAttributes(params);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            window.setStatusBarColor(Color.TRANSPARENT);
+            WindowColorsCompat.setStatusBarColor(window, Color.TRANSPARENT);
         }
 
         frameLayout.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);

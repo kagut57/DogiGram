@@ -116,6 +116,7 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 
 import org.telegram.messenger.AccountInstance;
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.WindowColorsCompat;
 import org.telegram.messenger.AnimationNotificationsLocker;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.BirthdayController;
@@ -4107,8 +4108,8 @@ public class ChatActivityEnterView extends FrameLayout implements
                         d.getWindow().addFlags(WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM);
                         d.getWindow().getAttributes().windowAnimations = 0;
                         d.getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
-                        d.getWindow().setStatusBarColor(0);
-                        d.getWindow().setNavigationBarColor(0);
+                        WindowColorsCompat.setStatusBarColor(d.getWindow(), 0);
+                        WindowColorsCompat.setNavigationBarColor(d.getWindow(), 0);
 
                         int color = Theme.getColor(Theme.key_actionBarDefault, null, true);
                         AndroidUtilities.setLightStatusBar(d.getWindow(), color == Color.WHITE);

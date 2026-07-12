@@ -1607,9 +1607,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                 ((LaunchActivity) getParentActivity()).switchToAccount(currentAccount, true, obj -> {
                     Bundle args = new Bundle();
                     args.putBoolean("afterSignup", afterSignup);
-                    MainTabsActivity mainTabsActivity = new MainTabsActivity();
-                    mainTabsActivity.prepareDialogsActivity(args);
-                    return mainTabsActivity;
+                    return DogiGramSettingsActivity.createMainFragment(args);
                 });
                 pendingSwitchingAccount = false;
                 finishFragment();
@@ -1622,9 +1620,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                 } else {
                     Bundle args = new Bundle();
                     args.putBoolean("afterSignup", afterSignup);
-                    MainTabsActivity mainTabsActivity = new MainTabsActivity();
-                    mainTabsActivity.prepareDialogsActivity(args);
-                    presentFragment(mainTabsActivity, true);
+                    presentFragment(DogiGramSettingsActivity.createMainFragment(args), true);
                 }
 
                 NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.mainUserInfoChanged);

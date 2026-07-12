@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Full-screen launch/splash background: the DogiGram branded artwork drawn over a
+     matching dark base color so the edges stay seamless on any screen aspect ratio. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <color android:color="#05040E" />
+    </item>
+    <item>
+        <bitmap
+            android:src="@drawable/dogigram_splash_full"
+            android:gravity="fill" />
+    </item>
+</layer-list>

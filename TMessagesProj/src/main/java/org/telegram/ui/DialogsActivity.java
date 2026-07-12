@@ -1303,6 +1303,31 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             updateContextViewPosition();
         }
 
+        // DogiGram: report that the page can be scrolled horizontally whenever a folder (filter tab)
+        // swipe is possible in that direction. The side drawer's findScrollingChild() checks this and
+        // yields, so swiping between folders no longer accidentally opens the drawer.
+        private boolean canSwipeFolders(boolean forward) {
+            if (filterTabsView == null || filterTabsView.getVisibility() != View.VISIBLE || filterTabsView.isEditing() || searching) {
+                return false;
+            }
+            if (rightSlidingDialogContainer != null && rightSlidingDialogContainer.hasFragment()) {
+                return false;
+            }
+            if (!(initialDialogsType == DIALOGS_TYPE_FORWARD
+                    || SharedConfig.getChatSwipeAction(currentAccount) == SwipeGestureSettingsView.SWIPE_GESTURE_FOLDERS
+                    || (SharedConfig.getChatSwipeAction(currentAccount) == SwipeGestureSettingsView.SWIPE_GESTURE_ARCHIVE
+                        && viewPages[0] != null && (viewPages[0].dialogsAdapter.getDialogsType() == 7 || viewPages[0].dialogsAdapter.getDialogsType() == 8)))) {
+                return false;
+            }
+            return filterTabsView.getNextPageId(forward) >= 0;
+        }
+
+        @Override
+        public boolean canScrollHorizontally(int direction) {
+            // direction < 0 corresponds to a left-to-right swipe (previous folder / drawer-open gesture).
+            return canSwipeFolders(direction > 0);
+        }
+
         @Override
         public boolean onInterceptTouchEvent(MotionEvent ev) {
             int action = ev.getActionMasked();
@@ -2941,12 +2966,29 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
     private Drawable premiumStar;
 
+    // DogiGram: the main-screen title shows the current account's first name.
+    private CharSequence getAccountDisplayName() {
+        TLRPC.User user = UserConfig.getInstance(currentAccount).getCurrentUser();
+        String name = user != null ? user.first_name : null;
+        if (TextUtils.isEmpty(name) && user != null) {
+            name = UserObject.getUserName(user);
+        }
+        if (TextUtils.isEmpty(name)) {
+            name = "DogiGram";
+        }
+        return name;
+    }
+
     public void updateStatus(TLRPC.User user, boolean animated) {
         if (dialogStoriesCell != null) {
             dialogStoriesCell.updateStatus(user, animated);
         }
         if (statusDrawable == null || actionBar == null) {
             return;
+        }
+        // DogiGram: keep the title in sync with the account first name (e.g. after it finishes loading).
+        if (folderId == 0 && !onlySelect) {
+            actionBar.setTitle(getAccountDisplayName(), statusDrawable);
         }
         Long emojiStatusId = UserObject.getEmojiStatusDocumentId(user);
         statusDrawableGiftId = null;
@@ -3437,6 +3479,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         } else {
             if (searchString != null || folderId != 0) {
                 actionBar.setBackButtonDrawable(backDrawable = new BackDrawable(false));
+            } else {
+                // DogiGram: hamburger button on the main chats screen that opens the account drawer.
+                actionBar.setBackButtonDrawable(new MenuDrawable());
             }
             if (folderId != 0) {
                 actionBar.setTitle(getString(R.string.ArchivedChats));
@@ -3446,9 +3491,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 logoDrawable = context.getResources().getDrawable(R.drawable.telegram_logo_2).mutate();
                 logoDrawable.setBounds(0, dp(2), logoDrawable.getIntrinsicWidth(), dp(2) + logoDrawable.getIntrinsicHeight());
                 logoDrawable.setColorFilter(getThemedColor(Theme.key_telegram_color_dialogsLogo), PorterDuff.Mode.MULTIPLY);
-                SpannableStringBuilder ssb = new SpannableStringBuilder(getString(R.string.AppName));
-                ssb.setSpan(new ImageSpan(logoDrawable), 0, ssb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-                actionBar.setTitle(ssb, statusDrawable);
+                // DogiGram: show the current account's first name (with its premium/emoji status
+                // beside it) instead of the brand name, so it's clear which account you are on.
+                actionBar.setTitle(getAccountDisplayName(), statusDrawable);
                 updateStatus(UserConfig.getInstance(currentAccount).getCurrentUser(), false);
             }
             if (folderId == 0) {
@@ -3800,6 +3845,12 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                     return;
                 }
                 if (id == -1) {
+                    // DogiGram: tapping the hamburger on the main screen opens the account drawer.
+                    if (actionBar.getBackButton() != null && actionBar.getBackButton().getDrawable() instanceof MenuDrawable
+                            && !actionBar.isActionModeShowed() && getParentActivity() instanceof LaunchActivity) {
+                        ((LaunchActivity) getParentActivity()).drawerLayoutContainer.openDrawer(false);
+                        return;
+                    }
                     if (rightSlidingDialogContainer != null && rightSlidingDialogContainer.hasFragment()) {
                         if (actionBar.isActionModeShowed()) {
                             if (searchViewPager != null && searchViewPager.getVisibility() == View.VISIBLE && searchViewPager.actionModeShowing()) {

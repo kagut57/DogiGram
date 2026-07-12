@@ -75,6 +75,7 @@ import com.google.android.exoplayer2.ExoPlayer;
 import com.google.android.exoplayer2.ui.AspectRatioFrameLayout;
 
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.WindowColorsCompat;
 import org.telegram.messenger.Emoji;
 import org.telegram.messenger.ImageLocation;
 import org.telegram.messenger.ImageReceiver;
@@ -1590,7 +1591,7 @@ public class SecretMediaViewer implements NotificationCenter.NotificationCenterD
             wasNavigationBarColor = ((LaunchActivity) parentActivity).getNavigationBarColor();
             ((LaunchActivity) parentActivity).animateNavigationBarColor(0xff000000);
         } else {
-            wasNavigationBarColor = window.getNavigationBarColor();
+            wasNavigationBarColor = WindowColorsCompat.getNavigationBarColor(window);
             AndroidUtilities.setNavigationBarColor(parentActivity, 0xff000000);
         }
 

@@ -8,6 +8,7 @@ import android.content.Context;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
 import android.graphics.drawable.Drawable;
+import android.text.TextUtils;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
@@ -38,6 +39,8 @@ public class ChatActivityActionsButtonsLayout extends LinearLayout {
 
     private final ButtonHolder replyButton = new ButtonHolder();
     private final ButtonHolder forwardButton = new ButtonHolder();
+    // DogiGram: icon-only button that saves the selected messages to Saved Messages.
+    private final ButtonHolder saveButton = new ButtonHolder();
 
     public ChatActivityActionsButtonsLayout(@NonNull Context context,
                                             Theme.ResourcesProvider resourcesProvider,
@@ -58,13 +61,24 @@ public class ChatActivityActionsButtonsLayout extends LinearLayout {
         forwardButton.button.setOnClickListener(v -> {});
         ScaleStateListAnimator.apply(forwardButton.button, .065f, 2f);
 
+        saveButton.button = ChatActivityBlurredRoundButton.create(
+            context, blurredBackgroundDrawableViewFactory, colorProvider, resourcesProvider
+        );
+        saveButton.button.setOnClickListener(v -> {});
+        ScaleStateListAnimator.apply(saveButton.button, .065f, 2f);
+
         addTextView(replyButton, LocaleController.getString(R.string.Reply), R.drawable.input_reply, false);
-        addTextView(forwardButton, LocaleController.getString(R.string.Forward), R.drawable.input_forward, true);
+        // DogiGram: the bottom forward button forwards without the sender tag ("No Forward Tag").
+        addTextView(forwardButton, LocaleController.getString(R.string.DogiNoForwardTag), R.drawable.dogi_no_forward_tag, true);
+        // DogiGram: Saved Messages button (logo only).
+        addTextView(saveButton, "", R.drawable.msg_saved, true);
+        saveButton.button.setContentDescription(LocaleController.getString(R.string.SavedMessages));
 
         setOrientation(HORIZONTAL);
         setClipChildren(false);
 
         addView(replyButton.button, LayoutHelper.createLinear(0, 56, 1f, 1, 0, -1, 0));
+        addView(saveButton.button, LayoutHelper.createLinear(56, 56, 0f, 0, 0, 0, 0));
         addView(forwardButton.button, LayoutHelper.createLinear(0, 56, 1f, -1, 0, 1, 0));
     }
 
@@ -76,17 +90,41 @@ public class ChatActivityActionsButtonsLayout extends LinearLayout {
         forwardButton.button.setOnClickListener(listener);
     }
 
+    public void setSaveButtonOnClickListener(View.OnClickListener listener) {
+        saveButton.button.setOnClickListener(listener);
+    }
+
+    public void showSaveButton(boolean visible, boolean animated) {
+        saveButton.visibilityAnimator.setValue(visible, animated);
+    }
+
+    public void setSaveButtonEnabled(boolean enabled, boolean animated) {
+        saveButton.enabledAnimator.setValue(enabled, animated);
+        saveButton.button.setEnabled(enabled);
+    }
+
     public View getForwardButton() {
         return forwardButton.button;
     }
 
     private void addTextView(ButtonHolder button, String text, @DrawableRes int iconRes, boolean iconLeft) {
+        final boolean iconOnly = text == null || text.isEmpty();
         TextView forwardButton = new TextView(getContext());
         forwardButton.setText(text);
-        forwardButton.setGravity(Gravity.CENTER_VERTICAL);
+        forwardButton.setGravity(Gravity.CENTER);
         forwardButton.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
-        forwardButton.setPadding(AndroidUtilities.dp(21), 0, AndroidUtilities.dp(21), 0);
-        forwardButton.setCompoundDrawablePadding(AndroidUtilities.dp(6));
+        // DogiGram: keep long labels (e.g. "No Forward Tag") on a single line and let them shrink /
+        // ellipsize gracefully instead of being hard-clipped by the button bounds.
+        forwardButton.setSingleLine(true);
+        forwardButton.setMaxLines(1);
+        forwardButton.setEllipsize(TextUtils.TruncateAt.END);
+        if (iconOnly) {
+            forwardButton.setPadding(0, 0, 0, 0);
+            forwardButton.setCompoundDrawablePadding(0);
+        } else {
+            forwardButton.setPadding(AndroidUtilities.dp(12), 0, AndroidUtilities.dp(12), 0);
+            forwardButton.setCompoundDrawablePadding(AndroidUtilities.dp(6));
+        }
         forwardButton.setTextColor(Theme.getColor(Theme.key_glass_defaultText, resourcesProvider));
         forwardButton.setTypeface(AndroidUtilities.bold());
         Drawable image = getContext().getResources().getDrawable(iconRes).mutate();
@@ -94,7 +132,7 @@ public class ChatActivityActionsButtonsLayout extends LinearLayout {
         forwardButton.setCompoundDrawablesWithIntrinsicBounds(iconLeft ? image : null, null, iconLeft ? null : image, null);
 
         button.textView = forwardButton;
-        button.button.addView(forwardButton, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER));
+        button.button.addView(forwardButton, LayoutHelper.createFrame(iconOnly ? LayoutHelper.WRAP_CONTENT : LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER));
         /*if (getDialogId() == UserObject.VERIFY) {
             forwardButton.setVisibility(View.GONE);
         }*/
@@ -127,6 +165,7 @@ public class ChatActivityActionsButtonsLayout extends LinearLayout {
     public void updateColors() {
         replyButton.button.updateColors();
         forwardButton.button.updateColors();
+        saveButton.button.updateColors();
     }
 
     @Override
@@ -146,6 +185,7 @@ public class ChatActivityActionsButtonsLayout extends LinearLayout {
     private void checkButtonsPositionsAndVisibility() {
         checkHolderPositionsAndVisibility(forwardButton);
         checkHolderPositionsAndVisibility(replyButton);
+        checkHolderPositionsAndVisibility(saveButton);
     }
 
     private void checkHolderPositionsAndVisibility(ButtonHolder holder) {
@@ -154,6 +194,9 @@ public class ChatActivityActionsButtonsLayout extends LinearLayout {
         float offsetX = getMeasuredWidth() / 2f * (1f - AnimatorUtils.DECELERATE_INTERPOLATOR.getInterpolation(visibility));
         if (holder == replyButton) {
             offsetX *= -1;
+        } else if (holder == saveButton) {
+            // DogiGram: the Saved Messages button sits in the middle and only slides vertically.
+            offsetX = 0;
         }
 
         holder.button.setTranslationX(offsetX);

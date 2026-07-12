@@ -51,6 +51,7 @@ import androidx.dynamicanimation.animation.SpringForce;
 
 import org.json.JSONObject;
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.WindowColorsCompat;
 import org.telegram.messenger.AnimationNotificationsLocker;
 import org.telegram.messenger.BotFullscreenButtons;
 import org.telegram.messenger.ContactsController;
@@ -1118,7 +1119,7 @@ public class BotWebViewSheet extends Dialog implements NotificationCenter.Notifi
         window.setAttributes(params);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            window.setStatusBarColor(Color.TRANSPARENT);
+            WindowColorsCompat.setStatusBarColor(window, Color.TRANSPARENT);
         }
 
         windowView.setFitsSystemWindows(true);

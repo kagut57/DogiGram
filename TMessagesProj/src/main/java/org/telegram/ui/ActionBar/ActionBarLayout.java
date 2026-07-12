@@ -63,6 +63,7 @@ import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.WindowColorsCompat;
 import org.telegram.messenger.AnimationNotificationsLocker;
 import org.telegram.messenger.BuildConfig;
 import org.telegram.messenger.BuildVars;
@@ -934,7 +935,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
                 int overlayColor = Theme.getColor(Theme.key_actionBarDefault) == Color.WHITE ? AndroidUtilities.LIGHT_STATUS_BAR_OVERLAY : AndroidUtilities.DARK_STATUS_BAR_OVERLAY;
                 int oldStatusBarColor = prevFragment != null && prevFragment.hasForceLightStatusBar() ? Color.TRANSPARENT : overlayColor;
                 int newStatusBarColor = currFragment != null && currFragment.hasForceLightStatusBar() ? Color.TRANSPARENT : overlayColor;
-                parentActivity.getWindow().setStatusBarColor(ColorUtils.blendARGB(newStatusBarColor, oldStatusBarColor, ratio));
+                WindowColorsCompat.setStatusBarColor(parentActivity.getWindow(), ColorUtils.blendARGB(newStatusBarColor, oldStatusBarColor, ratio));
             }
         }
     }

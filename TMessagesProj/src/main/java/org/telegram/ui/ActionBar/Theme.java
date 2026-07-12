@@ -4607,7 +4607,10 @@ public class Theme {
         themeInfo.previewInColor = 0xffffffff;
         themeInfo.previewOutColor = 0xffd0e6ff;
         themeInfo.firstAccentIsDefault = true;
-        themeInfo.currentAccentId = DEFALT_THEME_ACCENT_ID;
+        // DogiGram: violet accent (id 11 = 0xFF7F63C3) instead of Telegram blue
+        // (DEFALT_THEME_ACCENT_ID = 99) for the light theme, so if a user switches off dark mode
+        // the brand colour stays violet. The dark theme (applied by default) is tinted separately.
+        themeInfo.currentAccentId = 11;
         themeInfo.sortIndex = 1;
         themeInfo.setAccentColorOptions(
                 new int[]    { 0xFF5890C5,                     0xFF239853,                    0xFFCE5E82,                    0xFF7F63C3,                    0xFF2491AD,                    0xFF299C2F,                    0xFF8854B4,                    0xFF328ACF,                    0xFF43ACC7,                    0xFF52AC44,                    0xFFCD5F93,                    0xFFD28036,                    0xFF8366CC,                    0xFFCE4E57,                    0xFFD3AE40,                    0xFF7B88AB },
@@ -4633,6 +4636,9 @@ public class Theme {
         themeInfo.previewInColor = 0xff76869c;
         themeInfo.previewOutColor = 0xff82a8e3;
         themeInfo.sortIndex = 3;
+        // DogiGram: violet accent (id 5 = 0xFFA281F0) for the dark theme that ships as the default.
+        themeInfo.firstAccentIsDefault = true;
+        themeInfo.currentAccentId = 5;
         themeInfo.setAccentColorOptions(
                 new int[]    {                    0xFF927BD4,                    0xFF698AFB,                    0xFF23A7F0,                    0xFF7B71D1,                    0xFF69B955,                    0xFF2990EA,                    0xFF7082E9,                    0xFF66BAED,                    0xff3685fa,                    0xff46c8ed,                    0xff64AC5F,                    0xffeb7cb1,                    0xffee902a,                    0xffa281f0,                    0xffd34324,                    0xffeebd34,                    0xff7f8fab,                    0xff3581e3 },
                 new int[]    {                    0xFF9D5C99,                    0xFF635545,                    0xFF31818B,                    0xFFAD6426,                    0xFF4A7034,                    0xFF335D82,                    0xFF36576F,                    0xFF597563,                    0x00000000,                    0x00000000,                    0x00000000,                    0x00000000,                    0x00000000,                    0x00000000,                    0x00000000,                    0x00000000,                    0x00000000,                    0x00000000 },
@@ -4771,6 +4777,18 @@ public class Theme {
         SharedPreferences preferences = MessagesController.getGlobalMainSettings();
         try {
             final ThemeInfo themeDarkBlue = themesDict.get("Dark Blue");
+
+            // DogiGram: one-time migration so the dark violet theme is the default for everyone,
+            // including upgrades that already have a saved light theme. Writes the same prefs a
+            // user picking "Dark Blue" with auto-night off would, then never runs again (so the
+            // user can freely switch themes afterwards).
+            if (!preferences.contains("dogigram_dark_default") && themeDarkBlue != null) {
+                preferences.edit()
+                        .putString("theme", themeDarkBlue.getKey())
+                        .putInt("selectedAutoNightType", AUTO_NIGHT_TYPE_NONE)
+                        .putBoolean("dogigram_dark_default", true)
+                        .apply();
+            }
 
             String theme = preferences.getString("theme", null);
             if ("Default".equals(theme)) {
@@ -4961,7 +4979,10 @@ public class Theme {
                 oldEditorNew.commit();
             }
 
-            selectedAutoNightType = preferences.getInt("selectedAutoNightType", Build.VERSION.SDK_INT >= 29 ? AUTO_NIGHT_TYPE_SYSTEM : AUTO_NIGHT_TYPE_NONE);
+            // DogiGram: default auto-night to NONE so the dark-by-default theme is not flipped back
+            // to the light theme on devices whose system theme is light. Users can still enable
+            // system/scheduled auto-night from Settings.
+            selectedAutoNightType = preferences.getInt("selectedAutoNightType", AUTO_NIGHT_TYPE_NONE);
             autoNightScheduleByLocation = preferences.getBoolean("autoNightScheduleByLocation", false);
             autoNightBrighnessThreshold = preferences.getFloat("autoNightBrighnessThreshold", 0.25f);
             autoNightDayStartTime = preferences.getInt("autoNightDayStartTime", 22 * 60);
@@ -5023,10 +5044,13 @@ public class Theme {
         }
 
         int switchToTheme = needSwitchToTheme();
-        if (switchToTheme == 2) {
+        // DogiGram: on a fresh install (no saved "theme") default to the dark theme with the violet
+        // accent. currentDayTheme stays the light theme so toggling dark mode off still works.
+        boolean darkByDefault = !preferences.contains("theme") && currentNightTheme != null;
+        if (switchToTheme == 2 || darkByDefault) {
             applyingTheme = currentNightTheme;
         }
-        applyTheme(applyingTheme, false, false, switchToTheme == 2);
+        applyTheme(applyingTheme, false, false, switchToTheme == 2 || darkByDefault);
         AndroidUtilities.runOnUIThread(Theme::checkAutoNightThemeConditions);
     }
 
@@ -10171,7 +10195,14 @@ public class Theme {
     }
 
     public static Drawable createDefaultWallpaper(int w, int h) {
-        MotionBackgroundDrawable motionBackgroundDrawable = new MotionBackgroundDrawable(0xffdbddbb, 0xff6ba587, 0xffd5d88d, 0xff88b884, w != 0);
+        // DogiGram: when no chat-background colour is supplied by the current theme the app falls
+        // back to this default wallpaper. The stock default is a light green doodle, which looked
+        // wrong on dark/black themes (the chat/channel/group background stayed light). Use a dark
+        // fallback when the active theme is dark so the wallpaper follows the theme.
+        boolean dark = currentTheme != null && currentTheme.isDark();
+        MotionBackgroundDrawable motionBackgroundDrawable = dark
+                ? new MotionBackgroundDrawable(0xff1b2733, 0xff141d27, 0xff202b38, 0xff0e151d, w != 0)
+                : new MotionBackgroundDrawable(0xffdbddbb, 0xff6ba587, 0xffd5d88d, 0xff88b884, w != 0);
         if (w <= 0 || h <= 0) {
             w = Math.min(AndroidUtilities.displaySize.x, AndroidUtilities.displaySize.y);
             h = Math.max(AndroidUtilities.displaySize.x, AndroidUtilities.displaySize.y);

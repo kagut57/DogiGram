@@ -39,6 +39,7 @@ import androidx.core.view.WindowInsetsCompat;
 
 import org.telegram.messenger.AccountInstance;
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.WindowColorsCompat;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.BuildConfig;
 import org.telegram.messenger.ContactsController;
@@ -1107,8 +1108,8 @@ public abstract class BaseFragment {
         } else {
             if (activity != null) {
                 Window window = activity.getWindow();
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && window != null && window.getNavigationBarColor() != color) {
-                    // window.setNavigationBarColor(color);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && window != null && WindowColorsCompat.getNavigationBarColor(window) != color) {
+                    // WindowColorsCompat.setNavigationBarColor(window, color);
                 }
             }
         }
