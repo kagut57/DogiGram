@@ -143,9 +143,27 @@
       .catch(function () {});
   }
 
+  function setupTilt() {
+    var phone = document.querySelector(".phone-tilt .phone");
+    var area = document.querySelector(".demo-section");
+    if (!phone || !area || reduceMotion) return;
+    area.addEventListener("pointermove", function (e) {
+      var rect = phone.getBoundingClientRect();
+      var dx = (e.clientX - (rect.left + rect.width / 2)) / window.innerWidth;
+      var dy = (e.clientY - (rect.top + rect.height / 2)) / window.innerHeight;
+      phone.style.setProperty("--ry", (dx * 36).toFixed(2) + "deg");
+      phone.style.setProperty("--rx", (-dy * 22).toFixed(2) + "deg");
+    });
+    area.addEventListener("pointerleave", function () {
+      phone.style.removeProperty("--ry");
+      phone.style.removeProperty("--rx");
+    });
+  }
+
   buildLog();
   buildAccounts();
   setupDemo();
+  setupTilt();
   loadUpdates();
   var year = document.querySelector("[data-year]");
   if (year) year.textContent = new Date().getFullYear();

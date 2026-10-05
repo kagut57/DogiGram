@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>DogiGram: Telegram for Android, with the extras built in</title>
+  <title>DogiGram: Telegram, from another planet</title>
   <meta name="description" content="DogiGram is a free Telegram app for Android with in-chat translation, a full video player with subtitles, a reader for PDFs, comics and code, and up to 10 accounts. Get it on Google Play." />
-  <meta name="theme-color" content="#110b1e" />
+  <meta name="theme-color" content="#07040f" />
   <meta property="og:title" content="DogiGram for Android" />
-  <meta property="og:description" content="Telegram for Android, with translation in the chat, a full video player, a file reader and up to 10 accounts." />
+  <meta property="og:description" content="Telegram, from another planet: translation in the chat, a full video player, a file reader and up to 10 accounts." />
   <meta property="og:image" content="https://dogi-gram.vercel.app/assets/og-image.jpg" />
   <meta property="og:url" content="https://dogi-gram.vercel.app/" />
   <meta property="og:type" content="website" />
@@ -16,7 +16,9 @@
   <link rel="apple-touch-icon" href="assets/icon-192.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700&family=Roboto:wght@400;500;700&family=Roboto+Mono:wght@400&display=swap" rel="stylesheet" />
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+  <link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&family=Roboto:wght@400;500;700&family=Roboto+Mono:wght@400&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="assets/style.css" />
   <script type="application/ld+json">
     {
@@ -31,7 +33,9 @@
     }
   </script>
 </head>
-<body>
+<body class="space-page">
+  <canvas id="space" aria-hidden="true"></canvas>
+
   <svg class="sprite" aria-hidden="true" focusable="false">
     <symbol id="i-subtitles" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M7 15h4M13 15h4M7 11h10"/></symbol>
     <symbol id="i-palette" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18c1 0 1.5-.7 1.5-1.5 0-.5-.2-.8-.5-1.1-.3-.3-.5-.7-.5-1.1 0-.9.7-1.6 1.6-1.6H16a5 5 0 0 0 5-5c0-4.1-4-7.7-9-7.7z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10" cy="7" r="1"/><circle cx="14.5" cy="7" r="1"/></symbol>
@@ -65,13 +69,12 @@
     <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></symbol>
     <symbol id="i-drawer" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></symbol>
     <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></symbol>
-    <symbol id="i-plane" viewBox="0 0 24 24"><path d="M21 4 3 11l6 2 2 6 3-4 5 4z"/><path d="m9 13 8-6"/></symbol>
   </svg>
 
   <nav class="nav">
     <div class="container nav-inner">
       <a class="brand" href="index.html">
-        <img src="assets/icon-64.png" alt="" width="32" height="32" />
+        <img src="assets/icon-64.png" alt="" width="30" height="30" />
         DogiGram
       </a>
       <div class="nav-links">
@@ -83,15 +86,13 @@
     </div>
   </nav>
 
-  <header class="hero">
-    <div class="container hero-grid">
+  <header class="hero" data-stop="hero">
+    <div class="container hero-inner">
       <div class="hero-copy">
-        <img class="hero-icon" src="assets/icon-192.png" alt="DogiGram app icon" width="88" height="88" />
-        <h1>Telegram for Android, with the extras built in.</h1>
+        <h1>Telegram, from another planet.</h1>
         <p class="lead">
-          DogiGram works with your Telegram account and chats, and adds what people usually install
-          other apps for: translation inside the chat, a full video player, a reader for PDFs,
-          comics and code, and room for 10 accounts.
+          DogiGram keeps your Telegram account and chats, then adds translation inside the chat,
+          a full video player, a reader for PDFs, comics and code, and room for 10 accounts.
         </p>
         <div class="store-row">
           <a class="play-badge" href="https://play.google.com/store/apps/details?id=com.dogigram.app" target="_blank" rel="noopener">
@@ -103,252 +104,282 @@
           </p>
         </div>
       </div>
-
-      <div class="demo" aria-label="Animated preview of DogiGram features">
-        <div class="phone">
-          <div class="screen">
-            <div class="statusbar"><span>9:41</span><span class="status-icons"><i></i><i></i><i></i></span></div>
-
-            <section class="scene scene-translate is-active play" data-scene="0" aria-label="Translation demo">
-              <div class="appbar">
-                <span class="back"></span>
-                <span class="avatar" style="--c1:#f7a541;--c2:#ef7d2d">LW</span>
-                <div class="appbar-title"><b>Lin Wei</b><small>online</small></div>
-              </div>
-              <div class="chat">
-                <span class="date-chip">Today</span>
-                <div class="msg out">Are we still on for this week?</div>
-                <div class="msg in m1">早上好！</div>
-                <div class="msg in m2 tr">
-                  <span class="orig">明天下午三点，老地方见？</span>
-                  <span class="trans">See you at the usual place at 3 pm tomorrow?</span>
-                  <span class="show-orig">Show Original</span>
-                  <i class="tap" aria-hidden="true"></i>
-                </div>
-                <div class="msg out m3">Yes, see you there</div>
-              </div>
-              <p class="scene-caption">Double-tap a message to translate it in place.</p>
-            </section>
-
-            <section class="scene scene-video" data-scene="1" aria-label="Video player demo" aria-hidden="true">
-              <div class="video">
-                <div class="video-art" aria-hidden="true"><i class="sun"></i><i class="hill h1"></i><i class="hill h2"></i></div>
-                <p class="subtitle">Where were you last night?</p>
-                <div class="boost"><span class="boost-track"><i></i></span><b>150%</b></div>
-              </div>
-              <div class="seek"><span>12:04</span><span class="seek-bar"><i></i></span><span>1:58:52</span></div>
-              <div class="panel-card">
-                <div class="panel-head"><span>Speed</span><b class="swap"><span class="a">1x</span><span class="b">2x</span></b></div>
-                <div class="strip from-center"><i class="fill"></i><i class="tick"></i><i class="knob"></i></div>
-                <div class="strip-scale"><span>0.1x</span><span>1x</span><span>10x</span></div>
-              </div>
-              <div class="panel-card">
-                <div class="panel-head"><span>Subtitle color</span><b class="aa">Aa</b></div>
-                <div class="strip rainbow"><i class="knob"></i></div>
-              </div>
-            </section>
-
-            <section class="scene scene-reader" data-scene="2" aria-label="File reader demo" aria-hidden="true">
-              <div class="appbar">
-                <span class="back"></span>
-                <div class="appbar-title"><b>server.log</b><small class="swap"><span class="a">Line 1 of 4,284 · 0%</span><span class="b">Line 2,950 of 4,284 · 69%</span></small></div>
-              </div>
-              <div class="code">
-                <div class="code-scroll" data-log-lines></div>
-                <i class="scroll-track"><i class="scroll-thumb"></i></i>
-                <span class="scroll-bubble">Line 2,950 · 69%</span>
-              </div>
-            </section>
-
-            <section class="scene scene-accounts" data-scene="3" aria-label="Accounts demo" aria-hidden="true">
-              <div class="drawer-head">
-                <span class="avatar big swap-avatar"><span class="a">AK</span><span class="b">RS</span></span>
-                <b class="swap"><span class="a">Arjun</span><span class="b">Riya</span></b>
-                <small>Phone number hidden</small>
-              </div>
-              <ul class="accounts" data-accounts></ul>
-              <p class="toast">Switched to Riya</p>
-            </section>
-
-            <section class="scene scene-stickers" data-scene="4" aria-label="Sticker export demo" aria-hidden="true">
-              <div class="appbar">
-                <span class="back"></span>
-                <div class="appbar-title"><b>Doggo Pack</b><small>9 stickers</small></div>
-              </div>
-              <div class="sticker-grid" aria-hidden="true">
-                <span>🐶</span><span>🐕</span><span>🦮</span><span>🐾</span><span>🐩</span><span>🐺</span><span>🦊</span><span>🐱</span><span>🐼</span>
-              </div>
-              <div class="export">
-                <i class="export-bar"></i>
-                <span class="swap"><span class="a">Export to WhatsApp</span><span class="b">Added to WhatsApp</span></span>
-              </div>
-            </section>
-          </div>
-        </div>
-        <div class="scene-tabs" role="tablist" aria-label="Choose a demo">
-          <button type="button" role="tab" aria-selected="true" data-go="0">Translate</button>
-          <button type="button" role="tab" aria-selected="false" data-go="1">Video player</button>
-          <button type="button" role="tab" aria-selected="false" data-go="2">Reader</button>
-          <button type="button" role="tab" aria-selected="false" data-go="3">Accounts</button>
-          <button type="button" role="tab" aria-selected="false" data-go="4">Stickers</button>
-        </div>
-      </div>
     </div>
+    <a class="scroll-cue" href="#demo"><span>Scroll to take off</span><i aria-hidden="true"></i></a>
   </header>
 
   <main>
-    <section class="features" id="features">
-      <div class="container">
-        <div class="section-head">
-          <h2>What DogiGram adds</h2>
-          <p>Everything you use in Telegram works the same. These are the additions.</p>
+    <section class="demo-section" id="demo">
+      <div class="container demo-wrap">
+        <div class="demo-copy glass">
+          <h2>Watch it work</h2>
+          <p>A few of the extras, running the way they do in the app. Pick one to replay it.</p>
+          <div class="scene-tabs" role="tablist" aria-label="Choose a demo">
+            <button type="button" role="tab" aria-selected="true" data-go="0">Translate</button>
+            <button type="button" role="tab" aria-selected="false" data-go="1">Video player</button>
+            <button type="button" role="tab" aria-selected="false" data-go="2">Reader</button>
+            <button type="button" role="tab" aria-selected="false" data-go="3">Accounts</button>
+            <button type="button" role="tab" aria-selected="false" data-go="4">Stickers</button>
+          </div>
         </div>
 
-        <div class="settings-columns">
-          <div class="settings-group" style="--c1:#f2655a;--c2:#e2453c">
-            <h3>Video player</h3>
-            <ul>
-              <li><span class="row-icon"><svg><use href="#i-subtitles"/></svg></span><div><b>Subtitles from the chat</b><p>Add .srt, .ass or .vtt files shared in the same chat, or paste a message link.</p></div></li>
-              <li><span class="row-icon"><svg><use href="#i-palette"/></svg></span><div><b>Subtitle style</b><p>Any size and color, a shadow or box behind the text, and drag subtitles where you want them.</p></div></li>
-              <li><span class="row-icon"><svg><use href="#i-clock"/></svg></span><div><b>Subtitle and audio sync</b><p>Shift subtitles or audio in 0.1-second steps when they drift.</p></div></li>
-              <li><span class="row-icon"><svg><use href="#i-gauge"/></svg></span><div><b>Speed from 0.1x to 10x</b><p>One slider, with normal speed in the middle.</p></div></li>
-              <li><span class="row-icon"><svg><use href="#i-volume"/></svg></span><div><b>Volume boost to 200%</b><p>Keep swiping up past full volume for quiet videos.</p></div></li>
-              <li><span class="row-icon"><svg><use href="#i-sun"/></svg></span><div><b>Swipe for brightness and volume</b><p>Left side for brightness, right side for volume.</p></div></li>
-              <li><span class="row-icon"><svg><use href="#i-layers"/></svg></span><div><b>Tracks and video size</b><p>Pick audio and subtitle tracks by name, and switch between fit, fill and zoom.</p></div></li>
-              <li><span class="row-icon"><svg><use href="#i-resume"/></svg></span><div><b>Resume where you stopped</b><p>Long videos continue from your last position.</p></div></li>
-            </ul>
-          </div>
+        <div class="demo" aria-label="Animated preview of DogiGram features">
+          <div class="phone-tilt">
+            <div class="phone">
+              <div class="screen">
+                <div class="statusbar"><span>9:41</span><span class="status-icons"><i></i><i></i><i></i></span></div>
 
-          <div class="settings-group" style="--c1:#4aa3f5;--c2:#2f7fe6">
-            <h3>Translation</h3>
-            <ul>
-              <li><span class="row-icon"><svg><use href="#i-translate"/></svg></span><div><b>Translate in place</b><p>The message or caption itself switches to your language. No pop-up.</p></div></li>
-              <li><span class="row-icon"><svg><use href="#i-bold"/></svg></span><div><b>Formatting kept</b><p>Bold text, links, hashtags and premium emoji stay where they were.</p></div></li>
-              <li><span class="row-icon"><svg><use href="#i-undo"/></svg></span><div><b>Back to the original</b><p>Tap Show Original under the message. With double tap set to Translate, double-tap it again.</p></div></li>
-            </ul>
+                <section class="scene scene-translate is-active play" data-scene="0" aria-label="Translation demo">
+                  <div class="appbar">
+                    <span class="back"></span>
+                    <span class="avatar" style="--c1:#f7a541;--c2:#ef7d2d">LW</span>
+                    <div class="appbar-title"><b>Lin Wei</b><small>online</small></div>
+                  </div>
+                  <div class="chat">
+                    <span class="date-chip">Today</span>
+                    <div class="msg out">Are we still on for this week?</div>
+                    <div class="msg in m1">早上好！</div>
+                    <div class="msg in m2 tr">
+                      <span class="orig">明天下午三点，老地方见？</span>
+                      <span class="trans">See you at the usual place at 3 pm tomorrow?</span>
+                      <span class="show-orig">Show Original</span>
+                      <i class="tap" aria-hidden="true"></i>
+                    </div>
+                    <div class="msg out m3">Yes, see you there</div>
+                  </div>
+                  <p class="scene-caption">Double-tap a message to translate it in place.</p>
+                </section>
 
-            <h3>Chats and messages</h3>
-            <ul>
-              <li><span class="row-icon"><svg><use href="#i-tap"/></svg></span><div><b>Double-tap actions</b><p>Choose what a double tap does: react, reply, save, edit or translate.</p></div></li>
-              <li><span class="row-icon"><svg><use href="#i-list"/></svg></span><div><b>Your message menu</b><p>Pick which actions appear, including Repeat, Bookmark, Details and forwarding without the "Forwarded from" label.</p></div></li>
-              <li><span class="row-icon"><svg><use href="#i-info"/></svg></span><div><b>Message details</b><p>Everything about a message on one page, including the raw data.</p></div></li>
-              <li><span class="row-icon"><svg><use href="#i-check"/></svg></span><div><b>Select a range</b><p>Select two messages to select everything between them.</p></div></li>
-              <li><span class="row-icon"><svg><use href="#i-lens"/></svg></span><div><b>Search with Google Lens</b><p>Look up any photo or video frame, even in chats that block saving.</p></div></li>
-            </ul>
-          </div>
+                <section class="scene scene-video" data-scene="1" aria-label="Video player demo" aria-hidden="true">
+                  <div class="video">
+                    <div class="video-art" aria-hidden="true"><i class="sun"></i><i class="hill h1"></i><i class="hill h2"></i></div>
+                    <p class="subtitle">Where were you last night?</p>
+                    <div class="boost"><span class="boost-track"><i></i></span><b>150%</b></div>
+                  </div>
+                  <div class="seek"><span>12:04</span><span class="seek-bar"><i></i></span><span>1:58:52</span></div>
+                  <div class="panel-card">
+                    <div class="panel-head"><span>Speed</span><b class="swap"><span class="a">1x</span><span class="b">2x</span></b></div>
+                    <div class="strip from-center"><i class="fill"></i><i class="tick"></i><i class="knob"></i></div>
+                    <div class="strip-scale"><span>0.1x</span><span>1x</span><span>10x</span></div>
+                  </div>
+                  <div class="panel-card">
+                    <div class="panel-head"><span>Subtitle color</span><b class="aa">Aa</b></div>
+                    <div class="strip rainbow"><i class="knob"></i></div>
+                  </div>
+                </section>
 
-          <div class="settings-group" style="--c1:#f7a541;--c2:#ef7d2d">
-            <h3>Reading files</h3>
-            <ul>
-              <li><span class="row-icon"><svg><use href="#i-file"/></svg></span><div><b>PDF reader</b><p>Search inside documents, follow links, and read two pages side by side in landscape.</p></div></li>
-              <li><span class="row-icon"><svg><use href="#i-book"/></svg></span><div><b>Comics</b><p>CBZ and CBR files, with right-to-left and double-page modes.</p></div></li>
-              <li><span class="row-icon"><svg><use href="#i-code"/></svg></span><div><b>Text and code</b><p>Smooth even on 10 MB logs, with line numbers, sepia and dark themes, search and go to line.</p></div></li>
-              <li><span class="row-icon"><svg><use href="#i-edit"/></svg></span><div><b>Edit and send back</b><p>Change a text or code file and send the new copy to the same chat.</p></div></li>
-              <li><span class="row-icon"><svg><use href="#i-bookmark"/></svg></span><div><b>Bookmarks and collections</b><p>Save pages and files, and pick up where you left off.</p></div></li>
-            </ul>
-          </div>
+                <section class="scene scene-reader" data-scene="2" aria-label="File reader demo" aria-hidden="true">
+                  <div class="appbar">
+                    <span class="back"></span>
+                    <div class="appbar-title"><b>server.log</b><small class="swap"><span class="a">Line 1 of 4,284 · 0%</span><span class="b">Line 2,950 of 4,284 · 69%</span></small></div>
+                  </div>
+                  <div class="code">
+                    <div class="code-scroll" data-log-lines></div>
+                    <i class="scroll-track"><i class="scroll-thumb"></i></i>
+                    <span class="scroll-bubble">Line 2,950 · 69%</span>
+                  </div>
+                </section>
 
-          <div class="settings-group" style="--c1:#a77bf7;--c2:#8457ea">
-            <h3>Accounts and privacy</h3>
-            <ul>
-              <li><span class="row-icon"><svg><use href="#i-users"/></svg></span><div><b>Up to 10 accounts</b><p>Switch quickly. The account you open connects first.</p></div></li>
-              <li><span class="row-icon"><svg><use href="#i-eye-off"/></svg></span><div><b>Screenshot mode</b><p>Hide names and phone numbers before you take screenshots.</p></div></li>
-              <li><span class="row-icon"><svg><use href="#i-phone"/></svg></span><div><b>Hide your number</b><p>Keep your phone number off the side menu and settings.</p></div></li>
-              <li><span class="row-icon"><svg><use href="#i-hash"/></svg></span><div><b>IDs at a glance</b><p>User, chat and data center IDs, plus an estimated account creation date.</p></div></li>
-              <li><span class="row-icon"><svg><use href="#i-server"/></svg></span><div><b>Server status</b><p>Check whether Telegram's data centers are up.</p></div></li>
-            </ul>
-          </div>
+                <section class="scene scene-accounts" data-scene="3" aria-label="Accounts demo" aria-hidden="true">
+                  <div class="drawer-head">
+                    <span class="avatar big swap-avatar"><span class="a">AK</span><span class="b">RS</span></span>
+                    <b class="swap"><span class="a">Arjun</span><span class="b">Riya</span></b>
+                    <small>Phone number hidden</small>
+                  </div>
+                  <ul class="accounts" data-accounts></ul>
+                  <p class="toast">Switched to Riya</p>
+                </section>
 
-          <div class="settings-group" style="--c1:#3cc4b4;--c2:#1ea596">
-            <h3>Tools</h3>
-            <ul>
-              <li><span class="row-icon"><svg><use href="#i-sticker"/></svg></span><div><b>Stickers to WhatsApp</b><p>Export static and animated Telegram sticker packs to WhatsApp.</p></div></li>
-              <li><span class="row-icon"><svg><use href="#i-folder"/></svg></span><div><b>Files hub</b><p>Browse downloads by type, delete in bulk, and keep original names when saving.</p></div></li>
-              <li><span class="row-icon"><svg><use href="#i-bolt"/></svg></span><div><b>Faster transfers</b><p>An optional boost for uploads and downloads.</p></div></li>
-            </ul>
+                <section class="scene scene-stickers" data-scene="4" aria-label="Sticker export demo" aria-hidden="true">
+                  <div class="appbar">
+                    <span class="back"></span>
+                    <div class="appbar-title"><b>Doggo Pack</b><small>9 stickers</small></div>
+                  </div>
+                  <div class="sticker-grid" aria-hidden="true">
+                    <span>🐶</span><span>🐕</span><span>🦮</span><span>🐾</span><span>🐩</span><span>🐺</span><span>🦊</span><span>🐱</span><span>🐼</span>
+                  </div>
+                  <div class="export">
+                    <i class="export-bar"></i>
+                    <span class="swap"><span class="a">Export to WhatsApp</span><span class="b">Added to WhatsApp</span></span>
+                  </div>
+                </section>
+              </div>
+            </div>
           </div>
+        </div>
+      </div>
+    </section>
 
-          <div class="settings-group" style="--c1:#f06ba0;--c2:#dd4a82">
-            <h3>Look and feel</h3>
-            <ul>
-              <li><span class="row-icon"><svg><use href="#i-moon"/></svg></span><div><b>Dark and violet</b><p>A dark theme with a violet accent and the DogiGram husky.</p></div></li>
-              <li><span class="row-icon"><svg><use href="#i-drawer"/></svg></span><div><b>Classic side menu</b><p>The original Telegram drawer, with accounts you can drag into order.</p></div></li>
-              <li><span class="row-icon"><svg><use href="#i-sliders"/></svg></span><div><b>Small extras</b><p>Exact counts instead of 4.8K, hide the keyboard while scrolling, pause video in the background, and more recent stickers.</p></div></li>
-            </ul>
-          </div>
+    <div id="features"></div>
+
+    <section class="world" data-stop="world" data-c1="#ff6f61" data-c2="#7a1530" data-side="left">
+      <div class="container">
+        <div class="world-panel glass" style="--c1:#f2655a;--c2:#e2453c">
+          <h2>Video player</h2>
+          <p class="world-intro">A proper player for every video people send you.</p>
+          <ul class="rows">
+            <li><span class="row-icon"><svg><use href="#i-subtitles"/></svg></span><div><b>Subtitles from the chat</b><p>Add .srt, .ass or .vtt files shared in the same chat, or paste a message link.</p></div></li>
+            <li><span class="row-icon"><svg><use href="#i-palette"/></svg></span><div><b>Subtitle style</b><p>Any size and color, a shadow or box behind the text, and drag subtitles where you want them.</p></div></li>
+            <li><span class="row-icon"><svg><use href="#i-clock"/></svg></span><div><b>Subtitle and audio sync</b><p>Shift subtitles or audio in 0.1-second steps when they drift.</p></div></li>
+            <li><span class="row-icon"><svg><use href="#i-gauge"/></svg></span><div><b>Speed from 0.1x to 10x</b><p>One slider, with normal speed in the middle.</p></div></li>
+            <li><span class="row-icon"><svg><use href="#i-volume"/></svg></span><div><b>Volume boost to 200%</b><p>Keep swiping up past full volume for quiet videos.</p></div></li>
+            <li><span class="row-icon"><svg><use href="#i-sun"/></svg></span><div><b>Swipe for brightness and volume</b><p>Left side for brightness, right side for volume.</p></div></li>
+            <li><span class="row-icon"><svg><use href="#i-layers"/></svg></span><div><b>Tracks and video size</b><p>Pick audio and subtitle tracks by name, and switch between fit, fill and zoom.</p></div></li>
+            <li><span class="row-icon"><svg><use href="#i-resume"/></svg></span><div><b>Resume where you stopped</b><p>Long videos continue from your last position.</p></div></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="world" data-stop="world" data-c1="#5ab0ff" data-c2="#123a8a" data-side="right">
+      <div class="container">
+        <div class="world-panel glass" style="--c1:#4aa3f5;--c2:#2f7fe6">
+          <h2>Chats and translation</h2>
+          <p class="world-intro">Read any language without leaving the chat.</p>
+          <ul class="rows">
+            <li><span class="row-icon"><svg><use href="#i-translate"/></svg></span><div><b>Translate in place</b><p>The message or caption itself switches to your language. No pop-up.</p></div></li>
+            <li><span class="row-icon"><svg><use href="#i-bold"/></svg></span><div><b>Formatting kept</b><p>Bold text, links, hashtags and premium emoji stay where they were.</p></div></li>
+            <li><span class="row-icon"><svg><use href="#i-undo"/></svg></span><div><b>Back to the original</b><p>Tap Show Original under the message. With double tap set to Translate, double-tap it again.</p></div></li>
+            <li><span class="row-icon"><svg><use href="#i-tap"/></svg></span><div><b>Double-tap actions</b><p>Choose what a double tap does: react, reply, save, edit or translate.</p></div></li>
+            <li><span class="row-icon"><svg><use href="#i-list"/></svg></span><div><b>Your message menu</b><p>Pick which actions appear, including Repeat, Bookmark, Details and forwarding without the "Forwarded from" label.</p></div></li>
+            <li><span class="row-icon"><svg><use href="#i-info"/></svg></span><div><b>Message details</b><p>Everything about a message on one page, including the raw data.</p></div></li>
+            <li><span class="row-icon"><svg><use href="#i-check"/></svg></span><div><b>Select a range</b><p>Select two messages to select everything between them.</p></div></li>
+            <li><span class="row-icon"><svg><use href="#i-lens"/></svg></span><div><b>Search with Google Lens</b><p>Look up any photo or video frame, even in chats that block saving.</p></div></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="world" data-stop="world" data-c1="#ffb347" data-c2="#7a3a0a" data-side="left">
+      <div class="container">
+        <div class="world-panel glass" style="--c1:#f7a541;--c2:#ef7d2d">
+          <h2>Reading files</h2>
+          <p class="world-intro">Open PDFs, comics, logs and code without another app.</p>
+          <ul class="rows">
+            <li><span class="row-icon"><svg><use href="#i-file"/></svg></span><div><b>PDF reader</b><p>Search inside documents, follow links, and read two pages side by side in landscape.</p></div></li>
+            <li><span class="row-icon"><svg><use href="#i-book"/></svg></span><div><b>Comics</b><p>CBZ and CBR files, with right-to-left and double-page modes.</p></div></li>
+            <li><span class="row-icon"><svg><use href="#i-code"/></svg></span><div><b>Text and code</b><p>Smooth even on 10 MB logs, with line numbers, sepia and dark themes, search and go to line.</p></div></li>
+            <li><span class="row-icon"><svg><use href="#i-edit"/></svg></span><div><b>Edit and send back</b><p>Change a text or code file and send the new copy to the same chat.</p></div></li>
+            <li><span class="row-icon"><svg><use href="#i-bookmark"/></svg></span><div><b>Bookmarks and collections</b><p>Save pages and files, and pick up where you left off.</p></div></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="world" data-stop="world" data-c1="#b98bff" data-c2="#3a1680" data-side="right">
+      <div class="container">
+        <div class="world-panel glass" style="--c1:#a77bf7;--c2:#8457ea">
+          <h2>Accounts and privacy</h2>
+          <p class="world-intro">Ten accounts, and control over what others see.</p>
+          <ul class="rows">
+            <li><span class="row-icon"><svg><use href="#i-users"/></svg></span><div><b>Up to 10 accounts</b><p>Switch quickly. The account you open connects first.</p></div></li>
+            <li><span class="row-icon"><svg><use href="#i-eye-off"/></svg></span><div><b>Screenshot mode</b><p>Hide names and phone numbers before you take screenshots.</p></div></li>
+            <li><span class="row-icon"><svg><use href="#i-phone"/></svg></span><div><b>Hide your number</b><p>Keep your phone number off the side menu and settings.</p></div></li>
+            <li><span class="row-icon"><svg><use href="#i-hash"/></svg></span><div><b>IDs at a glance</b><p>User, chat and data center IDs, plus an estimated account creation date.</p></div></li>
+            <li><span class="row-icon"><svg><use href="#i-server"/></svg></span><div><b>Server status</b><p>Check whether Telegram's data centers are up.</p></div></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="world" data-stop="world" data-c1="#4fe0cf" data-c2="#0b5a52" data-side="left">
+      <div class="container">
+        <div class="world-panel glass" style="--c1:#3cc4b4;--c2:#1ea596">
+          <h2>Tools</h2>
+          <p class="world-intro">Small utilities that save a trip to another app.</p>
+          <ul class="rows">
+            <li><span class="row-icon"><svg><use href="#i-sticker"/></svg></span><div><b>Stickers to WhatsApp</b><p>Export static and animated Telegram sticker packs to WhatsApp.</p></div></li>
+            <li><span class="row-icon"><svg><use href="#i-folder"/></svg></span><div><b>Files hub</b><p>Browse downloads by type, delete in bulk, and keep original names when saving.</p></div></li>
+            <li><span class="row-icon"><svg><use href="#i-bolt"/></svg></span><div><b>Faster transfers</b><p>An optional boost for uploads and downloads.</p></div></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="world" data-stop="world" data-c1="#ff7eb6" data-c2="#6a0f3c" data-side="right">
+      <div class="container">
+        <div class="world-panel glass" style="--c1:#f06ba0;--c2:#dd4a82">
+          <h2>Look and feel</h2>
+          <p class="world-intro">Dark, violet, and the husky you'll see everywhere.</p>
+          <ul class="rows">
+            <li><span class="row-icon"><svg><use href="#i-moon"/></svg></span><div><b>Dark and violet</b><p>A dark theme with a violet accent and the DogiGram husky on the icon and notifications.</p></div></li>
+            <li><span class="row-icon"><svg><use href="#i-drawer"/></svg></span><div><b>Classic side menu</b><p>The original Telegram drawer, with accounts you can drag into order.</p></div></li>
+            <li><span class="row-icon"><svg><use href="#i-sliders"/></svg></span><div><b>Small extras</b><p>Exact counts instead of 4.8K, hide the keyboard while scrolling, pause video in the background, and more recent stickers.</p></div></li>
+          </ul>
         </div>
       </div>
     </section>
 
     <section class="updates" id="updates">
       <div class="container">
-        <div class="section-head">
+        <div class="updates-panel glass">
           <h2>What's new</h2>
-          <p>New versions show up here as soon as they're live on Google Play.</p>
+          <p class="world-intro">New versions show up here as soon as they're live on Google Play.</p>
+          <article class="release latest" data-latest-release>
+            <header>
+              <h3>Version <span data-latest-version>12.10.4</span></h3>
+              <time data-latest-date>Sep 25, 2026</time>
+            </header>
+            <ul data-latest-notes>
+              <li>Added Telegram to WhatsApp sticker export.</li>
+              <li>Match the drawer icon theme to the latest Telegram settings theme.</li>
+              <li>Improved performance and fixed bugs.</li>
+            </ul>
+          </article>
+          <details class="earlier" data-earlier hidden>
+            <summary>Earlier updates</summary>
+            <div data-earlier-list></div>
+          </details>
         </div>
-        <article class="release latest" data-latest-release>
-          <header>
-            <h3>Version <span data-latest-version>12.10.4</span></h3>
-            <time data-latest-date>Sep 25, 2026</time>
-          </header>
-          <ul data-latest-notes>
-            <li>Added Telegram to WhatsApp sticker export.</li>
-            <li>Match the drawer icon theme to the latest Telegram settings theme.</li>
-            <li>Improved performance and fixed bugs.</li>
-          </ul>
-        </article>
-        <details class="earlier" data-earlier hidden>
-          <summary>Earlier updates</summary>
-          <div data-earlier-list></div>
-        </details>
       </div>
     </section>
 
-    <section class="download" id="download">
-      <div class="container download-card">
-        <img src="assets/icon-192.png" alt="" width="96" height="96" />
-        <div class="download-copy">
-          <h2>Get DogiGram</h2>
+    <section class="portal-section" id="download" data-stop="portal">
+      <div class="container">
+        <div class="portal-panel glass">
+          <h2>Land on DogiGram</h2>
           <p>Install it from Google Play. Updates arrive automatically.</p>
-          <a class="play-badge" href="https://play.google.com/store/apps/details?id=com.dogigram.app" target="_blank" rel="noopener">
-            <img src="assets/google-play-badge.png" alt="Get it on Google Play" width="646" height="250" />
-          </a>
+          <div class="portal-actions">
+            <a class="play-badge" href="https://play.google.com/store/apps/details?id=com.dogigram.app" target="_blank" rel="noopener">
+              <img src="assets/google-play-badge.png" alt="Get it on Google Play" width="646" height="250" />
+            </a>
+            <figure class="qr">
+              <img src="assets/play-qr.svg" alt="QR code that opens DogiGram on Google Play" width="120" height="120" />
+              <figcaption>On a computer? Scan with your phone.</figcaption>
+            </figure>
+          </div>
         </div>
-        <figure class="qr">
-          <img src="assets/play-qr.svg" alt="QR code that opens DogiGram on Google Play" width="148" height="148" />
-          <figcaption>On a computer? Scan this with your phone's camera.</figcaption>
-        </figure>
       </div>
     </section>
 
     <section class="faq" id="faq">
       <div class="container narrow">
-        <div class="section-head">
+        <div class="faq-panel glass">
           <h2>Questions</h2>
+          <details>
+            <summary>Is DogiGram the official Telegram app?</summary>
+            <p>No. DogiGram is an independent app that connects to Telegram through its public API. Your chats stay on Telegram's servers, the same as in any Telegram app.</p>
+          </details>
+          <details>
+            <summary>Can I use my existing Telegram account?</summary>
+            <p>Yes. Sign in with your phone number and your chats, groups and channels appear as usual.</p>
+          </details>
+          <details>
+            <summary>Can I keep the official Telegram app installed?</summary>
+            <p>Yes. DogiGram installs alongside it, and you can be signed in to both.</p>
+          </details>
+          <details>
+            <summary>Does it cost anything?</summary>
+            <p>DogiGram is free. Telegram Premium features still need a Premium subscription from Telegram.</p>
+          </details>
+          <details>
+            <summary>How do I delete my data?</summary>
+            <p>See <a href="delete-account.html">Delete your account or data</a> for step-by-step instructions.</p>
+          </details>
+          <p class="disclaimer">
+            DogiGram is not affiliated with, endorsed by or operated by Telegram. "Telegram" is a trademark of Telegram FZ-LLC.
+          </p>
         </div>
-        <details>
-          <summary>Is DogiGram the official Telegram app?</summary>
-          <p>No. DogiGram is an independent app that connects to Telegram through its public API. Your chats stay on Telegram's servers, the same as in any Telegram app.</p>
-        </details>
-        <details>
-          <summary>Can I use my existing Telegram account?</summary>
-          <p>Yes. Sign in with your phone number and your chats, groups and channels appear as usual.</p>
-        </details>
-        <details>
-          <summary>Can I keep the official Telegram app installed?</summary>
-          <p>Yes. DogiGram installs alongside it, and you can be signed in to both.</p>
-        </details>
-        <details>
-          <summary>Does it cost anything?</summary>
-          <p>DogiGram is free. Telegram Premium features still need a Premium subscription from Telegram.</p>
-        </details>
-        <details>
-          <summary>How do I delete my data?</summary>
-          <p>See <a href="delete-account.html">Delete your account or data</a> for step-by-step instructions.</p>
-        </details>
-        <p class="disclaimer">
-          DogiGram is not affiliated with, endorsed by or operated by Telegram. "Telegram" is a trademark of Telegram FZ-LLC.
-        </p>
       </div>
     </section>
   </main>
@@ -358,10 +389,10 @@
       <div class="footer-grid">
         <div class="footer-brand">
           <a class="brand" href="index.html">
-            <img src="assets/icon-64.png" alt="" width="32" height="32" />
+            <img src="assets/icon-64.png" alt="" width="30" height="30" />
             DogiGram
           </a>
-          <p>Telegram for Android, with the extras built in.</p>
+          <p>Telegram, from another planet.</p>
         </div>
         <div class="footer-col">
           <strong>App</strong>
@@ -388,5 +419,6 @@
   </footer>
 
   <script src="assets/app.js" defer></script>
+  <script type="module" src="assets/space.js"></script>
 </body>
 </html>
