@@ -3,190 +3,390 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>DogiGram — Fast, secure, open-source Telegram client for Android</title>
-  <meta name="description" content="DogiGram is a fast, secure, open-source Telegram client for Android with a refined dark + violet interface and its own identity." />
-  <meta property="og:title" content="DogiGram — Fast, secure, open source" />
-  <meta property="og:description" content="A fast, secure, open-source Telegram client for Android." />
-  <meta property="og:image" content="dogigram_banner.png" />
+  <title>DogiGram: Telegram for Android, with the extras built in</title>
+  <meta name="description" content="DogiGram is a free Telegram app for Android with in-chat translation, a full video player with subtitles, a reader for PDFs, comics and code, and up to 10 accounts. Get it on Google Play." />
+  <meta name="theme-color" content="#110b1e" />
+  <meta property="og:title" content="DogiGram for Android" />
+  <meta property="og:description" content="Telegram for Android, with translation in the chat, a full video player, a file reader and up to 10 accounts." />
+  <meta property="og:image" content="https://dogi-gram.vercel.app/assets/og-image.jpg" />
+  <meta property="og:url" content="https://dogi-gram.vercel.app/" />
   <meta property="og:type" content="website" />
-  <link rel="icon" href="dogigram_icon.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="icon" href="assets/icon-64.png" />
+  <link rel="apple-touch-icon" href="assets/icon-192.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700&family=Roboto:wght@400;500;700&family=Roboto+Mono:wght@400&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="assets/style.css" />
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "MobileApplication",
+      "name": "DogiGram",
+      "operatingSystem": "Android 7.0 or newer",
+      "applicationCategory": "CommunicationApplication",
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+      "downloadUrl": "https://play.google.com/store/apps/details?id=com.dogigram.app",
+      "author": { "@type": "Person", "name": "Omega-57" }
+    }
+  </script>
 </head>
 <body>
+  <svg class="sprite" aria-hidden="true" focusable="false">
+    <symbol id="i-subtitles" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M7 15h4M13 15h4M7 11h10"/></symbol>
+    <symbol id="i-palette" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18c1 0 1.5-.7 1.5-1.5 0-.5-.2-.8-.5-1.1-.3-.3-.5-.7-.5-1.1 0-.9.7-1.6 1.6-1.6H16a5 5 0 0 0 5-5c0-4.1-4-7.7-9-7.7z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10" cy="7" r="1"/><circle cx="14.5" cy="7" r="1"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-gauge" viewBox="0 0 24 24"><path d="M4 18a9 9 0 1 1 16 0"/><path d="M12 14l4-5"/></symbol>
+    <symbol id="i-volume" viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24"><path d="M12 3 2 8l10 5 10-5z"/><path d="m2 16 10 5 10-5M2 12l10 5 10-5"/></symbol>
+    <symbol id="i-resume" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M10 8.5v7l6-3.5z"/></symbol>
+    <symbol id="i-translate" viewBox="0 0 24 24"><path d="M4 5h9M8.5 3v2M6 5c0 4 3 7 6 8M11 5c0 3-2.5 7-6.5 9"/><path d="m13 21 4-9 4 9M14.5 18h5"/></symbol>
+    <symbol id="i-bold" viewBox="0 0 24 24"><path d="M7 4h6a4 4 0 0 1 0 8H7zM7 12h7a4 4 0 0 1 0 8H7z"/></symbol>
+    <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M3 5a2 2 0 0 1 2-2h6v18H5a2 2 0 0 1-2-2z"/><path d="M21 5a2 2 0 0 0-2-2h-6v18h6a2 2 0 0 0 2-2z"/></symbol>
+    <symbol id="i-code" viewBox="0 0 24 24"><path d="m8 7-5 5 5 5M16 7l5 5-5 5"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/></symbol>
+    <symbol id="i-bookmark" viewBox="0 0 24 24"><path d="M6 3h12v18l-6-4-6 4z"/></symbol>
+    <symbol id="i-tap" viewBox="0 0 24 24"><circle cx="12" cy="9" r="3"/><path d="M6.5 9a5.5 5.5 0 1 1 11 0"/><path d="M12 12v9"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="m8 12 3 3 5-6"/></symbol>
+    <symbol id="i-lens" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/></symbol>
+    <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M21.5 20a6.5 6.5 0 0 0-4-6"/></symbol>
+    <symbol id="i-eye-off" viewBox="0 0 24 24"><path d="m3 3 18 18"/><path d="M10.6 5.1A10 10 0 0 1 12 5c5 0 9 4.5 10 7a13 13 0 0 1-2.6 3.6M6.6 6.6C4.4 8 2.8 10.2 2 12c1 2.5 5 7 10 7a9.6 9.6 0 0 0 4.4-1.1"/></symbol>
+    <symbol id="i-phone" viewBox="0 0 24 24"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></symbol>
+    <symbol id="i-hash" viewBox="0 0 24 24"><path d="M5 9h15M4 15h15M10 3 8 21M16 3l-2 18"/></symbol>
+    <symbol id="i-server" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></symbol>
+    <symbol id="i-sticker" viewBox="0 0 24 24"><path d="M21 13V6a3 3 0 0 0-3-3H6a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3h7z"/><path d="M13 21v-5a3 3 0 0 1 3-3h5"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></symbol>
+    <symbol id="i-drawer" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></symbol>
+    <symbol id="i-plane" viewBox="0 0 24 24"><path d="M21 4 3 11l6 2 2 6 3-4 5 4z"/><path d="m9 13 8-6"/></symbol>
+  </svg>
+
   <nav class="nav">
     <div class="container nav-inner">
       <a class="brand" href="index.html">
-        <img src="dogigram_icon.png" alt="DogiGram logo" />
+        <img src="assets/icon-64.png" alt="" width="32" height="32" />
         DogiGram
       </a>
       <div class="nav-links">
         <a href="#features" class="hide-sm">Features</a>
-        <a href="#download" class="hide-sm">Download</a>
-        <a href="privacy.html" class="hide-sm">Privacy</a>
-        <a class="nav-cta" href="https://github.com/kagut57/DogiGram" target="_blank" rel="noopener">
-          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.55 0-.27-.01-1.17-.02-2.12-3.2.69-3.87-1.36-3.87-1.36-.52-1.33-1.28-1.68-1.28-1.68-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.19 1.76 1.19 1.03 1.76 2.69 1.25 3.35.96.1-.75.4-1.25.72-1.54-2.55-.29-5.24-1.28-5.24-5.68 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11.1 11.1 0 0 1 5.79 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.12 3.05.74.81 1.19 1.83 1.19 3.09 0 4.42-2.7 5.39-5.26 5.67.41.36.78 1.06.78 2.14 0 1.55-.01 2.79-.01 3.17 0 .31.21.67.8.55A11.51 11.51 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5z"/></svg>
-          <span>GitHub</span>
-        </a>
+        <a href="#updates" class="hide-sm">What's new</a>
+        <a href="#faq" class="hide-sm">FAQ</a>
+        <a class="nav-cta" href="https://play.google.com/store/apps/details?id=com.dogigram.app" target="_blank" rel="noopener">Get the app</a>
       </div>
     </div>
   </nav>
 
   <header class="hero">
-    <div class="container">
-      <span class="hero-badge">
-        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.6 9.48l1.84-3.18c.16-.31.04-.69-.26-.85-.29-.15-.65-.06-.83.22l-1.88 3.24a11.46 11.46 0 0 0-8.94 0L5.65 5.67c-.19-.29-.58-.38-.87-.2-.28.18-.37.54-.22.83L6.4 9.48A10.78 10.78 0 0 0 1 18h22a10.78 10.78 0 0 0-5.4-8.52zM7 15.25a1.25 1.25 0 1 1 0-2.5 1.25 1.25 0 0 1 0 2.5zm10 0a1.25 1.25 0 1 1 0-2.5 1.25 1.25 0 0 1 0 2.5z"/></svg>
-        Open source · Android
-      </span>
-      <h1>Chat fast. Stay secure.<br /><span class="grad">Go Dogi.</span></h1>
-      <p class="lead">
-        DogiGram is a friendly, open-source Telegram client for Android — the messaging
-        you trust, wrapped in its own dark + violet look with a Shiba mascot.
-      </p>
-      <div class="hero-actions">
-        <a class="btn btn-primary" href="#download">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
-          Download latest
-        </a>
-        <a class="btn btn-ghost" href="https://github.com/kagut57/DogiGram" target="_blank" rel="noopener">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
-          View source
-        </a>
+    <div class="container hero-grid">
+      <div class="hero-copy">
+        <img class="hero-icon" src="assets/icon-192.png" alt="DogiGram app icon" width="88" height="88" />
+        <h1>Telegram for Android, with the extras built in.</h1>
+        <p class="lead">
+          DogiGram works with your Telegram account and chats, and adds what people usually install
+          other apps for: translation inside the chat, a full video player, a reader for PDFs,
+          comics and code, and room for 10 accounts.
+        </p>
+        <div class="store-row">
+          <a class="play-badge" href="https://play.google.com/store/apps/details?id=com.dogigram.app" target="_blank" rel="noopener">
+            <img src="assets/google-play-badge.png" alt="Get it on Google Play" width="646" height="250" />
+          </a>
+          <p class="store-note">
+            Free for Android <span data-min-android>7.0</span> and newer.<br />
+            <a href="#updates" class="version-link">Version <span data-latest-version>12.10.4</span>, updated <span data-latest-date>Sep 25, 2026</span></a>
+          </p>
+        </div>
       </div>
-      <div class="hero-art">
-        <img src="dogigram_intro.png" alt="DogiGram app preview" />
+
+      <div class="demo" aria-label="Animated preview of DogiGram features">
+        <div class="phone">
+          <div class="screen">
+            <div class="statusbar"><span>9:41</span><span class="status-icons"><i></i><i></i><i></i></span></div>
+
+            <section class="scene scene-translate is-active play" data-scene="0" aria-label="Translation demo">
+              <div class="appbar">
+                <span class="back"></span>
+                <span class="avatar" style="--c1:#f7a541;--c2:#ef7d2d">LW</span>
+                <div class="appbar-title"><b>Lin Wei</b><small>online</small></div>
+              </div>
+              <div class="chat">
+                <span class="date-chip">Today</span>
+                <div class="msg out">Are we still on for this week?</div>
+                <div class="msg in m1">早上好！</div>
+                <div class="msg in m2 tr">
+                  <span class="orig">明天下午三点，老地方见？</span>
+                  <span class="trans">See you at the usual place at 3 pm tomorrow?</span>
+                  <span class="show-orig">Show Original</span>
+                  <i class="tap" aria-hidden="true"></i>
+                </div>
+                <div class="msg out m3">Yes, see you there</div>
+              </div>
+              <p class="scene-caption">Double-tap a message to translate it in place.</p>
+            </section>
+
+            <section class="scene scene-video" data-scene="1" aria-label="Video player demo" aria-hidden="true">
+              <div class="video">
+                <div class="video-art" aria-hidden="true"><i class="sun"></i><i class="hill h1"></i><i class="hill h2"></i></div>
+                <p class="subtitle">Where were you last night?</p>
+                <div class="boost"><span class="boost-track"><i></i></span><b>150%</b></div>
+              </div>
+              <div class="seek"><span>12:04</span><span class="seek-bar"><i></i></span><span>1:58:52</span></div>
+              <div class="panel-card">
+                <div class="panel-head"><span>Speed</span><b class="swap"><span class="a">1x</span><span class="b">2x</span></b></div>
+                <div class="strip from-center"><i class="fill"></i><i class="tick"></i><i class="knob"></i></div>
+                <div class="strip-scale"><span>0.1x</span><span>1x</span><span>10x</span></div>
+              </div>
+              <div class="panel-card">
+                <div class="panel-head"><span>Subtitle color</span><b class="aa">Aa</b></div>
+                <div class="strip rainbow"><i class="knob"></i></div>
+              </div>
+            </section>
+
+            <section class="scene scene-reader" data-scene="2" aria-label="File reader demo" aria-hidden="true">
+              <div class="appbar">
+                <span class="back"></span>
+                <div class="appbar-title"><b>server.log</b><small class="swap"><span class="a">Line 1 of 4,284 · 0%</span><span class="b">Line 2,950 of 4,284 · 69%</span></small></div>
+              </div>
+              <div class="code">
+                <div class="code-scroll" data-log-lines></div>
+                <i class="scroll-track"><i class="scroll-thumb"></i></i>
+                <span class="scroll-bubble">Line 2,950 · 69%</span>
+              </div>
+            </section>
+
+            <section class="scene scene-accounts" data-scene="3" aria-label="Accounts demo" aria-hidden="true">
+              <div class="drawer-head">
+                <span class="avatar big swap-avatar"><span class="a">AK</span><span class="b">RS</span></span>
+                <b class="swap"><span class="a">Arjun</span><span class="b">Riya</span></b>
+                <small>Phone number hidden</small>
+              </div>
+              <ul class="accounts" data-accounts></ul>
+              <p class="toast">Switched to Riya</p>
+            </section>
+
+            <section class="scene scene-stickers" data-scene="4" aria-label="Sticker export demo" aria-hidden="true">
+              <div class="appbar">
+                <span class="back"></span>
+                <div class="appbar-title"><b>Doggo Pack</b><small>9 stickers</small></div>
+              </div>
+              <div class="sticker-grid" aria-hidden="true">
+                <span>🐶</span><span>🐕</span><span>🦮</span><span>🐾</span><span>🐩</span><span>🐺</span><span>🦊</span><span>🐱</span><span>🐼</span>
+              </div>
+              <div class="export">
+                <i class="export-bar"></i>
+                <span class="swap"><span class="a">Export to WhatsApp</span><span class="b">Added to WhatsApp</span></span>
+              </div>
+            </section>
+          </div>
+        </div>
+        <div class="scene-tabs" role="tablist" aria-label="Choose a demo">
+          <button type="button" role="tab" aria-selected="true" data-go="0">Translate</button>
+          <button type="button" role="tab" aria-selected="false" data-go="1">Video player</button>
+          <button type="button" role="tab" aria-selected="false" data-go="2">Reader</button>
+          <button type="button" role="tab" aria-selected="false" data-go="3">Accounts</button>
+          <button type="button" role="tab" aria-selected="false" data-go="4">Stickers</button>
+        </div>
       </div>
     </div>
   </header>
 
-  <section class="block" id="features">
-    <div class="container">
-      <div class="section-head">
-        <span class="eyebrow">Why DogiGram</span>
-        <h2>Everything you love about Telegram</h2>
-        <p>Built on the latest official Telegram for Android source, with its own identity on top.</p>
-      </div>
-      <div class="grid">
-        <div class="card">
-          <div class="ico">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>
-          </div>
-          <h3>Full messaging</h3>
-          <p>Private chats, groups, channels, media, files, voice &amp; video calls — the complete Telegram experience.</p>
+  <main>
+    <section class="features" id="features">
+      <div class="container">
+        <div class="section-head">
+          <h2>What DogiGram adds</h2>
+          <p>Everything you use in Telegram works the same. These are the additions.</p>
         </div>
-        <div class="card">
-          <div class="ico">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>
-          </div>
-          <h3>Secure by design</h3>
-          <p>Backed by Telegram's MTProto protocol with optional end-to-end encrypted secret chats.</p>
-        </div>
-        <div class="card">
-          <div class="ico">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg>
-          </div>
-          <h3>Fast &amp; lightweight</h3>
-          <p>The same speed you expect, with a snappy, distraction-free interface.</p>
-        </div>
-        <div class="card">
-          <div class="ico">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>
-          </div>
-          <h3>Dark + violet look</h3>
-          <p>Dark-by-default theme with a signature violet accent and a friendly Shiba mascot.</p>
-        </div>
-        <div class="card">
-          <div class="ico">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/></svg>
-          </div>
-          <h3>Its own identity</h3>
-          <p>Installs side by side with official Telegram, so you can keep both if you want.</p>
-        </div>
-        <div class="card">
-          <div class="ico">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
-          </div>
-          <h3>Open source</h3>
-          <p>100% free and open under the GPL — read every line, build it yourself, or contribute.</p>
-        </div>
-      </div>
-    </div>
-  </section>
 
-  <section class="block" id="download">
-    <div class="container">
-      <div class="band">
-        <span class="eyebrow">Download</span>
-        <h2>Get DogiGram for Android</h2>
-        <p class="band-lead">Grab the latest signed APK from GitHub Releases, or build it yourself from source.</p>
-        <div class="hero-actions">
-          <a class="btn btn-primary" href="https://github.com/kagut57/DogiGram/releases/latest" target="_blank" rel="noopener">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
-            Latest release
-          </a>
-          <a class="btn btn-ghost" href="https://github.com/kagut57/DogiGram/releases" target="_blank" rel="noopener">
-            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.55 0-.27-.01-1.17-.02-2.12-3.2.69-3.87-1.36-3.87-1.36-.52-1.33-1.28-1.68-1.28-1.68-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.19 1.76 1.19 1.03 1.76 2.69 1.25 3.35.96.1-.75.4-1.25.72-1.54-2.55-.29-5.24-1.28-5.24-5.68 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11.1 11.1 0 0 1 5.79 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.12 3.05.74.81 1.19 1.83 1.19 3.09 0 4.42-2.7 5.39-5.26 5.67.41.36.78 1.06.78 2.14 0 1.55-.01 2.79-.01 3.17 0 .31.21.67.8.55A11.51 11.51 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5z"/></svg>
-            All releases
+        <div class="settings-columns">
+          <div class="settings-group" style="--c1:#f2655a;--c2:#e2453c">
+            <h3>Video player</h3>
+            <ul>
+              <li><span class="row-icon"><svg><use href="#i-subtitles"/></svg></span><div><b>Subtitles from the chat</b><p>Add .srt, .ass or .vtt files shared in the same chat, or paste a message link.</p></div></li>
+              <li><span class="row-icon"><svg><use href="#i-palette"/></svg></span><div><b>Subtitle style</b><p>Any size and color, a shadow or box behind the text, and drag subtitles where you want them.</p></div></li>
+              <li><span class="row-icon"><svg><use href="#i-clock"/></svg></span><div><b>Subtitle and audio sync</b><p>Shift subtitles or audio in 0.1-second steps when they drift.</p></div></li>
+              <li><span class="row-icon"><svg><use href="#i-gauge"/></svg></span><div><b>Speed from 0.1x to 10x</b><p>One slider, with normal speed in the middle.</p></div></li>
+              <li><span class="row-icon"><svg><use href="#i-volume"/></svg></span><div><b>Volume boost to 200%</b><p>Keep swiping up past full volume for quiet videos.</p></div></li>
+              <li><span class="row-icon"><svg><use href="#i-sun"/></svg></span><div><b>Swipe for brightness and volume</b><p>Left side for brightness, right side for volume.</p></div></li>
+              <li><span class="row-icon"><svg><use href="#i-layers"/></svg></span><div><b>Tracks and video size</b><p>Pick audio and subtitle tracks by name, and switch between fit, fill and zoom.</p></div></li>
+              <li><span class="row-icon"><svg><use href="#i-resume"/></svg></span><div><b>Resume where you stopped</b><p>Long videos continue from your last position.</p></div></li>
+            </ul>
+          </div>
+
+          <div class="settings-group" style="--c1:#4aa3f5;--c2:#2f7fe6">
+            <h3>Translation</h3>
+            <ul>
+              <li><span class="row-icon"><svg><use href="#i-translate"/></svg></span><div><b>Translate in place</b><p>The message or caption itself switches to your language. No pop-up.</p></div></li>
+              <li><span class="row-icon"><svg><use href="#i-bold"/></svg></span><div><b>Formatting kept</b><p>Bold text, links, hashtags and premium emoji stay where they were.</p></div></li>
+              <li><span class="row-icon"><svg><use href="#i-undo"/></svg></span><div><b>Back to the original</b><p>Tap Show Original under the message. With double tap set to Translate, double-tap it again.</p></div></li>
+            </ul>
+
+            <h3>Chats and messages</h3>
+            <ul>
+              <li><span class="row-icon"><svg><use href="#i-tap"/></svg></span><div><b>Double-tap actions</b><p>Choose what a double tap does: react, reply, save, edit or translate.</p></div></li>
+              <li><span class="row-icon"><svg><use href="#i-list"/></svg></span><div><b>Your message menu</b><p>Pick which actions appear, including Repeat, Bookmark, Details and forwarding without the "Forwarded from" label.</p></div></li>
+              <li><span class="row-icon"><svg><use href="#i-info"/></svg></span><div><b>Message details</b><p>Everything about a message on one page, including the raw data.</p></div></li>
+              <li><span class="row-icon"><svg><use href="#i-check"/></svg></span><div><b>Select a range</b><p>Select two messages to select everything between them.</p></div></li>
+              <li><span class="row-icon"><svg><use href="#i-lens"/></svg></span><div><b>Search with Google Lens</b><p>Look up any photo or video frame, even in chats that block saving.</p></div></li>
+            </ul>
+          </div>
+
+          <div class="settings-group" style="--c1:#f7a541;--c2:#ef7d2d">
+            <h3>Reading files</h3>
+            <ul>
+              <li><span class="row-icon"><svg><use href="#i-file"/></svg></span><div><b>PDF reader</b><p>Search inside documents, follow links, and read two pages side by side in landscape.</p></div></li>
+              <li><span class="row-icon"><svg><use href="#i-book"/></svg></span><div><b>Comics</b><p>CBZ and CBR files, with right-to-left and double-page modes.</p></div></li>
+              <li><span class="row-icon"><svg><use href="#i-code"/></svg></span><div><b>Text and code</b><p>Smooth even on 10 MB logs, with line numbers, sepia and dark themes, search and go to line.</p></div></li>
+              <li><span class="row-icon"><svg><use href="#i-edit"/></svg></span><div><b>Edit and send back</b><p>Change a text or code file and send the new copy to the same chat.</p></div></li>
+              <li><span class="row-icon"><svg><use href="#i-bookmark"/></svg></span><div><b>Bookmarks and collections</b><p>Save pages and files, and pick up where you left off.</p></div></li>
+            </ul>
+          </div>
+
+          <div class="settings-group" style="--c1:#a77bf7;--c2:#8457ea">
+            <h3>Accounts and privacy</h3>
+            <ul>
+              <li><span class="row-icon"><svg><use href="#i-users"/></svg></span><div><b>Up to 10 accounts</b><p>Switch quickly. The account you open connects first.</p></div></li>
+              <li><span class="row-icon"><svg><use href="#i-eye-off"/></svg></span><div><b>Screenshot mode</b><p>Hide names and phone numbers before you take screenshots.</p></div></li>
+              <li><span class="row-icon"><svg><use href="#i-phone"/></svg></span><div><b>Hide your number</b><p>Keep your phone number off the side menu and settings.</p></div></li>
+              <li><span class="row-icon"><svg><use href="#i-hash"/></svg></span><div><b>IDs at a glance</b><p>User, chat and data center IDs, plus an estimated account creation date.</p></div></li>
+              <li><span class="row-icon"><svg><use href="#i-server"/></svg></span><div><b>Server status</b><p>Check whether Telegram's data centers are up.</p></div></li>
+            </ul>
+          </div>
+
+          <div class="settings-group" style="--c1:#3cc4b4;--c2:#1ea596">
+            <h3>Tools</h3>
+            <ul>
+              <li><span class="row-icon"><svg><use href="#i-sticker"/></svg></span><div><b>Stickers to WhatsApp</b><p>Export static and animated Telegram sticker packs to WhatsApp.</p></div></li>
+              <li><span class="row-icon"><svg><use href="#i-folder"/></svg></span><div><b>Files hub</b><p>Browse downloads by type, delete in bulk, and keep original names when saving.</p></div></li>
+              <li><span class="row-icon"><svg><use href="#i-bolt"/></svg></span><div><b>Faster transfers</b><p>An optional boost for uploads and downloads.</p></div></li>
+            </ul>
+          </div>
+
+          <div class="settings-group" style="--c1:#f06ba0;--c2:#dd4a82">
+            <h3>Look and feel</h3>
+            <ul>
+              <li><span class="row-icon"><svg><use href="#i-moon"/></svg></span><div><b>Dark and violet</b><p>A dark theme with a violet accent and the DogiGram husky.</p></div></li>
+              <li><span class="row-icon"><svg><use href="#i-drawer"/></svg></span><div><b>Classic side menu</b><p>The original Telegram drawer, with accounts you can drag into order.</p></div></li>
+              <li><span class="row-icon"><svg><use href="#i-sliders"/></svg></span><div><b>Small extras</b><p>Exact counts instead of 4.8K, hide the keyboard while scrolling, pause video in the background, and more recent stickers.</p></div></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="updates" id="updates">
+      <div class="container">
+        <div class="section-head">
+          <h2>What's new</h2>
+          <p>New versions show up here as soon as they're live on Google Play.</p>
+        </div>
+        <article class="release latest" data-latest-release>
+          <header>
+            <h3>Version <span data-latest-version>12.10.4</span></h3>
+            <time data-latest-date>Sep 25, 2026</time>
+          </header>
+          <ul data-latest-notes>
+            <li>Added Telegram to WhatsApp sticker export.</li>
+            <li>Match the drawer icon theme to the latest Telegram settings theme.</li>
+            <li>Improved performance and fixed bugs.</li>
+          </ul>
+        </article>
+        <details class="earlier" data-earlier hidden>
+          <summary>Earlier updates</summary>
+          <div data-earlier-list></div>
+        </details>
+      </div>
+    </section>
+
+    <section class="download" id="download">
+      <div class="container download-card">
+        <img src="assets/icon-192.png" alt="" width="96" height="96" />
+        <div class="download-copy">
+          <h2>Get DogiGram</h2>
+          <p>Install it from Google Play. Updates arrive automatically.</p>
+          <a class="play-badge" href="https://play.google.com/store/apps/details?id=com.dogigram.app" target="_blank" rel="noopener">
+            <img src="assets/google-play-badge.png" alt="Get it on Google Play" width="646" height="250" />
           </a>
         </div>
-        <ul class="meta-list">
-          <li>Version 12.8.2</li>
-          <li>Package <code>com.dogigram.app</code></li>
-          <li>Requires Android 5.0+</li>
-        </ul>
+        <figure class="qr">
+          <img src="assets/play-qr.svg" alt="QR code that opens DogiGram on Google Play" width="148" height="148" />
+          <figcaption>On a computer? Scan this with your phone's camera.</figcaption>
+        </figure>
       </div>
-    </div>
-  </section>
+    </section>
 
-  <section class="block">
-    <div class="container" style="max-width: 800px;">
-      <div class="callout">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
-        <p>
-          <strong>Not affiliated with Telegram.</strong> DogiGram is an <strong>unofficial</strong>,
-          independent client. It is not affiliated with, endorsed by, or operated by Telegram, and
-          connects to Telegram's servers using the public Telegram API. "Telegram" is a trademark of
-          Telegram FZ-LLC.
+    <section class="faq" id="faq">
+      <div class="container narrow">
+        <div class="section-head">
+          <h2>Questions</h2>
+        </div>
+        <details>
+          <summary>Is DogiGram the official Telegram app?</summary>
+          <p>No. DogiGram is an independent app that connects to Telegram through its public API. Your chats stay on Telegram's servers, the same as in any Telegram app.</p>
+        </details>
+        <details>
+          <summary>Can I use my existing Telegram account?</summary>
+          <p>Yes. Sign in with your phone number and your chats, groups and channels appear as usual.</p>
+        </details>
+        <details>
+          <summary>Can I keep the official Telegram app installed?</summary>
+          <p>Yes. DogiGram installs alongside it, and you can be signed in to both.</p>
+        </details>
+        <details>
+          <summary>Does it cost anything?</summary>
+          <p>DogiGram is free. Telegram Premium features still need a Premium subscription from Telegram.</p>
+        </details>
+        <details>
+          <summary>How do I delete my data?</summary>
+          <p>See <a href="delete-account.html">Delete your account or data</a> for step-by-step instructions.</p>
+        </details>
+        <p class="disclaimer">
+          DogiGram is not affiliated with, endorsed by or operated by Telegram. "Telegram" is a trademark of Telegram FZ-LLC.
         </p>
       </div>
-    </div>
-  </section>
+    </section>
+  </main>
 
   <footer class="footer">
     <div class="container">
       <div class="footer-grid">
         <div class="footer-brand">
           <a class="brand" href="index.html">
-            <img src="dogigram_icon.png" alt="DogiGram logo" />
+            <img src="assets/icon-64.png" alt="" width="32" height="32" />
             DogiGram
           </a>
-          <p>A fast, secure, open-source Telegram client for Android with its own dark + violet identity.</p>
+          <p>Telegram for Android, with the extras built in.</p>
         </div>
         <div class="footer-col">
-          <strong>Product</strong>
+          <strong>App</strong>
           <a href="index.html#features">Features</a>
-          <a href="index.html#download">Download</a>
-          <a href="https://github.com/kagut57/DogiGram/releases" target="_blank" rel="noopener">Releases</a>
+          <a href="index.html#updates">What's new</a>
+          <a href="https://play.google.com/store/apps/details?id=com.dogigram.app" target="_blank" rel="noopener">Google Play</a>
         </div>
         <div class="footer-col">
           <strong>Legal</strong>
           <a href="privacy.html">Privacy Policy</a>
-          <a href="delete-account.html">Account deletion</a>
-          <a href="https://github.com/kagut57/DogiGram/blob/master/LICENSE" target="_blank" rel="noopener">License</a>
+          <a href="delete-account.html">Delete your data</a>
         </div>
         <div class="footer-col">
           <strong>Community</strong>
-          <a href="https://github.com/kagut57/DogiGram" target="_blank" rel="noopener">GitHub</a>
-          <a href="https://github.com/kagut57/DogiGram/issues" target="_blank" rel="noopener">Report an issue</a>
+          <a href="https://t.me/dogigram_app" target="_blank" rel="noopener">Telegram channel</a>
+          <a href="https://t.me/dogigram_support" target="_blank" rel="noopener">Support group</a>
         </div>
       </div>
       <div class="footer-bottom">
-        <p>© 2026 DogiGram · Licensed under GNU GPL v2 or later.</p>
-        <p>DogiGram is an unofficial client and is not affiliated with Telegram.</p>
+        <p>© <span data-year>2026</span> DogiGram. Licensed under the GNU GPL v2 or later.</p>
+        <p>DogiGram is an unofficial app and is not affiliated with Telegram.</p>
       </div>
     </div>
   </footer>
+
+  <script src="assets/app.js" defer></script>
 </body>
 </html>

@@ -1,43 +1,22 @@
-# DogiGram website &amp; brand assets
+# DogiGram website
 
-This folder serves two purposes:
+The static site served at https://dogi-gram.vercel.app/ from this `docs/` folder.
 
-1. **The DogiGram website** — a static GitHub Pages site (landing page, privacy policy and
-   account-deletion guide).
-2. **Brand assets** — DogiGram's branding source images.
-
-## Website
-
-| File | Page |
+| File | What it is |
 | --- | --- |
-| `index.html` | Landing page — what the app is, features, and download/releases links. |
-| `privacy.html` | Privacy Policy (suitable for the Google Play listing). |
-| `delete-account.html` | Account &amp; data deletion instructions (required by Google Play). |
-| `assets/style.css` | Shared dark + violet stylesheet (Inter typography, inline SVG icons — no emoji). |
-| `.nojekyll` | Tells GitHub Pages to serve files as-is (no Jekyll processing). |
+| `index.html` | Home page: features, live demo, what's new, download |
+| `privacy.html` | Privacy policy |
+| `delete-account.html` | How to delete your account or data |
+| `updates.json` | Release history shown under "What's new" |
+| `assets/` | Stylesheet, script, icons, Google Play badge, QR code |
 
-### Enabling GitHub Pages
+## What's new updates itself
 
-1. Push this branch and merge it into the default branch (`master`).
-2. In the repo, open **Settings → Pages**.
-3. Under **Build and deployment**, set **Source** to *Deploy from a branch*, choose the
-   `master` branch and the **`/docs`** folder, then **Save**.
-4. After a minute the site is live at
-   `https://kagut57.github.io/DogiGram/`.
+`.github/workflows/play-updates.yml` runs every six hours. It reads the Google Play
+listing with `.github/scripts/play_updates.py`, and when a new version is live it adds
+the version, date and release notes to `updates.json` and commits the change. Vercel
+redeploys on that commit, and the home page shows the new release at the top of
+"What's new" with every earlier release listed below it.
 
-Use these URLs in the Google Play Console:
-
-- Privacy policy: `https://kagut57.github.io/DogiGram/privacy.html`
-- Account deletion: `https://kagut57.github.io/DogiGram/delete-account.html`
-
-## Brand assets
-
-| File | Purpose | Recommended size |
-| --- | --- | --- |
-| `dogigram_icon.png` | Master **app-icon** artwork (Shiba on the paper plane). Launcher icons in `TMessagesProj/src/main/res/mipmap-*/` are generated from this. | 1024×1024, square |
-| `dogigram_logo.png` | **Wordmark logo** shown in the top-level `README.md`. | ~640×256 (transparent or solid bg) |
-| `dogigram_banner.png` | Wide banner / social preview image. | ~1280×640 |
-| `dogigram_intro.png` | App preview used on the website hero. | — |
-
-> Some brand images committed here may be **placeholders**. Replace them with the real
-> artwork (keeping the same file names) to update both the launcher icons and the website.
+To check right away after publishing an update, open the repository's Actions tab,
+choose "Sync Play Store updates" and run it.

@@ -1,0 +1,17 @@
+{
+  "app": {
+    "minAndroid": "7.0",
+    "checked": "2026-10-05T16:04:40+00:00"
+  },
+  "updates": [
+    {
+      "version": "12.10.4",
+      "date": "2026-09-25",
+      "notes": [
+        "Added Telegram to Whatsapp sticker export.",
+        "Match the drawer icon theme to latest telegram settings theme.",
+        "Improved performance and fixed bugs."
+      ]
+    }
+  ]
+}
