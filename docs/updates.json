@@ -1,9 +1,25 @@
 {
   "app": {
     "minAndroid": "7.0",
-    "checked": "2026-10-06T16:55:04+00:00"
+    "checked": "2026-10-20T17:29:56+00:00"
   },
   "updates": [
+    {
+      "version": "13.0.2",
+      "date": "2026-10-20",
+      "notes": [
+        "DogiGram 13.0.2 – based on Telegram 13.0",
+        "New video player: ±10s, speed, size, audio and subtitle buttons below the seek bar",
+        "Rotation lock; subtitles turn on automatically",
+        "Audio sync is now next to the audio tracks",
+        "Select and copy any part of text in the text reader",
+        "Select between works across long channels",
+        "Thumbnails in Bookmarks and Collections",
+        "Tools and Settings in the chat list menu",
+        "New Telegram 13 features, including Wallet",
+        "Bug fixes"
+      ]
+    },
     {
       "version": "12.10.6",
       "date": "2026-10-06",
