@@ -1,9 +1,23 @@
 {
   "app": {
     "minAndroid": "7.0",
-    "checked": "2026-10-20T17:29:56+00:00"
+    "checked": "2026-11-01T09:41:00+00:00"
   },
   "updates": [
+    {
+      "version": "13.1.1",
+      "date": "2026-11-01",
+      "notes": [
+        "Translate whole chats, buttons and polls, free for everyone",
+        "In-app browser: tabs, ad blocker, works through your proxy, stays in-app for ad links, search language follows the app",
+        "Turn the proxy on or off for each account",
+        "Log in with a bot token",
+        "Video captions now sit at the top",
+        "Redesigned bookmarks and collections, now separate for each account",
+        "Smoother scrolling in long text and log files",
+        "Many fixes"
+      ]
+    },
     {
       "version": "13.0.2",
       "date": "2026-10-20",
