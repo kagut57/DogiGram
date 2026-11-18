@@ -1,9 +1,20 @@
 {
   "app": {
     "minAndroid": "7.0",
-    "checked": "2026-11-01T09:41:00+00:00"
+    "checked": "2026-11-18T14:31:21+00:00"
   },
   "updates": [
+    {
+      "version": "13.2.2",
+      "date": "2026-11-15",
+      "notes": [
+        "Improvements",
+        "Updated to Telegram 13.2.2 with all of its latest features and fixes.",
+        "Fixes",
+        "Ticking \"always open this site in the browser\" now works immediately.",
+        "The in-app browser no longer stays stuck on the reload screen when a proxy (including SOCKS5) can't reach a site."
+      ]
+    },
     {
       "version": "13.1.1",
       "date": "2026-11-01",
