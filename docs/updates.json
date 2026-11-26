@@ -1,9 +1,22 @@
 {
   "app": {
     "minAndroid": "7.0",
-    "checked": "2026-11-22T15:38:44+00:00"
+    "checked": "2026-11-26T15:44:32+00:00"
   },
   "updates": [
+    {
+      "version": "13.2.4",
+      "date": "2026-11-25",
+      "notes": [
+        "Improvements",
+        "Clear a long message with one tap while typing, with Undo.",
+        "Performance improvements.",
+        "Fixes",
+        "Videos and other media from channels no longer download in the background. They download only when you open the channel.",
+        "Scheduled messages no longer disappear from the Scheduled list.",
+        "Better edge-to-edge display support."
+      ]
+    },
     {
       "version": "13.2.3",
       "date": "2026-11-19",
